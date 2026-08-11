@@ -1,6 +1,6 @@
 # Video workflow
 
-The implemented video slice begins only after a channel reaches `READY_FOR_VIDEO_PRODUCTION`.
+The implemented video slice begins only after a channel reaches `READY_FOR_VIDEO_PRODUCTION`, which now requires exact-version approval of the connected three-fundamentals strategy. A Pillar Video is a special video project bound to that approved strategy version; it preserves the same research, script, QA, revision, approval, and distribution behavior as a standard video.
 
 ```mermaid
 stateDiagram-v2

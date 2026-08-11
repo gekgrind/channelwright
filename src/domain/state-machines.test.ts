@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { IllegalTransitionError, transitionChannel, transitionVideo } from "./state-machines";
+import { IllegalTransitionError, transitionBuild, transitionChannel, transitionVideo } from "./state-machines";
 
 describe("channel state machine", () => {
   it("supports the user-defined path", () => {
@@ -12,6 +12,12 @@ describe("channel state machine", () => {
     expect(transitionChannel("DRAFT", "CONCEPT_DISCOVERY_PENDING")).toBe("CONCEPT_DISCOVERY_PENDING");
     expect(() => transitionChannel("DRAFT", "READY_FOR_VIDEO_PRODUCTION")).toThrow(IllegalTransitionError);
   });
+
+  it("pauses reference research for exact-version human review", () => {
+    expect(transitionChannel("DRAFT", "REFERENCE_CHANNEL_RESEARCH_PENDING")).toBe("REFERENCE_CHANNEL_RESEARCH_PENDING");
+    expect(transitionChannel("REFERENCE_CHANNEL_RESEARCH_PENDING", "REFERENCE_CHANNEL_REVIEW_REQUIRED")).toBe("REFERENCE_CHANNEL_REVIEW_REQUIRED");
+    expect(transitionChannel("REFERENCE_CHANNEL_REVIEW_REQUIRED", "CONCEPT_ACCEPTED")).toBe("CONCEPT_ACCEPTED");
+  });
 });
 
 describe("video state machine", () => {
@@ -22,5 +28,15 @@ describe("video state machine", () => {
 
   it("does not permit approval before review", () => {
     expect(() => transitionVideo("DRAFT", "SCRIPT_APPROVED")).toThrow("Illegal video transition");
+  });
+});
+
+describe("build state machine", () => {
+  it("requires specification, QA, and user review before deployment status", () => {
+    expect(transitionBuild("DRAFT", "SPEC_REVIEW")).toBe("SPEC_REVIEW");
+    expect(transitionBuild("SPEC_REVIEW", "BUILDING")).toBe("BUILDING");
+    expect(transitionBuild("BUILDING", "QA")).toBe("QA");
+    expect(transitionBuild("QA", "USER_REVIEW")).toBe("USER_REVIEW");
+    expect(() => transitionBuild("BUILDING", "APPROVED")).toThrow("Illegal build transition");
   });
 });

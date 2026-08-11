@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const conceptModeSchema = z.enum(["USER_DEFINED", "AGENT_DISCOVERED"]);
+export const conceptModeSchema = z.enum(["USER_DEFINED", "AGENT_DISCOVERED", "REFERENCE_CHANNEL"]);
 export const recommendationSchema = z.enum(["GO", "CAUTION", "STOP_RECOMMENDED"]);
 export const hardGateStatusSchema = z.enum(["YES", "WEAK", "NO"]);
 export const strategicGateStatusSchema = z.enum(["STRONG", "MODERATE", "WEAK"]);
@@ -11,8 +11,11 @@ export const channelStateSchema = z.enum([
   "CONCEPT_REVIEW_REQUIRED",
   "CONCEPT_DISCOVERY_PENDING",
   "CONCEPT_SELECTION_REQUIRED",
+  "REFERENCE_CHANNEL_RESEARCH_PENDING",
+  "REFERENCE_CHANNEL_REVIEW_REQUIRED",
   "CONCEPT_ACCEPTED",
   "CHANNEL_STRATEGY_PENDING",
+  "BUSINESS_STRATEGY_REVIEW_REQUIRED",
   "READY_FOR_VIDEO_PRODUCTION",
   "FAILED",
 ]);

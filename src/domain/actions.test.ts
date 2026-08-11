@@ -21,6 +21,25 @@ describe("workflow action validation", () => {
   it("requires feedback for platform plan changes", () => {
     expect(workflowActionSchema.safeParse({ type: "PLATFORM_ARTIFACT_DECISION", videoId: crypto.randomUUID(), target: "TIKTOK", artifactVersion: 1, decision: "REQUEST_CHANGES" }).success).toBe(false);
   });
+
+  it("requires and validates a supported reference-channel URL", () => {
+    expect(workflowActionSchema.safeParse({ type: "CREATE_CHANNEL", mode: "REFERENCE_CHANNEL", preferences }).success).toBe(false);
+    expect(workflowActionSchema.safeParse({ type: "CREATE_CHANNEL", mode: "REFERENCE_CHANNEL", preferences, referenceChannel: { url: "https://www.youtube.com/watch?v=private-network-trick" } }).success).toBe(false);
+    expect(workflowActionSchema.safeParse({ type: "CREATE_CHANNEL", mode: "REFERENCE_CHANNEL", preferences, referenceChannel: { url: "https://youtube.com/@original-example" } }).success).toBe(true);
+  });
+
+  it("requires a replacement concept when switching from a reference report to user-defined mode", () => {
+    expect(workflowActionSchema.safeParse({ type: "REFERENCE_REPORT_DECISION", channelId: crypto.randomUUID(), reportVersion: 1, decision: "SWITCH_TO_USER_DEFINED" }).success).toBe(false);
+  });
+
+  it("requires feedback for build specification and artifact changes", () => {
+    expect(workflowActionSchema.safeParse({ type: "BUILD_SPEC_DECISION", buildProjectId: crypto.randomUUID(), specificationVersion: 1, decision: "REQUEST_CHANGES" }).success).toBe(false);
+    expect(workflowActionSchema.safeParse({ type: "BUILD_ARTIFACT_DECISION", buildProjectId: crypto.randomUUID(), artifactVersion: 1, decision: "REQUEST_CHANGES" }).success).toBe(false);
+  });
+
+  it("requires feedback for monetization plan changes", () => {
+    expect(workflowActionSchema.safeParse({ type: "MONETIZATION_PLAN_DECISION", channelId: crypto.randomUUID(), planVersion: 1, decision: "REQUEST_CHANGES" }).success).toBe(false);
+  });
 });
 
 describe("viability gate validation", () => {

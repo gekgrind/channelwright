@@ -15,6 +15,9 @@ flowchart LR
   O --> L[Agent and audit ledger]
   O --> D[Versioned platform adaptation plans]
   D --> Q[Platform QA and human review]
+  O --> B[Business strategy and build artifacts]
+  O --> C[Typed conversation change requests]
+  O --> Z[Monetization plans and independent QA]
 ```
 
 ## Boundaries
@@ -27,12 +30,22 @@ flowchart LR
 - `supabase/migrations`: production relational model and ownership policies.
 - `src/features/studio`: client interface; it cannot mutate state except through validated workflow actions.
 - `src/domain/platform-constraints.ts`: centralized, typed planning constraints and source provenance for short-form targets.
+- `src/domain/studio-contracts.ts`: strict reference-research and business-studio artifact contracts.
+- `src/domain/youtube-channel-url.ts`: allowlisted YouTube channel URL parsing and canonicalization; it performs no network fetch.
+- `src/server/agents/reference-channel.ts`: deterministic fixture implementation and the interface required by a future live provider.
+- `src/server/agents/product-builder.ts`: constrained specification and preview-manifest fixtures; it does not execute generated code.
+- `src/server/agents/monetization.ts`: deterministic revenue-stream analysis and independent QA with explicit assumptions.
+- Conversation input is translated into an existing typed workflow action. The successful mutation records a message and structured change request pointing to the resulting new version.
 
 ## Failure and retry behavior
 
 Every mutation accepts an `Idempotency-Key`. Repeating the same key and input returns the current result without duplicating versions or runs. Reusing a key for different input returns HTTP 409. Agent errors are logged as failed and do not transition the entity. Fixture-file writes use temporary-file replacement to avoid partially written JSON.
 
 The mock repository is a development adapter, not a multi-instance production store. The production Supabase repository and live research provider remain explicit gaps.
+
+Build execution evidence is deliberately `NOT_RUN`. Isolated workspaces, dependency allowlists, secret scanning, static analysis, tests, resource limits, email delivery, object storage, payment-provider verification, and deployment are contracts or blockers in this slice, not locally executed capabilities.
+
+Reference research follows the same boundary: the orchestrator owns resolution, sequencing, retry, QA, versioning, approval, and audit events. A provider can only return validated source and report contracts; it cannot approve a report, call another agent, or mutate persistence.
 
 ## Distribution sequencing
 

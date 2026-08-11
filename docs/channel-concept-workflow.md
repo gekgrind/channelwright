@@ -15,7 +15,9 @@ flowchart TD
   G --> H[Pause for human selection]
   H --> J
   J --> K[Persist channel strategy]
-  K --> L[Ready for video production]
+  K --> M[Three-fundamentals strategy and QA]
+  M --> N[Exact-version human approval]
+  N --> L[Ready for video production]
 ```
 
 The five gates are content runway, proven audience demand, monetization path, differentiation, and production economics. The first three are hard gates: GO requires affirmative evidence for each. The strategic gates affect ranking and can reduce an otherwise eligible concept to CAUTION.

@@ -39,4 +39,6 @@ npm.cmd test
 $env:CHANNELWRIGHT_MOCK_MODE='true'; npm.cmd run build
 ```
 
-The tests cover schema-shaped agent outputs, legal and illegal state transitions, GO advancement, CAUTION/STOP pauses, overrides, concept revision/versioning, discovery, owner-scoped idempotency and activity history, video orchestration, script revision, and approval.
+The tests cover all three onboarding modes, URL safety, schema-shaped agent outputs, state transitions, immutable revisions, exact-version approvals, owner-scoped idempotency and activity, Pillar Video creation, fixture resource/product builds, consent and delivery records, verified-event commerce fulfillment, monetization planning, conversational change requests, and the existing video/distribution workflow.
+
+The `202608100001_business_studio_foundation.sql` migration is a forward-only schema artifact. The automated suite checks its expected tables, RLS declarations, object-reference boundary, and selected composite tenant keys. It has not been applied to a disposable or production Supabase project by this repository's local test suite. A real database migration, policy test, transactional repository, live providers, and credentialed end-to-end run remain required.

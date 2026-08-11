@@ -15,6 +15,9 @@ Current agents are invoked only by the orchestrator:
 | TikTok Optimizer | Versioned TikTok adaptation plan with hook, pacing, captions, copy, claims, and blockers | Deterministic fixture |
 | Reels Optimizer | Shared Reels media plan with separate Instagram/Facebook copy, safe-zone guidance, claims, and blockers | Deterministic fixture |
 | Platform Package QA | PASS/REVISE, claim resolution, duration/config checks, fixture and master blockers | Deterministic fixture |
+| Reference Channel Resolver | Canonical source identity, stable identifier, provider/access warnings | Deterministic fixture; live interface only |
+| Reference Channel Research | Versioned, source-provenanced inspiration report and original recommendations | Deterministic fixture; live interface only |
+| Independent Research QA | Contract, provenance, uncertainty, and originality findings | Deterministic fixture |
 
 Each run records agent name, status, input hash, timing, fixture flag, and cost. Output parsers live in `src/domain/contracts.ts`. Provider-specific model calls must be implemented behind the agent boundary, never scattered through route handlers or UI code.
 
