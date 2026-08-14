@@ -54,7 +54,7 @@ describe("production persistence migration", () => {
     const sql = readFileSync("supabase/migrations/202608090001_platform_distribution.sql", "utf8");
     expect(sql).toContain("add column distribution_targets");
     for (const table of ["platform_adaptation_artifacts", "platform_qa_reports", "platform_artifact_approvals"]) {
-      expect(sql).toContain(`alter table public.${table} enable row level security`);
+      expect(sql).toContain(`alter table channelwright.${table} enable row level security`);
     }
     expect(sql.match(/create policy platform_/g)).toHaveLength(3);
     expect(sql).toContain("v.owner_id = auth.uid()");

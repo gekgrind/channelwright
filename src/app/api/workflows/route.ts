@@ -1,12 +1,22 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { workflowActionSchema } from "@/domain/actions";
+import { workflowRequestSchema } from "@/domain/actions";
+import { isMediaProductionAction } from "@/domain/media-production";
+import { workflowStartRequestSchema } from "@/domain/production-workflows";
 import { getCurrentUser } from "@/server/auth";
 import { isMockMode } from "@/server/config";
 import { ChannelwrightOrchestrator, WorkflowError } from "@/server/orchestrator";
 import { JsonWorkspaceRepository } from "@/server/repository";
+import { FixtureMediaOrchestrator } from "@/server/media/fixture-media-orchestrator";
+import { ProductionMediaRepository } from "@/server/media/production-media-repository";
+import { unauthorizedWorkflowResponse, workflowErrorResponse } from "@/server/workflows/http";
+import { ProductionWorkflowRepository } from "@/server/workflows/production-workflow-repository";
 
-const orchestrator = new ChannelwrightOrchestrator(new JsonWorkspaceRepository());
+const fixtureRepository = new JsonWorkspaceRepository();
+const orchestrator = new ChannelwrightOrchestrator(fixtureRepository);
+const fixtureMedia = new FixtureMediaOrchestrator(fixtureRepository);
+const productionMedia = new ProductionMediaRepository();
+const productionWorkflows = new ProductionWorkflowRepository();
 let operationQueue = Promise.resolve();
 const exclusive = async <T>(operation: () => Promise<T>): Promise<T> => {
   const result = operationQueue.then(operation, operation);
@@ -14,25 +24,54 @@ const exclusive = async <T>(operation: () => Promise<T>): Promise<T> => {
   return result;
 };
 
-const unavailable = () => NextResponse.json({ error: "The Supabase production repository is not enabled in this vertical slice. Use fixture mode for the tested workflow." }, { status: 501 });
+const unavailable = (action?: string) => NextResponse.json({
+  error: `Production capability ${action ?? "workflow-planning"} is not enabled. Transactional media-production actions are supported; live planning agents and publishing are not.`,
+  capability: action ?? "workflow-planning",
+}, { status: 501 });
 
 export async function GET() {
   const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!isMockMode()) return unavailable();
+  if (!user) return unauthorizedWorkflowResponse();
+  if (!isMockMode()) {
+    try {
+      const [media, workflowEngine] = await Promise.all([productionMedia.snapshot(), productionWorkflows.list()]);
+      return NextResponse.json({ ...media, workflowEngine, capabilities: { ...media.capabilities, workflowPlanning: true } });
+    } catch (error) { return workflowErrorResponse(error); }
+  }
   return NextResponse.json(await orchestrator.snapshot(user.id));
 }
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!isMockMode()) return unavailable();
+  if (!user) return unauthorizedWorkflowResponse();
   const body: unknown = await request.json().catch(() => null);
-  const parsed = workflowActionSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: "Invalid workflow action", issues: parsed.error.flatten() }, { status: 422 });
-  const key = request.headers.get("idempotency-key") ?? randomUUID();
+  const requestedKey = request.headers.get("idempotency-key")?.trim();
+  const workflowStart = workflowStartRequestSchema.safeParse(body);
+  if (workflowStart.success) {
+    if (isMockMode()) return NextResponse.json({ error: { code: "PRODUCTION_REQUIRED", message: "Durable production workflows require Supabase mode." } }, { status: 501 });
+    if (["CHANNEL_RESEARCH", "CHANNEL_STRATEGY"].includes(workflowStart.data.workflowType) && !requestedKey) {
+      return NextResponse.json({ error: { code: "IDEMPOTENCY_KEY_REQUIRED", message: "Paid workflow starts require an Idempotency-Key header." } }, { status: 400 });
+    }
+    try {
+      const operationResult = await productionWorkflows.start(user.id, requestedKey ?? randomUUID(), workflowStart.data);
+      return NextResponse.json({ operationResult }, { status: 202 });
+    } catch (error) { return workflowErrorResponse(error); }
+  }
+  const parsed = workflowRequestSchema.safeParse(body);
+  if (!parsed.success) return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "Invalid workflow request.", issues: parsed.error.flatten() } }, { status: 422 });
   try {
-    return NextResponse.json(await exclusive(() => orchestrator.execute(user.id, key, parsed.data)));
+    if (!isMockMode()) {
+      if (!isMediaProductionAction(parsed.data)) return unavailable(parsed.data.type);
+      const result = await productionMedia.execute(user.id, requestedKey ?? randomUUID(), parsed.data);
+      return NextResponse.json({ ...(await productionMedia.snapshot()), operationResult: result });
+    }
+    return NextResponse.json(await exclusive(async () => {
+      if (isMediaProductionAction(parsed.data)) {
+        await fixtureMedia.execute(user.id, requestedKey ?? randomUUID(), parsed.data);
+        return orchestrator.snapshot(user.id);
+      }
+      return orchestrator.execute(user.id, requestedKey ?? randomUUID(), parsed.data);
+    }));
   } catch (error) {
     if (error instanceof WorkflowError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error("Workflow operation failed", { error: error instanceof Error ? error.message : "unknown" });

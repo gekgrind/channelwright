@@ -7,6 +7,7 @@ import type { ReferenceChannelReport, ReferenceChannelRequest, ReferenceChannelS
 import type { BusinessStrategy, BusinessStrategyQa, OfferType } from "./strategy-contracts";
 import type { BuildArtifact, BuildProjectState, BuildQa, BuildSpecification } from "./build-contracts";
 import type { MonetizationPlan, MonetizationQa } from "./monetization-contracts";
+import { emptyMediaProduction, type MediaProductionSnapshot } from "./media-production";
 
 export interface ConceptVersion {
   id: string; version: number; concept: string; niche: string; source: ConceptMode; createdAt: string;
@@ -118,6 +119,7 @@ export interface WorkspaceSnapshot {
   buildProjects: BuildProject[]; subscribers: Subscriber[]; consentEvents: ConsentEvent[]; deliveryEvents: DeliveryEvent[];
   products: Product[]; prices: Price[]; purchases: Purchase[]; entitlements: Entitlement[]; commerceEvents: CommerceEvent[];
   conversationMessages: ConversationMessage[]; changeRequests: StructuredChangeRequest[];
+  mediaProduction: MediaProductionSnapshot;
   idempotency: Record<string, { fingerprint: string; completedAt: string }>;
 }
 
@@ -140,4 +142,4 @@ export interface Purchase { id: string; ownerId: string; channelId: string; prod
 export interface Entitlement { id: string; ownerId: string; channelId: string; productId: string; purchaseId: string; subjectReference: string; status: "ACTIVE" | "REVOKED" | "REFUNDED"; grantedAt: string; revokedAt?: string; }
 export interface CommerceEvent { id: string; ownerId: string; channelId: string; provider: string; providerEventId: string; purchaseId: string; type: "PAYMENT_CONFIRMED" | "PAYMENT_REFUNDED"; verified: true; occurredAt: string; }
 
-export const emptyWorkspace = (): WorkspaceSnapshot => ({ channels: [], videos: [], buildProjects: [], subscribers: [], consentEvents: [], deliveryEvents: [], products: [], prices: [], purchases: [], entitlements: [], commerceEvents: [], conversationMessages: [], changeRequests: [], agentRuns: [], auditEvents: [], idempotency: {} });
+export const emptyWorkspace = (): WorkspaceSnapshot => ({ channels: [], videos: [], buildProjects: [], subscribers: [], consentEvents: [], deliveryEvents: [], products: [], prices: [], purchases: [], entitlements: [], commerceEvents: [], conversationMessages: [], changeRequests: [], agentRuns: [], auditEvents: [], mediaProduction: emptyMediaProduction(), idempotency: {} });

@@ -34,8 +34,8 @@ describe("business-studio migration", () => {
       "monetization_plan_decisions", "conversation_messages", "structured_change_requests",
     ];
     for (const table of tables) {
-      expect(sql).toContain(`create table public.${table}`);
-      expect(sql).toContain(`alter table public.${table} enable row level security`);
+      expect(sql).toContain(`create table channelwright.${table}`);
+      expect(sql).toContain(`alter table channelwright.${table} enable row level security`);
     }
     expect(sql.match(/owner_id uuid not null references auth\.users/g)?.length).toBeGreaterThanOrEqual(tables.length);
     expect(sql).toContain("object_reference text");

@@ -1,0 +1,22 @@
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
+import { LocalObjectStorage } from "../src/server/media/local-storage";
+import { sha256 } from "../src/server/media/storage";
+import { MemoryRenderQueue } from "../src/server/rendering/render-queue";
+import { processRenderJob } from "../src/server/rendering/worker";
+import { createSineWaveWav } from "../src/server/rendering/test-signal";
+import { deterministicSampleInput, renderInputSchema } from "../src/video/schemas/render-input";
+
+const ownerId = "0f802c92-fc5b-413f-bfbd-0a8b852cde44";
+const assetVersionId = "c67fd2ae-1936-4a30-bab2-89e3054e0104";
+const root = path.resolve(process.cwd(), "renders", "local-media-e2e"); await mkdir(root, { recursive: true });
+const storage = new LocalObjectStorage(path.join(root, "private-storage"));
+const tone = createSineWaveWav({ durationSeconds: 4.8, amplitude: 0.32 });
+const stored = await storage.putVerified({ ownerId, bytes: tone, contentType: "audio/wav", expectedChecksumSha256: sha256(tone) });
+const input = renderInputSchema.parse({ ...deterministicSampleInput, audioTracks: [{ assetVersionId, role: "NARRATION", reference: stored.key, checksumSha256: stored.checksumSha256, mimeType: "audio/wav", sourceDurationSeconds: 4.8, startSeconds: 0, trimStartSeconds: 0, durationSeconds: 4.8, gainDb: -3, fadeInSeconds: 0.05, fadeOutSeconds: 0.05 }] });
+const queue = new MemoryRenderQueue();
+const queued = queue.enqueue(input, ownerId, 3, [{ id: assetVersionId, ownerId, storageKey: stored.key, checksumSha256: stored.checksumSha256, mimeType: "audio/wav", byteSize: stored.byteSize, status: "READY", rightsStatus: "VERIFIED" }]);
+const claim = await queue.claim("local-e2e-worker", 120);
+if (!claim) throw new Error("Local render job was not claimable");
+const master = await processRenderJob(claim, queue, storage, { workerId: "local-e2e-worker", leaseSeconds: 120, workRoot: path.join(root, "work") });
+console.log(JSON.stringify({ evidence: "LOCAL_FILESYSTEM", approvedSourceScriptVersion: input.approvedScriptVersion, queuedJobId: queued.id, finalJobStatus: queue.get(queued.id)?.status, master, storageRoot: path.join(root, "private-storage"), liveProviderCalls: false, deployedWorker: false }, null, 2));

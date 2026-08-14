@@ -27,8 +27,14 @@ Set:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY` only in trusted server configuration
+- `NEXT_PUBLIC_CAPTCHA_PROVIDER=turnstile` or `hcaptcha`, matching Supabase Auth
+- `NEXT_PUBLIC_CAPTCHA_SITE_KEY` (public provider site key)
 
-Apply the migration through the Supabase CLI or dashboard. The current slice includes Supabase authentication and schema/RLS, but intentionally returns HTTP 501 for production workflow mutations until a transactional Supabase repository and live provider adapters are implemented. Do not expose the service-role key to the browser.
+Apply all migrations in order through the shared-project gate. Production media actions plus `CHANNEL_CONCEPT_VALIDATION` and `CHANNEL_RESEARCH` starts are implemented through separate transactional RPCs. Other fixture planning-agent mutations still return capability-specific HTTP 501 responses until explicitly registered and given production adapters. Keep `SUPABASE_SERVICE_ROLE_KEY` only in trusted server and isolated-worker configuration; it must never use a `NEXT_PUBLIC_` name or enter browser code.
+
+Supabase Auth validates the CAPTCHA token received in `options.captchaToken`; Channelwright never accepts a client assertion that verification succeeded. A failed, expired, or rejected token returns to a fresh login page and fresh widget. Automated tests cover token plumbing and widget callbacks, but a human browser completion against the configured production provider remains a manual gate.
+
+The fixed `channelwright-private-media` bucket is created private by migration. Authenticated users can read only database rows and storage objects in their owner namespace. Upload, move, delete, and signed-URL operations are server-mediated.
 
 ## Checks
 
@@ -37,8 +43,28 @@ npm.cmd run lint
 npm.cmd run typecheck
 npm.cmd test
 $env:CHANNELWRIGHT_MOCK_MODE='true'; npm.cmd run build
+npm.cmd run video:render:sample
+npm.cmd run video:ffprobe -- renders/deterministic/channelwright-sample.mp4
+npm.cmd run video:render:audio
+npm.cmd run video:e2e:local
+npm.cmd run worker:workflow
 ```
 
-The tests cover all three onboarding modes, URL safety, schema-shaped agent outputs, state transitions, immutable revisions, exact-version approvals, owner-scoped idempotency and activity, Pillar Video creation, fixture resource/product builds, consent and delivery records, verified-event commerce fulfillment, monetization planning, conversational change requests, and the existing video/distribution workflow.
+The tests cover the prior workflow plus media timing, storage integrity/ownership, transactional migration contracts, fixture idempotency conflicts, queue concurrency, lease expiry, bounded retry, worker QA configuration, and exact-version render inputs. Text-level migration tests are not a substitute for applying migrations and exercising RLS against the isolated `channelwright` schema in the shared Supabase project.
 
-The `202608100001_business_studio_foundation.sql` migration is a forward-only schema artifact. The automated suite checks its expected tables, RLS declarations, object-reference boundary, and selected composite tenant keys. It has not been applied to a disposable or production Supabase project by this repository's local test suite. A real database migration, policy test, transactional repository, live providers, and credentialed end-to-end run remain required.
+## Deterministic local video rendering
+
+The Remotion sample is a silent, locally generated proof that does not call media or AI providers. A second command generates a clearly synthetic WAV test signal and renders audio:
+
+```powershell
+npm.cmd run video:studio
+npm.cmd run video:render:sample
+npm.cmd run video:ffprobe -- renders/deterministic/channelwright-sample.mp4
+npm.cmd run video:render:audio
+```
+
+Pass extra arguments after `--` to the bundled tools, for example `npm.cmd run video:ffmpeg -- -version`. Render outputs under `renders/` are generated evidence and are ignored by Git.
+
+`video:e2e:local` exercises local content-addressed storage, asset checksum resolution, an in-memory lease, rendering, inspection, technical QA, immutable master storage, and idempotent completion. It remains local-filesystem/in-process evidence. Real operation still requires applied migrations, live Supabase Storage, cross-owner RLS validation, an independently deployed worker, licensed/provider assets, and operational monitoring.
+
+The business-studio, media-pipeline, and production-workflow migrations are forward-only schema artifacts targeting `channelwright`, not `public`. Text-level tests check expected contracts, but live PostgreSQL, RPC-grant, RLS, lease, and cross-tenant evidence remains separate until the shared-project gate runs.

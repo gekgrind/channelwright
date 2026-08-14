@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { WorkflowAction } from "@/domain/actions";
+import type { CoreWorkflowAction as WorkflowAction } from "@/domain/actions";
 import type { AgentRun, BuildProject, Channel, ConceptDecision, PlatformAdaptationArtifact, VideoProject, WorkspaceSnapshot } from "@/domain/entities";
 import { transitionBuild, transitionChannel, transitionVideo } from "@/domain/state-machines";
 import type { WorkspaceRepository } from "./repository";

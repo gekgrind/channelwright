@@ -3,6 +3,7 @@ import { channelPreferencesSchema, conceptModeSchema, platformTargetSchema } fro
 import { referenceChannelRequestSchema, referenceReportSectionSchema } from "./studio-contracts";
 import { canonicalizeYouTubeChannelUrl } from "./youtube-channel-url";
 import { offerTypeSchema } from "./strategy-contracts";
+import { mediaProductionActionSchema, type MediaProductionAction } from "./media-production";
 
 export const workflowActionSchema = z.discriminatedUnion("type", [
   z.object({
@@ -98,4 +99,7 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
   }
 });
 
-export type WorkflowAction = z.infer<typeof workflowActionSchema>;
+export type CoreWorkflowAction = z.infer<typeof workflowActionSchema>;
+export type WorkflowAction = CoreWorkflowAction | MediaProductionAction;
+export const workflowRequestSchema = z.union([workflowActionSchema, mediaProductionActionSchema]);
+export type WorkflowRequest = WorkflowAction;

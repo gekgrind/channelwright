@@ -1,6 +1,6 @@
 # Data model
 
-The Supabase migrations begin with `supabase/migrations/202608080001_initial_channelwright.sql` and are extended by forward-only distribution and business-studio migrations.
+The Supabase migrations begin with `supabase/migrations/202608080001_initial_channelwright.sql` and are extended by forward-only distribution, business-studio, and media migrations. All Channelwright relational objects live in the dedicated `channelwright` schema so the shared project's existing `public` applications remain isolated.
 
 ```mermaid
 erDiagram
@@ -19,6 +19,12 @@ erDiagram
   PLATFORM_ADAPTATION_ARTIFACTS ||--o| PLATFORM_QA_REPORTS : checked
   PLATFORM_ADAPTATION_ARTIFACTS ||--o{ PLATFORM_ARTIFACT_APPROVALS : decided
   AUTH_USERS ||--o{ WORKFLOW_RUNS : starts
+  AUTH_USERS ||--o{ WORKFLOWS : owns
+  WORKFLOWS ||--o{ WORKFLOW_RUNS : executes
+  WORKFLOW_RUNS ||--o{ WORKFLOW_STEPS : contains
+  WORKFLOW_STEPS ||--o{ WORKFLOW_STEP_ATTEMPTS : retries
+  WORKFLOW_STEPS ||--o| WORKFLOW_APPROVALS : gates
+  WORKFLOW_RUNS ||--o{ WORKFLOW_EVENTS : records
   WORKFLOW_RUNS ||--o{ AGENT_RUNS : invokes
   AGENT_RUNS ||--o{ COST_EVENTS : costs
   AUTH_USERS ||--o{ AUDIT_EVENTS : owns
@@ -43,3 +49,15 @@ All three child tables enable RLS. Policies resolve ownership through `video_pro
 Generated binaries are represented by durable object references and metadata, never stored in JSON or PostgreSQL byte payloads. Subscriber, consent, delivery, purchase, and entitlement rows are separate so audit and revocation histories are not overwritten.
 
 The fixture aggregate also persists owner-scoped `conversationMessages` and `changeRequests`. A conversational revision records the user's instruction only after the typed workflow action succeeds and links the request to the newly created artifact version. It does not overwrite the prior version.
+
+## Production workflow records
+
+`202608130001_production_workflow_engine.sql` extends the legacy `workflow_runs` ledger and adds `workflows`, `workflow_steps`, `workflow_step_attempts`, `workflow_approvals`, and `workflow_events`. New runs retain versioned input, bounded durable context, typed output, idempotency fingerprint, legal status, completion/error metadata, and an owner composite key. Step rows hold dependencies, capability, state, retry limits, availability, lease ownership, and output. Attempts preserve each worker/lease execution instead of overwriting retry history.
+
+Authenticated clients have owner-filtered read access. Direct write privileges are revoked for the workflow state tables. Authenticated `SECURITY DEFINER` entry points derive ownership from `auth.uid()` for start, cancel, and approval decisions; service-role-only entry points own claims, heartbeats, completion, failure, expiry recovery, and retry transitions. Every function pins `search_path` to `channelwright, pg_temp`.
+
+`202608130002_workflow_advisor_hardening.sql` rewrites the five new select policies to init-plan `(select auth.uid())` checks and removes two indexes duplicated by unique constraints. It does not weaken RLS or change the authenticated RPC contract.
+
+`202608130004_research_usage_accounting.sql` adds `research_run_budgets` and `research_usage_operations`. A budget is attached to one logical `CHANNEL_RESEARCH` run, while each external request or observation has a stable run/step/attempt operation key. Service-role RPCs lock the budget row to reserve capacity before spend and reconcile actual usage afterward; authenticated owners can inspect but cannot mutate the ledger. Infrastructure retries therefore share one aggregate ceiling. Human-requested successor runs receive separate budgets and retain `parent_run_id` plus `root_run_id` for lineage-level reporting.
+
+Once a research approval reaches a final decision, triggers prevent changes to the run input/output and worker step outputs. The final run UUID, definition version, evidence/QA step records, approval metadata, and lineage form the exact downstream artifact reference.

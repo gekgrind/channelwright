@@ -1,17 +1,20 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { classifySupabaseAuthError, parsePasswordLogin } from "@/domain/password-auth";
 import { isMockMode } from "@/server/config";
+import { signInWithCaptcha } from "@/server/password-auth";
 import { createSupabaseServerClient } from "@/server/supabase";
-
-const credentialsSchema = z.object({ email: z.string().email(), password: z.string().min(6) });
 
 export async function POST(request: Request) {
   const form = await request.formData();
-  const parsed = credentialsSchema.safeParse({ email: form.get("email"), password: form.get("password") });
-  if (!parsed.success) return NextResponse.redirect(new URL("/login?error=invalid", request.url), 303);
+  const mock = isMockMode();
+  const parsed = parsePasswordLogin({ email: form.get("email"), password: form.get("password"), captchaToken: form.get("captchaToken") || undefined }, !mock);
+  if (!parsed.success) {
+    const error = !mock && !form.get("captchaToken") ? "captcha_required" : "invalid";
+    return NextResponse.redirect(new URL(`/login?error=${error}`, request.url), 303);
+  }
 
-  if (isMockMode()) {
+  if (mock) {
     const id = createHash("sha256").update(parsed.data.email.toLowerCase()).digest("hex").slice(0, 24);
     const value = Buffer.from(JSON.stringify({ id, email: parsed.data.email.toLowerCase() })).toString("base64url");
     const response = NextResponse.redirect(new URL("/studio", request.url), 303);
@@ -20,6 +23,11 @@ export async function POST(request: Request) {
   }
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signInWithPassword(parsed.data);
-  return NextResponse.redirect(new URL(error ? "/login?error=auth" : "/studio", request.url), 303);
+  try {
+    const { error } = await signInWithCaptcha(supabase, parsed.data);
+    const code = classifySupabaseAuthError(error);
+    return NextResponse.redirect(new URL(code ? `/login?error=${code}` : "/studio", request.url), 303);
+  } catch {
+    return NextResponse.redirect(new URL("/login?error=unavailable", request.url), 303);
+  }
 }

@@ -62,6 +62,7 @@ export function normalizeWorkspace(parsed: WorkspaceSnapshot): WorkspaceSnapshot
     commerceEvents: parsed.commerceEvents ?? [],
     conversationMessages: parsed.conversationMessages ?? [],
     changeRequests: parsed.changeRequests ?? [],
+    mediaProduction: parsed.mediaProduction ?? emptyWorkspace().mediaProduction,
     agentRuns: (parsed.agentRuns ?? []).map((run) => ({
       ...run,
       entityId: run.entityId ?? "legacy-unknown",
