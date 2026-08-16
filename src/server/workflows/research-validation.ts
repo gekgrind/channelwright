@@ -6,6 +6,7 @@ import {
   type ResearchEvidenceBundle,
   type ResearchQAResult,
 } from "@/domain/production-workflows";
+import { hasConsistentEvidenceIdentity, mergeSemanticQAFindings } from "./evidence-qa";
 import type { ModelUsage, SemanticQAOutput } from "./openai-research-model";
 
 type Finding = ResearchQAResult["findings"][number];
@@ -34,8 +35,7 @@ export function deterministicResearchValidation(resultValue: unknown, evidence: 
   const missing = [...new Set(allReferences(result).filter((id) => !known.has(id)))];
   if (missing.length) findings.push({ severity: "error", code: "EVIDENCE_REFERENCE_NOT_FOUND", message: "The result cites evidence IDs that were not retrieved.", evidenceIds: missing });
   for (const item of evidence) {
-    const expected = item.sourceType === "video" ? `https://www.youtube.com/watch?v=${item.sourceId}` : `https://www.youtube.com/channel/${item.sourceId}`;
-    if (item.url !== expected || item.id !== `yt:${item.sourceType}:${item.sourceId}`) findings.push({ severity: "error", code: "EVIDENCE_IDENTITY_MISMATCH", message: `Evidence identity fields disagree for ${item.id}.`, evidenceIds: [item.id] });
+    if (!hasConsistentEvidenceIdentity(item)) findings.push({ severity: "error", code: "EVIDENCE_IDENTITY_MISMATCH", message: `Evidence identity fields disagree for ${item.id}.`, evidenceIds: [item.id] });
     if (now.getTime() - new Date(item.retrievedAt).getTime() > 86_400_000) findings.push({ severity: "warning", code: "EVIDENCE_STALE", message: `Evidence ${item.id} was retrieved more than 24 hours ago.`, evidenceIds: [item.id] });
   }
   const videoCount = evidence.filter((item) => item.sourceType === "video").length;
@@ -73,17 +73,12 @@ export function deterministicResearchValidation(resultValue: unknown, evidence: 
 }
 
 export function mergeResearchQA(deterministic: Finding[], semantic: SemanticQAOutput, modelUsage: ModelUsage, evidence: ResearchEvidence[]): ResearchQAResult {
-  const known = new Set(evidence.map((item) => item.id));
-  const semanticFindings: Finding[] = semantic.findings.map((finding) => ({ ...finding, evidenceIds: finding.evidenceIds.filter((id) => known.has(id)) }));
-  for (const finding of semantic.findings) {
-    const unknown = finding.evidenceIds.filter((id) => !known.has(id));
-    if (unknown.length) semanticFindings.push({ severity: "error", code: "QA_EVIDENCE_REFERENCE_NOT_FOUND", message: "The QA model cited evidence IDs that do not exist.", evidenceIds: [] });
-  }
-  const findings = [...deterministic, ...semanticFindings];
-  const errors = findings.filter((item) => item.severity === "error").length;
-  const warnings = findings.filter((item) => item.severity === "warning").length;
-  const score = Math.max(0, Math.min(semantic.score, 100 - errors * 25 - warnings * 5));
-  const recommendation = errors ? "revise" : semantic.recommendation;
+  const { findings, errors, score, recommendation } = mergeSemanticQAFindings(
+    deterministic,
+    semantic,
+    new Set(evidence.map((item) => item.id)),
+    "The QA model cited evidence IDs that do not exist.",
+  );
   return researchQAResultSchema.parse({
     passed: errors === 0 && score >= 70,
     score,

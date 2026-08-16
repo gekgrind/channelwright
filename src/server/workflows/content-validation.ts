@@ -8,6 +8,7 @@ import {
 } from "@/domain/production-workflows";
 import { deterministicViewerValueGate, resolveViewerValueGate } from "@/domain/viewer-value";
 import { canonicalEquals } from "./canonical-json";
+import { hasConsistentEvidenceIdentity, mergeSemanticQAFindings } from "./evidence-qa";
 import type { ModelUsage } from "./openai-research-model";
 import type { ContentSemanticQAOutput } from "./content-model";
 
@@ -97,11 +98,12 @@ export function deterministicContentValidation(
   if (missing.length) add("error", "EVIDENCE_REFERENCE_NOT_FOUND", "The backlog cites evidence IDs outside the current discovery bundle.", missing.slice(0, 20));
 
   for (const item of discovery.evidence) {
-    const expected = item.sourceType === "video" ? `https://www.youtube.com/watch?v=${item.sourceId}`
-      : item.sourceType === "channel" ? `https://www.youtube.com/channel/${item.sourceId}` : null;
-    if (item.id !== `yt:${item.sourceType}:${item.sourceId}` || item.url !== expected) {
-      add("error", "EVIDENCE_IDENTITY_MISMATCH", `Discovery evidence identity is inconsistent for ${item.id}.`, [item.id]);
-    }
+    // Search observations describe a query rather than a resource, so they carry
+    // no canonical URL and cannot use the shared video/channel identity helper.
+    const consistent = item.sourceType === "search"
+      ? item.id === `yt:search:${item.sourceId}` && item.url === null
+      : hasConsistentEvidenceIdentity({ id: item.id, url: item.url ?? "", sourceType: item.sourceType, sourceId: item.sourceId });
+    if (!consistent) add("error", "EVIDENCE_IDENTITY_MISMATCH", `Discovery evidence identity is inconsistent for ${item.id}.`, [item.id]);
   }
 
   const strategyPillarNames = new Set(upstream.strategyResult.contentPillars.map((pillar) => pillar.name.toLocaleLowerCase("en-US").trim()));
@@ -215,23 +217,18 @@ export function mergeContentQA(
   modelUsage: ModelUsage,
   discovery: TopicDiscoveryBundle,
 ): ContentQAResult {
-  const known = new Set(discovery.evidence.map((item) => item.id));
-  const semanticFindings: Finding[] = semantic.findings.map((finding) => ({ ...finding, evidenceIds: finding.evidenceIds.filter((id) => known.has(id)) }));
-  for (const finding of semantic.findings) {
-    if (finding.evidenceIds.some((id) => !known.has(id))) {
-      semanticFindings.push({ severity: "error", code: "QA_EVIDENCE_REFERENCE_NOT_FOUND", message: "The content QA model cited an unknown discovery evidence ID.", evidenceIds: [] });
-    }
-  }
-  const findings = [...deterministic, ...semanticFindings];
+  const { findings, errors, score, recommendation } = mergeSemanticQAFindings(
+    deterministic,
+    semantic,
+    new Set(discovery.evidence.map((item) => item.id)),
+    "The content QA model cited an unknown discovery evidence ID.",
+  );
   const failingRules = new Set(deterministic.map((item) => item.code)).size;
-  const errors = findings.filter((item) => item.severity === "error").length;
-  const warnings = findings.filter((item) => item.severity === "warning").length;
-  const score = Math.max(0, Math.min(semantic.score, 100 - errors * 25 - warnings * 5));
   return contentQAResultSchema.parse({
     passed: errors === 0 && score >= 75,
     score,
     findings: findings.slice(0, 50),
-    recommendation: errors ? "revise" : semantic.recommendation,
+    recommendation,
     // Counted by distinct failing rule code: one bad topic can emit several
     // findings for the same rule, which previously drove "checks passed" to zero.
     deterministicChecksPassed: Math.max(0, DETERMINISTIC_CONTENT_RULE_COUNT - failingRules),

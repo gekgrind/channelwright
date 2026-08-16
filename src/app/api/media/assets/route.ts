@@ -8,15 +8,12 @@ import { LocalObjectStorage } from "@/server/media/local-storage";
 import { SupabaseObjectStorage } from "@/server/media/supabase-storage";
 import { createSupabaseServerClient } from "@/server/supabase";
 import { inspectAssetBytes } from "@/server/media/asset-inspection";
+import { DEFAULT_MAX_ASSET_BYTES } from "@/server/media/storage";
 import { JsonWorkspaceRepository } from "@/server/repository";
+import { createSerialQueue } from "@/server/serial-queue";
 
 const fixtureRepository = new JsonWorkspaceRepository();
-let fixtureUploadQueue = Promise.resolve();
-const exclusiveFixtureUpload = async <T>(operation: () => Promise<T>) => {
-  const result = fixtureUploadQueue.then(operation, operation);
-  fixtureUploadQueue = result.then(() => undefined, () => undefined);
-  return result;
-};
+const exclusiveFixtureUpload = createSerialQueue();
 
 const metadataSchema = z.object({
   kind: assetKindSchema,
@@ -39,6 +36,7 @@ export async function POST(request: Request) {
   try { rawMetadata = JSON.parse(String(form?.get("metadata") ?? "null")); } catch { /* Reported as invalid metadata below. */ }
   const metadataResult = metadataSchema.safeParse(rawMetadata);
   if (!(file instanceof File) || !metadataResult.success) return NextResponse.json({ error: "A media file and valid metadata are required", issues: metadataResult.error?.flatten() }, { status: 422 });
+  if (file.size > DEFAULT_MAX_ASSET_BYTES) return NextResponse.json({ error: "Asset exceeds the 500 MiB ingestion limit" }, { status: 413 });
   const bytes = new Uint8Array(await file.arrayBuffer());
   const storage = isMockMode() ? new LocalObjectStorage() : new SupabaseObjectStorage();
   let stored: Awaited<ReturnType<typeof storage.putVerified>> | undefined;
@@ -85,6 +83,7 @@ export async function POST(request: Request) {
   } catch (error) {
     // Registration may have committed even if its response was lost. Temporary objects are already cleaned by the adapter;
     // retain finalized content-addressed bytes for safe reconciliation instead of risking a broken database reference.
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Media ingestion failed" }, { status: 400 });
+    console.error("Media ingestion failed", { error: error instanceof Error ? error.message : "unknown" });
+    return NextResponse.json({ error: "Media ingestion failed" }, { status: 400 });
   }
 }

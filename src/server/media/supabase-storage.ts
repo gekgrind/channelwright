@@ -1,16 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { createSupabaseAdminClient } from "@/server/supabase-admin";
 import type { ObjectStorage } from "./storage";
-import { assertOwnedObjectKey, immutableObjectKey, MEDIA_BUCKET, sha256, validateUpload } from "./storage";
+import { assertDownloadedBytes, assertOwnedObjectKey, MEDIA_BUCKET, prepareVerifiedUpload, sha256 } from "./storage";
 
 export class SupabaseObjectStorage implements ObjectStorage {
   readonly evidence = "SUPABASE_STORAGE" as const;
 
   async putVerified(input: { ownerId: string; bytes: Uint8Array; contentType: string; expectedChecksumSha256?: string; maxBytes?: number; purpose?: "assets" | "masters" }) {
-    validateUpload(input.bytes, input.contentType, input.maxBytes);
-    const checksumSha256 = sha256(input.bytes);
-    if (input.expectedChecksumSha256 && input.expectedChecksumSha256 !== checksumSha256) throw new Error("Uploaded media checksum does not match the declared SHA-256");
-    const finalKey = immutableObjectKey(input.ownerId, checksumSha256, input.contentType, input.purpose);
+    const { checksumSha256, key: finalKey } = prepareVerifiedUpload(input);
     const temporaryKey = `${input.ownerId}/temporary/${randomUUID()}`;
     const client = createSupabaseAdminClient();
     const bucket = client.storage.from(MEDIA_BUCKET);
@@ -40,10 +37,7 @@ export class SupabaseObjectStorage implements ObjectStorage {
     const key = assertOwnedObjectKey(input.ownerId, input.key);
     const result = await createSupabaseAdminClient().storage.from(MEDIA_BUCKET).download(key);
     if (result.error) throw new Error(`Private media download failed: ${result.error.message}`);
-    const bytes = new Uint8Array(await result.data.arrayBuffer());
-    if (bytes.byteLength > (input.maxBytes ?? 500 * 1024 * 1024)) throw new Error("Stored media exceeds the allowed download size");
-    if (sha256(bytes) !== input.expectedChecksumSha256) throw new Error("Stored media checksum mismatch");
-    return bytes;
+    return assertDownloadedBytes(new Uint8Array(await result.data.arrayBuffer()), input.expectedChecksumSha256, input.maxBytes);
   }
 
   async remove(input: { ownerId: string; key: string }) {

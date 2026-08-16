@@ -9,6 +9,7 @@ import {
   type ClaimedWorkflowStep,
   type ResearchEvidenceBundle,
 } from "@/domain/production-workflows";
+import { logWorkflowStage, newlyIntroducedErrors, requirePriorOutput } from "./executor-support";
 import { OpenAIResearchModel, type ResearchModel } from "./openai-research-model";
 import { SupabaseResearchCache } from "./research-cache";
 import { assertChannelResearchProviderConfig, channelResearchConfig } from "./research-config";
@@ -19,22 +20,8 @@ import type { WorkflowStepExecutor } from "./concept-validation-executor";
 
 type EvidenceProvider = { retrieve(ownerId: string, input: ReturnType<typeof channelResearchInputSchema.parse>): Promise<ResearchEvidenceBundle> };
 
-type DeterministicFinding = ReturnType<typeof deterministicResearchValidation>[number];
-
-function errorFingerprint(finding: DeterministicFinding) {
-  return `${finding.code}:${[...finding.evidenceIds].sort().join(",")}`;
-}
-
-function newlyIntroducedErrors(before: DeterministicFinding[], after: DeterministicFinding[]) {
-  const existing = new Set(before.filter((finding) => finding.severity === "error").map(errorFingerprint));
-  return after.filter((finding) => finding.severity === "error" && !existing.has(errorFingerprint(finding)));
-}
-
-function requirePrior<T>(step: ClaimedWorkflowStep, key: string, parse: (value: unknown) => T): T {
-  const value = step.priorOutputs[key];
-  if (!value) throw new ResearchExecutionError("WORKFLOW_CONTEXT_MISSING", false, `Required prior output ${key} is missing.`);
-  return parse(value);
-}
+const requirePrior = <T>(step: ClaimedWorkflowStep, key: string, parse: (value: unknown) => T) =>
+  requirePriorOutput(step, key, parse, (missing) => new ResearchExecutionError("WORKFLOW_CONTEXT_MISSING", false, `Required prior output ${missing} is missing.`));
 
 export class ResearchExecutionError extends Error {
   constructor(readonly code: string, readonly retryable: boolean, message: string) { super(message); }
@@ -56,7 +43,7 @@ export class ChannelResearchExecutor implements WorkflowStepExecutor {
   }
 
   private log(step: ClaimedWorkflowStep, detail: Record<string, unknown>) {
-    console.info("channel_research_stage", { workflowId: step.workflowId, runId: step.runId, ownerId: step.ownerId, stage: step.stepKey, attempt: step.attemptCount, ...detail });
+    logWorkflowStage("channel_research_stage", step, detail);
   }
 
   async execute(step: ClaimedWorkflowStep) {

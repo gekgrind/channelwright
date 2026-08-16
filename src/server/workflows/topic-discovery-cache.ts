@@ -2,6 +2,7 @@ import "server-only";
 
 import { topicDiscoveryBundleSchema, type TopicDiscoveryBundle } from "@/domain/production-workflows";
 import { createSupabaseAdminClient } from "@/server/supabase-admin";
+import { logFailure } from "@/server/observability";
 import type { TopicDiscoveryCache } from "./youtube-topic-discovery";
 
 /**
@@ -32,7 +33,7 @@ export class SupabaseTopicDiscoveryCache implements TopicDiscoveryCache {
   async put(ownerId: string, cacheKey: string, normalizedQuery: string, requestParameters: Record<string, unknown>, bundle: TopicDiscoveryBundle, expiresAt: string) {
     const client = createSupabaseAdminClient();
     const purge = await client.rpc("purge_expired_research_cache", { p_limit: 100 });
-    if (purge.error) console.warn("content_discovery_cache_purge_failed", { code: purge.error.code });
+    if (purge.error) logFailure("content_discovery_cache_purge_failed", purge.error, { code: purge.error.code });
     const { error } = await client.from("research_evidence_cache").upsert({
       owner_id: ownerId,
       cache_key: cacheKey,

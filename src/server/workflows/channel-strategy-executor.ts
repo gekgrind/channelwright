@@ -9,21 +9,15 @@ import {
   type ClaimedWorkflowStep,
 } from "@/domain/production-workflows";
 import { SupabaseApprovedResearchResolver, type ApprovedResearchResolver } from "./approved-research-resolver";
+import { findingFingerprint, logWorkflowStage, newlyIntroducedErrors, requirePriorOutput } from "./executor-support";
 import { OpenAIStrategyModel, type StrategyModel } from "./openai-strategy-model";
 import { SupabaseResearchUsageMeter, type ResearchUsageMeter } from "./research-usage";
 import { assertChannelStrategyModelConfig, channelStrategyConfig } from "./strategy-config";
 import { deterministicStrategyValidation, mergeStrategyQA } from "./strategy-validation";
 import type { WorkflowStepExecutor } from "./concept-validation-executor";
 
-function requirePrior<T>(step: ClaimedWorkflowStep, key: string, parse: (value: unknown) => T): T {
-  const value = step.priorOutputs[key];
-  if (!value) throw new StrategyExecutionError("WORKFLOW_CONTEXT_MISSING", false, `Required prior output ${key} is missing.`);
-  return parse(value);
-}
-
-function errors(findings: ReturnType<typeof deterministicStrategyValidation>) {
-  return findings.filter((item) => item.severity === "error").map((item) => `${item.code}:${[...item.evidenceIds].sort().join(",")}`);
-}
+const requirePrior = <T>(step: ClaimedWorkflowStep, key: string, parse: (value: unknown) => T) =>
+  requirePriorOutput(step, key, parse, (missing) => new StrategyExecutionError("WORKFLOW_CONTEXT_MISSING", false, `Required prior output ${missing} is missing.`));
 
 export class StrategyExecutionError extends Error {
   constructor(readonly code: string, readonly retryable: boolean, message: string) { super(message); }
@@ -49,7 +43,7 @@ export class ChannelStrategyExecutor implements WorkflowStepExecutor {
   }
 
   private log(step: ClaimedWorkflowStep, detail: Record<string, unknown>) {
-    console.info("channel_strategy_stage", { workflowId: step.workflowId, runId: step.runId, ownerId: step.ownerId, stage: step.stepKey, attempt: step.attemptCount, ...detail });
+    logWorkflowStage("channel_strategy_stage", step, detail);
   }
 
   async execute(step: ClaimedWorkflowStep) {
@@ -91,8 +85,10 @@ export class ChannelStrategyExecutor implements WorkflowStepExecutor {
         throw error;
       }
       const candidate = channelStrategyResultSchema.parse({ ...revised.content, upstreamResearch: upstream.reference });
-      const before = new Set(errors(deterministicStrategyValidation(draft.result, upstream)));
-      const introduced = errors(deterministicStrategyValidation(candidate, upstream)).filter((item) => !before.has(item));
+      const introduced = newlyIntroducedErrors(
+        deterministicStrategyValidation(draft.result, upstream),
+        deterministicStrategyValidation(candidate, upstream),
+      ).map(findingFingerprint);
       const output = strategyRevisionSchema.parse({
         attempted: true,
         reason: introduced.length ? `The bounded strategy revision was discarded because it introduced deterministic errors: ${introduced.join(", ")}.` : "One bounded automated strategy revision was performed in response to material QA findings.",

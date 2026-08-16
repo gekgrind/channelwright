@@ -6,6 +6,7 @@ import {
   type ResearchQAResult,
 } from "@/domain/production-workflows";
 import { canonicalEquals } from "./canonical-json";
+import { hasConsistentEvidenceIdentity, mergeSemanticQAFindings } from "./evidence-qa";
 import type { ModelUsage } from "./openai-research-model";
 import type { StrategySemanticQAOutput } from "./openai-strategy-model";
 
@@ -44,8 +45,7 @@ export function deterministicStrategyValidation(resultValue: unknown, upstream: 
   const missing = [...new Set(claimReferences(result).filter((id) => !known.has(id)))];
   if (missing.length) findings.push({ severity: "error", code: "EVIDENCE_REFERENCE_NOT_FOUND", message: "The strategy cites evidence IDs outside the exact approved research artifact.", evidenceIds: missing });
   for (const item of upstream.evidenceBundle.evidence) {
-    const expectedUrl = item.sourceType === "video" ? `https://www.youtube.com/watch?v=${item.sourceId}` : `https://www.youtube.com/channel/${item.sourceId}`;
-    if (item.id !== `yt:${item.sourceType}:${item.sourceId}` || item.url !== expectedUrl) {
+    if (!hasConsistentEvidenceIdentity(item)) {
       findings.push({ severity: "error", code: "EVIDENCE_IDENTITY_MISMATCH", message: `Upstream evidence identity is inconsistent for ${item.id}.`, evidenceIds: [item.id] });
     }
   }
@@ -69,18 +69,17 @@ export function deterministicStrategyValidation(resultValue: unknown, upstream: 
 }
 
 export function mergeStrategyQA(deterministic: Finding[], semantic: StrategySemanticQAOutput, modelUsage: ModelUsage, upstream: ApprovedResearchArtifact) {
-  const known = new Set(upstream.evidenceBundle.evidence.map((item) => item.id));
-  const semanticFindings: Finding[] = semantic.findings.map((finding) => ({ ...finding, evidenceIds: finding.evidenceIds.filter((id) => known.has(id)) }));
-  for (const finding of semantic.findings) if (finding.evidenceIds.some((id) => !known.has(id))) semanticFindings.push({ severity: "error", code: "QA_EVIDENCE_REFERENCE_NOT_FOUND", message: "The strategy QA model cited an unknown upstream evidence ID.", evidenceIds: [] });
-  const findings = [...deterministic, ...semanticFindings];
-  const errors = findings.filter((item) => item.severity === "error").length;
-  const warnings = findings.filter((item) => item.severity === "warning").length;
-  const score = Math.max(0, Math.min(semantic.score, 100 - errors * 25 - warnings * 5));
+  const { findings, errors, score, recommendation } = mergeSemanticQAFindings(
+    deterministic,
+    semantic,
+    new Set(upstream.evidenceBundle.evidence.map((item) => item.id)),
+    "The strategy QA model cited an unknown upstream evidence ID.",
+  );
   return strategyQAResultSchema.parse({
     passed: errors === 0 && score >= 75,
     score,
     findings,
-    recommendation: errors ? "revise" : semantic.recommendation,
+    recommendation,
     deterministicChecksPassed: Math.max(0, 12 - deterministic.length),
     deterministicChecksFailed: deterministic.length,
     modelUsage,

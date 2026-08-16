@@ -1,0 +1,48 @@
+name: Deploy Channelwright
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: channelwright-production-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to VPS over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: |
+            ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.PORT }}
+          command_timeout: 30m
+          script: |
+            set -e
+            cd /var/www/channelwright
+
+            echo "Fetching latest Channelwright code..."
+            git fetch origin
+            git reset --hard origin/main
+
+            echo "Installing dependencies..."
+            npm ci
+
+            echo "Running TypeScript checks..."
+            npm run typecheck
+
+            echo "Building Channelwright..."
+            npm run build
+
+            echo "Restarting Channelwright..."
+            PORT=3005 pm2 restart channelwright --update-env
+
+            pm2 save
+
+            echo "Channelwright deployment complete."
