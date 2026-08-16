@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { SupabaseObjectStorage } from "@/server/media/supabase-storage";
+import { logFailure } from "@/server/observability";
 import { ProductionRenderQueue } from "./production-render-queue";
 import { processRenderJob } from "./worker";
 
@@ -12,8 +13,15 @@ if (!Number.isInteger(pollMilliseconds) || pollMilliseconds < 250 || pollMillise
 const queue = new ProductionRenderQueue(); const storage = new SupabaseObjectStorage(); let stopping = false;
 process.on("SIGINT", () => { stopping = true; }); process.on("SIGTERM", () => { stopping = true; });
 
+const pause = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
 while (!stopping) {
-  const job = await queue.claim(workerId, leaseSeconds);
-  if (job) await processRenderJob(job, queue, storage, { workerId, leaseSeconds }).catch(() => undefined);
-  else await new Promise((resolve) => setTimeout(resolve, pollMilliseconds));
+  try {
+    const job = await queue.claim(workerId, leaseSeconds);
+    if (job) await processRenderJob(job, queue, storage, { workerId, leaseSeconds });
+    else await pause(pollMilliseconds);
+  } catch (error) {
+    logFailure("render_worker_iteration_failed", error, { workerId });
+    await pause(pollMilliseconds);
+  }
 }

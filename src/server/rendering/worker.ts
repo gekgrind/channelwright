@@ -7,8 +7,7 @@ import { evaluateTechnicalMediaQa, inspectMedia } from "./media-inspection";
 import { renderVideo } from "./render-video";
 import type { ClaimedRenderJob, RenderQueue } from "./render-queue";
 import { readWorkerQaConfig } from "./config";
-
-const log = (event: string, detail: Record<string, unknown>) => console.log(JSON.stringify({ at: new Date().toISOString(), event, ...detail }));
+import { logEvent as log, logFailure } from "@/server/observability";
 
 export interface WorkerOptions { workerId: string; leaseSeconds: number; workRoot?: string }
 
@@ -21,7 +20,10 @@ export async function processRenderJob(job: ClaimedRenderJob, queue: RenderQueue
   await mkdir(publicDirectory, { recursive: true });
   let leaseActive = true;
   const heartbeat = setInterval(() => {
-    void queue.heartbeat(job.id, job.leaseToken, options.leaseSeconds).then((active) => { leaseActive = active; }).catch(() => { leaseActive = false; });
+    void queue.heartbeat(job.id, job.leaseToken, options.leaseSeconds).then((active) => { leaseActive = active; }).catch((error: unknown) => {
+      leaseActive = false;
+      logFailure("render_lease_heartbeat_failed", error, { jobId: job.id, workerId: options.workerId });
+    });
   }, Math.max(1_000, Math.floor(options.leaseSeconds * 1000 / 3)));
   try {
     log("render_job_started", { jobId: job.id, attempt: job.attemptCount, workerId: options.workerId, storageEvidence: storage.evidence });
@@ -34,30 +36,26 @@ export async function processRenderJob(job: ClaimedRenderJob, queue: RenderQueue
     const technicalQa = evaluateTechnicalMediaQa(inspection, { width: VIDEO_WIDTH, height: VIDEO_HEIGHT, fps: VIDEO_FPS, durationSeconds: expectedDuration, audioRequired: resolvedInput.audioTracks.length > 0, ...qaConfig });
     const bytes = await readFile(outputPath);
     const stored = await storage.putVerified({ ownerId: job.ownerId, bytes, contentType: "video/mp4", expectedChecksumSha256: inspection.checksumSha256, purpose: "masters" });
-    try {
-      const allRightsVerified = job.assets.every((asset) => asset.rightsStatus === "VERIFIED");
-      const result = await queue.complete(job.id, job.leaseToken, {
-        storageBucket: stored.bucket, storageKey: stored.key, checksumSha256: stored.checksumSha256,
-        byteSize: stored.byteSize, durationSeconds: inspection.durationSeconds,
-        inspection: { ...inspection, id: undefined, masterId: undefined, inspectedAt: undefined } as never,
-        qaReports: [
-          { category: "TECHNICAL", verdict: technicalQa.verdict, automated: true, findings: technicalQa.findings },
-          { category: "RIGHTS", verdict: allRightsVerified ? "PASS" : "BLOCKED", automated: true, findings: allRightsVerified ? [] : [{ code: "RIGHTS_UNVERIFIED", severity: "BLOCKER", message: "Every source asset requires verified provenance and rights" }] },
-          { category: "CONTENT", verdict: "UNKNOWN", automated: false, findings: [{ code: "CONTENT_REVIEW_REQUIRED", severity: "BLOCKER", message: "Claims and content require exact-version review" }] },
-          { category: "VISUAL", verdict: "UNKNOWN", automated: false, findings: [{ code: "VISUAL_REVIEW_REQUIRED", severity: "BLOCKER", message: "Subjective visual quality has not been reviewed" }] },
-          { category: "AUDIO", verdict: resolvedInput.audioTracks.length === 0 ? "PASS" : "UNKNOWN", automated: false, findings: resolvedInput.audioTracks.length === 0 ? [] : [{ code: "AUDIO_REVIEW_REQUIRED", severity: "BLOCKER", message: "Technical measurements do not establish subjective audio quality" }] },
-          { category: "PLATFORM", verdict: "UNKNOWN", automated: false, findings: [{ code: "PLATFORM_QA_REQUIRED", severity: "BLOCKER", message: "Platform-specific QA has not been performed" }] },
-        ],
-      });
-      log("render_job_completed", { jobId: job.id, masterId: result.masterId, masterVersion: result.version, technicalVerdict: technicalQa.verdict });
-      return result;
-    } catch (error) {
-      // Completion may have committed even if its response was lost. Keep the immutable object for reconciliation.
-      throw error;
-    }
+    const allRightsVerified = job.assets.every((asset) => asset.rightsStatus === "VERIFIED");
+    const result = await queue.complete(job.id, job.leaseToken, {
+      storageBucket: stored.bucket, storageKey: stored.key, checksumSha256: stored.checksumSha256,
+      byteSize: stored.byteSize, durationSeconds: inspection.durationSeconds,
+      inspection: { ...inspection, id: undefined, masterId: undefined, inspectedAt: undefined } as never,
+      qaReports: [
+        { category: "TECHNICAL", verdict: technicalQa.verdict, automated: true, findings: technicalQa.findings },
+        { category: "RIGHTS", verdict: allRightsVerified ? "PASS" : "BLOCKED", automated: true, findings: allRightsVerified ? [] : [{ code: "RIGHTS_UNVERIFIED", severity: "BLOCKER", message: "Every source asset requires verified provenance and rights" }] },
+        { category: "CONTENT", verdict: "UNKNOWN", automated: false, findings: [{ code: "CONTENT_REVIEW_REQUIRED", severity: "BLOCKER", message: "Claims and content require exact-version review" }] },
+        { category: "VISUAL", verdict: "UNKNOWN", automated: false, findings: [{ code: "VISUAL_REVIEW_REQUIRED", severity: "BLOCKER", message: "Subjective visual quality has not been reviewed" }] },
+        { category: "AUDIO", verdict: resolvedInput.audioTracks.length === 0 ? "PASS" : "UNKNOWN", automated: false, findings: resolvedInput.audioTracks.length === 0 ? [] : [{ code: "AUDIO_REVIEW_REQUIRED", severity: "BLOCKER", message: "Technical measurements do not establish subjective audio quality" }] },
+        { category: "PLATFORM", verdict: "UNKNOWN", automated: false, findings: [{ code: "PLATFORM_QA_REQUIRED", severity: "BLOCKER", message: "Platform-specific QA has not been performed" }] },
+      ],
+    });
+    log("render_job_completed", { jobId: job.id, masterId: result.masterId, masterVersion: result.version, technicalVerdict: technicalQa.verdict });
+    return result;
   } catch (error) {
+    // Completion may have committed even if its response was lost. Keep the immutable object for reconciliation.
     const message = error instanceof Error ? error.message : "Unknown render failure";
-    await queue.fail(job.id, job.leaseToken, { code: "RENDER_ATTEMPT_FAILED", message, retryable: !message.includes("ownership") && !message.includes("rights") && !message.includes("unsupported") }).catch((persistenceError) => log("render_failure_persistence_failed", { jobId: job.id, message: persistenceError instanceof Error ? persistenceError.message : "unknown" }));
+    await queue.fail(job.id, job.leaseToken, { code: "RENDER_ATTEMPT_FAILED", message, retryable: !message.includes("ownership") && !message.includes("rights") && !message.includes("unsupported") }).catch((persistenceError: unknown) => logFailure("render_failure_persistence_failed", persistenceError, { jobId: job.id, attemptFailure: message }));
     log("render_job_failed", { jobId: job.id, attempt: job.attemptCount, message });
     throw error;
   } finally {
