@@ -216,7 +216,13 @@ export class ChannelContentIntelligenceExecutor implements WorkflowStepExecutor 
       if (hasUnrevisableFailure(initial.qa.findings)) {
         throw new ContentExecutionError("CONTENT_INTEGRITY_UNREVISABLE", false, "A blocking viewer-value or content-integrity failure cannot be resolved by automated revision.");
       }
-      const material = initial.qa.findings.some((finding) => finding.severity === "error") || initial.qa.recommendation === "revise";
+      // Warning pressure alone can push the merged score below the pass threshold
+      // with zero errors. Treating only errors as material dead-ended those runs:
+      // no revision was attempted, final QA recomputed the same warnings, and the
+      // run failed closed after full spend. A failing verdict is material.
+      const material = !initial.qa.passed
+        || initial.qa.findings.some((finding) => finding.severity === "error")
+        || initial.qa.recommendation === "revise";
       if (!material) {
         return contentRevisionSchema.parse({
           attempted: false,
@@ -271,7 +277,7 @@ export class ChannelContentIntelligenceExecutor implements WorkflowStepExecutor 
       return contentQAStepSchema.parse({
         qa: resolved,
         crossModelReview: {
-          ...revision.result.crossModelReview ?? { generator: semantic.attribution, critic: semantic.attribution, findings: [], summary: "No independent critique was recorded." },
+          ...revision.result.crossModelReview ?? { generator: semantic.attribution, critic: null, findings: [], summary: "No independent critique was recorded for this artifact." },
           outcome: resolved.recommendation === "human_review_required" ? "HUMAN_REVIEW_REQUIRED" : (revision.result.crossModelReview?.outcome ?? "AGREED"),
         },
       });

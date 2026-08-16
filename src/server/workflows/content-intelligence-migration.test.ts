@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { CONTENT_BACKLOG_MAX, CONTENT_BACKLOG_MIN } from "@/domain/production-workflows";
 
 const read = (name: string) => readFileSync(resolve(process.cwd(), "supabase/migrations", name), "utf8").toLowerCase();
 const strategy = read("202608140001_channel_strategy.sql");
@@ -53,7 +54,8 @@ describe("CHANNEL_CONTENT_INTELLIGENCE migration", () => {
     expect(migration).toContain("v_persisted_input := p_input || jsonb_build_object('approvedstrategyreference',v_approved_strategy->'reference')");
     expect(migration).toContain("jsonb_object_length(p_input) not between 2 and 4");
     expect(migration).toContain("k not in ('strategyworkflowid','strategyrunid','targetbacklogsize','pillarfilter')");
-    expect(migration).toContain("(p_input->>'targetbacklogsize')::numeric not between 5 and 12");
+    // Bound must match CONTENT_BACKLOG_MAX so the UI, API, and SQL agree.
+    expect(migration).toContain(`(p_input->>'targetbacklogsize')::numeric not between ${CONTENT_BACKLOG_MIN} and ${CONTENT_BACKLOG_MAX}`);
   });
 
   it("guards concurrency with an explicit check and a transactional unique index", () => {

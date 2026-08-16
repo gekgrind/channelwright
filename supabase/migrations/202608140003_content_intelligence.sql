@@ -176,7 +176,7 @@ begin
     if jsonb_object_length(p_input) not between 2 and 4
       or not (p_input ? 'strategyWorkflowId') or not (p_input ? 'strategyRunId')
       or jsonb_typeof(p_input->'strategyWorkflowId') <> 'string' or jsonb_typeof(p_input->'strategyRunId') <> 'string'
-      or (p_input ? 'targetBacklogSize' and (jsonb_typeof(p_input->'targetBacklogSize') <> 'number' or (p_input->>'targetBacklogSize')::numeric not between 5 and 12 or (p_input->>'targetBacklogSize') !~ '^\d+$'))
+      or (p_input ? 'targetBacklogSize' and (jsonb_typeof(p_input->'targetBacklogSize') <> 'number' or (p_input->>'targetBacklogSize')::numeric not between 5 and 8 or (p_input->>'targetBacklogSize') !~ '^\d+$'))
       or (p_input ? 'pillarFilter' and (jsonb_typeof(p_input->'pillarFilter') <> 'array' or jsonb_array_length(p_input->'pillarFilter') not between 1 and 8))
       or (select count(*) from jsonb_object_keys(p_input) k where k not in ('strategyWorkflowId','strategyRunId','targetBacklogSize','pillarFilter')) > 0
     then raise exception 'VALIDATION_ERROR: exact strategy workflow and run IDs are required'; end if;

@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, LoaderCircle, RefreshCcw, ShieldCheck, Sparkles, XCircle } from "lucide-react";
 import {
+  CONTENT_BACKLOG_MAX,
+  CONTENT_BACKLOG_MIN,
   approvedStrategyArtifactSchema,
   channelContentIntelligenceResultSchema,
   contentDraftSchema,
@@ -84,7 +86,7 @@ export function ContentIntelligenceWorkspace({ initial }: { initial?: WorkflowLi
           input: {
             strategyWorkflowId: String(form.get("strategyWorkflowId")),
             strategyRunId: String(form.get("strategyRunId")),
-            ...(Number.isInteger(size) && size >= 5 && size <= 12 ? { targetBacklogSize: size } : {}),
+            ...(Number.isInteger(size) && size >= CONTENT_BACKLOG_MIN && size <= CONTENT_BACKLOG_MAX ? { targetBacklogSize: size } : {}),
           },
         }),
       });
@@ -135,7 +137,7 @@ export function ContentIntelligenceWorkspace({ initial }: { initial?: WorkflowLi
       <div>
         <label>Approved strategy workflow ID<input name="strategyWorkflowId" required defaultValue={approvedStrategy?.id ?? ""} /></label>
         <label>Exact approved strategy run ID<input name="strategyRunId" required defaultValue={approvedStrategy?.current_run_id ?? ""} /></label>
-        <label>Target backlog size<input name="targetBacklogSize" type="number" min={5} max={12} defaultValue={8} /></label>
+        <label>Target backlog size<input name="targetBacklogSize" type="number" min={CONTENT_BACKLOG_MIN} max={CONTENT_BACKLOG_MAX} defaultValue={CONTENT_BACKLOG_MAX} /></label>
       </div>
       <p><ShieldCheck size={15} /> The server resolves and re-verifies the approved strategy, including its upstream research provenance. Unapproved, cross-owner, mutated, or mismatched artifacts fail closed.</p>
       <button className="button button-accent" disabled={busy || !approvedStrategy}>{busy ? <LoaderCircle className="spin" size={15} /> : <ShieldCheck size={15} />} Build bounded backlog</button>

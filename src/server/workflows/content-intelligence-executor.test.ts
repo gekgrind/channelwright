@@ -95,7 +95,7 @@ describe("multi-model CHANNEL_CONTENT_INTELLIGENCE executor", () => {
       "openai:GENERATOR", "openai:GENERATOR", "openai:GENERATOR",
     ]);
     expect(result.crossModelReview?.generator.provider).toBe("openai");
-    expect(result.crossModelReview?.critic.provider).toBe("anthropic");
+    expect(result.crossModelReview?.critic?.provider).toBe("anthropic");
     expect(result.crossModelReview?.outcome).toBe("AGREED");
   });
 

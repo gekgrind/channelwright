@@ -18,7 +18,7 @@ export function channelContentIntelligenceConfig() {
     maxQueriesPerPillar: boundedInteger("CONTENT_INTELLIGENCE_MAX_QUERIES_PER_PILLAR", 2, 1, 3),
     maxSearchQueries: boundedInteger("CONTENT_INTELLIGENCE_MAX_SEARCH_QUERIES", 8, 1, 12),
     maxProviderRequests: boundedInteger("CONTENT_INTELLIGENCE_MAX_PROVIDER_REQUESTS", 24, 3, 36),
-    maxVideos: boundedInteger("CONTENT_INTELLIGENCE_MAX_VIDEOS", 60, 1, 120),
+    maxVideos: boundedInteger("CONTENT_INTELLIGENCE_MAX_VIDEOS", 50, 1, 120),
     maxChannels: boundedInteger("CONTENT_INTELLIGENCE_MAX_CHANNELS", 24, 1, 60),
     maxEvidenceRecords: boundedInteger("CONTENT_INTELLIGENCE_MAX_EVIDENCE_RECORDS", 90, 10, 90),
     cacheTtlSeconds: boundedInteger("CONTENT_INTELLIGENCE_CACHE_TTL_SECONDS", 21_600, 300, 86_400),
@@ -28,7 +28,9 @@ export function channelContentIntelligenceConfig() {
     maxAggregateProviderRequests: boundedInteger("CONTENT_INTELLIGENCE_MAX_AGGREGATE_PROVIDER_REQUESTS", 24, 3, 36),
     maxAggregateProviderQuotaUnits: boundedInteger("CONTENT_INTELLIGENCE_MAX_AGGREGATE_PROVIDER_QUOTA_UNITS", 900, 100, 1_200),
     maxAggregateSearches: boundedInteger("CONTENT_INTELLIGENCE_MAX_AGGREGATE_SEARCHES", 8, 1, 12),
-    maxAggregateSynthesisCalls: boundedInteger("CONTENT_INTELLIGENCE_MAX_AGGREGATE_SYNTHESIS_CALLS", 3, 3, 6),
+    // Three GENERATOR calls are made per run and each step allows two attempts, so
+    // a default of exactly three left no room for a single provider timeout.
+    maxAggregateSynthesisCalls: boundedInteger("CONTENT_INTELLIGENCE_MAX_AGGREGATE_SYNTHESIS_CALLS", 5, 3, 6),
     // Initial QA runs an independent critic plus semantic QA, and final QA runs
     // once more: three calls, plus headroom for a retried step.
     maxAggregateQaCalls: boundedInteger("CONTENT_INTELLIGENCE_MAX_AGGREGATE_QA_CALLS", 6, 3, 12),
@@ -44,25 +46,12 @@ export function channelContentIntelligenceConfig() {
 export type ChannelContentIntelligenceBudget = ReturnType<typeof channelContentIntelligenceConfig>;
 
 /**
- * Model selection is explicit. As with research and strategy there is no default
- * identifier, so an unconfigured deployment fails closed before any paid
- * reservation instead of calling a model that does not exist.
+ * Model and credential resolution lives in the role router
+ * (`src/server/ai/role-router.ts`), which supports every provider. There is
+ * deliberately no OpenAI-specific config helper here: one existed, was unused,
+ * and would have failed Anthropic-only deployments closed if it were ever wired
+ * in.
  */
-export function assertChannelContentIntelligenceModelConfig() {
-  const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!openAiApiKey) throw new ContentConfigurationError("AI_CREDENTIALS_MISSING", "OPENAI_API_KEY is required by the content-intelligence worker.");
-  const youtubeApiKey = process.env.YOUTUBE_DATA_API_KEY?.trim();
-  if (!youtubeApiKey) throw new ContentConfigurationError("YOUTUBE_CREDENTIALS_MISSING", "YOUTUBE_DATA_API_KEY is required by the content-intelligence worker.");
-  const synthesisModel = process.env.OPENAI_CONTENT_SYNTHESIS_MODEL?.trim()
-    || process.env.OPENAI_SYNTHESIS_MODEL?.trim()
-    || process.env.OPENAI_MODEL?.trim();
-  if (!synthesisModel) throw new ContentConfigurationError("AI_MODEL_NOT_CONFIGURED", "Set OPENAI_CONTENT_SYNTHESIS_MODEL, OPENAI_SYNTHESIS_MODEL, or OPENAI_MODEL; the content-intelligence worker does not assume a default model.");
-  const qaModel = process.env.OPENAI_CONTENT_QA_MODEL?.trim()
-    || process.env.OPENAI_QA_MODEL?.trim()
-    || synthesisModel;
-  return { openAiApiKey, youtubeApiKey, synthesisModel, qaModel };
-}
-
 export class ContentConfigurationError extends Error {
   readonly retryable = false;
   constructor(readonly code: string, message: string) { super(message); }

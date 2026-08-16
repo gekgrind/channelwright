@@ -568,7 +568,8 @@ export const crossModelFindingSchema = z.object({
 
 export const crossModelReviewSchema = z.object({
   generator: modelAttributionSchema,
-  critic: modelAttributionSchema,
+  /** Null when no independent critic reviewed this artifact; never a stand-in. */
+  critic: modelAttributionSchema.nullable(),
   outcome: crossModelDispositionSchema,
   findings: z.array(crossModelFindingSchema).max(12),
   // Live critics produce a thorough single-paragraph assessment; 2500 keeps it a
@@ -786,14 +787,6 @@ export const WORKFLOW_FINALIZER_STEP: Record<ProductionWorkflowType, string> = {
   CHANNEL_RESEARCH: "synthesize-validation",
   CHANNEL_STRATEGY: "finalize-strategy",
   CHANNEL_CONTENT_INTELLIGENCE: "finalize-content-intelligence",
-};
-
-/** Step whose output is hashed as the run's provenance record at final human decision. */
-export const WORKFLOW_PROVENANCE_STEP: Record<ProductionWorkflowType, string | null> = {
-  CHANNEL_CONCEPT_VALIDATION: null,
-  CHANNEL_RESEARCH: "retrieve-youtube-evidence",
-  CHANNEL_STRATEGY: "validate-approved-research",
-  CHANNEL_CONTENT_INTELLIGENCE: "discover-youtube-topics",
 };
 
 export function getWorkflowDefinition(type: ProductionWorkflowType, version: number) {

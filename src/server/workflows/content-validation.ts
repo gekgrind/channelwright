@@ -44,10 +44,17 @@ export function jaccardSimilarity(left: Set<string>, right: Set<string>) {
 export const DUPLICATE_TOPIC_SIMILARITY = 0.7;
 
 const FABRICATED_VIEWS = /\b(?:will|should|expect(?:ed)?\s+to)\s+(?:get|reach|receive|hit)\b[^.]{0,40}\b(?:views?|subscribers?)\b|\b\d[\d,.]*\s*(?:k|m|million|thousand)?\+?\s*(?:views?|subscribers?)\s+(?:in|within|per|guaranteed|expected)\b/i;
-const FABRICATED_REVENUE = /\b(?:cpm|rpm)\b\s*(?:of|is|=|:)?\s*\$?\d|\$\s*\d+(?:[,.]\d+)*\s*(?:\/|per\s+)?(?:month|mo|year|yr|video|day)\b|\bearn(?:ing)?s?\s+\$\s*\d/i;
+// Scoped to asserted channel earnings. A price like "tools under $5 per month"
+// is a normal topic subject, so a bare currency-per-period no longer matches;
+// the claim must be about earning, making, generating, or revenue.
+const FABRICATED_REVENUE = /\b(?:cpm|rpm)\b\s*(?:of|is|=|:)?\s*\$?\d|\b(?:earn|earning|earnings|make|makes|making|generate|generates|generating|revenue|profit|income|payout)\b[^.]{0,40}\$\s*\d|\$\s*\d[\d,.]*\s*(?:\/|per\s+|a\s+)?(?:month|mo|year|yr|day)\b[^.]{0,40}\b(?:revenue|income|profit|earnings|payout)\b/i;
 const FABRICATED_SEARCH_VOLUME = /\b(?:search(?:es)?\s+volume|monthly\s+searches|searched\s+\d[\d,.]*\s*times|\d[\d,.]*\s*(?:monthly\s+)?searches)\b/i;
 const MONETARY_GUARANTEE = /\bguarantee(?:d|s)?\b[^.]{0,60}\$\s*\d|\bmake\s+\$\s*\d[\d,.]*\s*(?:\/|per\s+|a\s+)?(?:month|week|day|year)\b|\brisk[-\s]free\s+(?:income|profit)\b/i;
-const DOWNSTREAM_SCOPE = /\b(?:thumbnail|final script|full script|storyboard|voiceover script|title variant|content calendar|publishing schedule)\b/i;
+// Scoped to Channelwright *producing* a downstream artifact. A topic that is
+// legitimately about thumbnails or scripts as a subject (a channel covering
+// YouTube growth) is not a scope violation. Verbs a topic would naturally use
+// ("design", "create", "write") are excluded; only system-directed production is.
+const DOWNSTREAM_SCOPE = /\b(?:generate|generates|produce|produces|deliver|delivers|attach|attaches|output|outputs)\b[^.]{0,40}\b(?:thumbnail|storyboard|voiceover script|title variant|content calendar|publishing schedule)\b|\b(?:final|full)\s+script\b/i;
 
 function allText(value: unknown): string[] {
   if (typeof value === "string") return [value];
@@ -216,6 +223,7 @@ export function mergeContentQA(
     }
   }
   const findings = [...deterministic, ...semanticFindings];
+  const failingRules = new Set(deterministic.map((item) => item.code)).size;
   const errors = findings.filter((item) => item.severity === "error").length;
   const warnings = findings.filter((item) => item.severity === "warning").length;
   const score = Math.max(0, Math.min(semantic.score, 100 - errors * 25 - warnings * 5));
@@ -224,8 +232,10 @@ export function mergeContentQA(
     score,
     findings: findings.slice(0, 50),
     recommendation: errors ? "revise" : semantic.recommendation,
-    deterministicChecksPassed: Math.max(0, DETERMINISTIC_CONTENT_RULE_COUNT - deterministic.length),
-    deterministicChecksFailed: deterministic.length,
+    // Counted by distinct failing rule code: one bad topic can emit several
+    // findings for the same rule, which previously drove "checks passed" to zero.
+    deterministicChecksPassed: Math.max(0, DETERMINISTIC_CONTENT_RULE_COUNT - failingRules),
+    deterministicChecksFailed: failingRules,
     modelUsage,
   });
 }
@@ -247,8 +257,13 @@ export function hasUnrevisableFailure(findings: Finding[]) {
   return findings.some((finding) => finding.severity === "error" && UNREVISABLE_CONTENT_CODES.has(finding.code));
 }
 
+/**
+ * Includes the message because code plus evidence IDs alone could not tell apart
+ * the same rule violated on two different topics with no citations, letting a
+ * revision reintroduce a violation and have it look pre-existing.
+ */
 export function findingFingerprint(finding: Finding) {
-  return `${finding.code}:${[...finding.evidenceIds].sort().join(",")}`;
+  return `${finding.code}:${[...finding.evidenceIds].sort().join(",")}:${finding.message}`;
 }
 
 export function newlyIntroducedContentErrors(before: Finding[], after: Finding[]) {

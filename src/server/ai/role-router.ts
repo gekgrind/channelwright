@@ -127,6 +127,3 @@ export class StaticRoleRouter implements RoleRouter {
     });
   }
 }
-
-/** Roles CONTENT_INTELLIGENCE actually uses, in execution order. */
-export const CONTENT_ROLES: readonly ModelRole[] = ["GENERATOR", "STRATEGIST", "CRITIC", "QA", "REVISION"];

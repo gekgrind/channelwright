@@ -153,12 +153,19 @@ export class YouTubeTopicDiscoveryProvider implements TopicDiscoveryProvider {
     }
     await this.usageMeter?.record({ key: `discovery:cache:${cacheKey}`, kind: "CACHE_LOOKUP", provider: "YOUTUBE_DATA_API_V3", actual: { cacheMisses: 1 }, metadata: { cacheKey, status: "MISS" } });
 
+    // Finding: a single global video cap let the first queries consume the whole
+    // budget, leaving later pillars with no video evidence at all — which then
+    // trips TOPIC_EVIDENCE_NOT_INDEPENDENTLY_DISCOVERED that revision cannot fix
+    // because it may not perform new research. Each query gets a fair share, and
+    // leftover capacity is reclaimed in a second pass.
+    const perQueryQuota = Math.max(1, Math.floor(this.budget.maxVideos / normalized.length));
     const state = { requests: 0, quota: 0, searches: 0 };
     const limitations: string[] = [];
     let budgetExhausted = false;
     const retrievedAt = now.toISOString();
     const evidence: TopicDiscoveryEvidence[] = [];
     const videoPillar = new Map<string, { pillarId: string; query: string }>();
+    const deferred: Array<{ videoId: string; pillarId: string; query: string }> = [];
 
     for (const { pillarId, query } of normalized) {
       let items: SearchItem[];
@@ -174,12 +181,15 @@ export class YouTubeTopicDiscoveryProvider implements TopicDiscoveryProvider {
         break;
       }
       let retained = 0;
+      const overflow: string[] = [];
       for (const item of items) {
         const videoId = item.id?.videoId;
-        if (!videoId || videoPillar.has(videoId) || videoPillar.size >= this.budget.maxVideos) continue;
+        if (!videoId || videoPillar.has(videoId)) continue;
+        if (retained >= perQueryQuota || videoPillar.size >= this.budget.maxVideos) { overflow.push(videoId); continue; }
         videoPillar.set(videoId, { pillarId, query });
         retained += 1;
       }
+      deferred.push(...overflow.map((videoId) => ({ videoId, pillarId, query })));
       // A search observation records that this query was actually issued and how
       // many results were retained. It is retrieval provenance, never demand.
       evidence.push({
@@ -188,6 +198,11 @@ export class YouTubeTopicDiscoveryProvider implements TopicDiscoveryProvider {
         metrics: { retainedResults: retained, returnedItems: items.length },
         query, pillarId, rawReference: "youtube.search.list", origin: "LIVE",
       });
+    }
+    // Second pass: every query has had its fair share, so spend anything left.
+    for (const item of deferred) {
+      if (videoPillar.size >= this.budget.maxVideos) break;
+      if (!videoPillar.has(item.videoId)) videoPillar.set(item.videoId, { pillarId: item.pillarId, query: item.query });
     }
     if (videoPillar.size === 0) throw new ResearchProviderError("CONTENT_DISCOVERY_NO_EVIDENCE", false, "YouTube returned no usable video evidence for the bounded discovery plan.");
 
@@ -259,8 +274,14 @@ export class YouTubeTopicDiscoveryProvider implements TopicDiscoveryProvider {
     if (!evidence.some((item) => item.sourceType !== "search")) {
       throw new ResearchProviderError("CONTENT_DISCOVERY_NO_EVIDENCE", false, "Discovery retained no video or channel evidence, only search observations.");
     }
-    const bounded = evidence.slice(0, this.budget.maxEvidenceRecords);
-    if (bounded.length < evidence.length) limitations.push(`Discovery evidence was truncated to ${this.budget.maxEvidenceRecords} records to stay inside the durable output bound.`);
+    // Truncating from the tail dropped channel records first, which is exactly the
+    // evidence competition analysis depends on. Search observations and channels
+    // are retained ahead of individual videos.
+    const priority = (record: TopicDiscoveryEvidence) => record.sourceType === "search" ? 0 : record.sourceType === "channel" ? 1 : 2;
+    const bounded = evidence.length <= this.budget.maxEvidenceRecords
+      ? evidence
+      : [...evidence].sort((left, right) => priority(left) - priority(right)).slice(0, this.budget.maxEvidenceRecords);
+    if (bounded.length < evidence.length) limitations.push(`Discovery evidence was truncated to ${this.budget.maxEvidenceRecords} records, dropping the lowest-value video records first, to stay inside the durable output bound.`);
     const bundle = topicDiscoveryBundleSchema.parse({
       normalizedQueries: normalized.map((item) => normalizeResearchQuery(item.query)),
       evidence: bounded,

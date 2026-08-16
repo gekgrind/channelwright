@@ -78,6 +78,7 @@ export type ModelFailureKind =
   | "CONTEXT_LENGTH"
   | "PROVIDER_UNAVAILABLE"
   | "REQUEST_REJECTED"
+  | "OUTPUT_LIMIT_INVALID"
   | "MALFORMED_OUTPUT"
   | "SCHEMA_REJECTED"
   | "REFUSAL"
@@ -87,7 +88,7 @@ export type ModelFailureKind =
 const RETRYABLE: ReadonlySet<ModelFailureKind> = new Set<ModelFailureKind>(["TIMEOUT", "RATE_LIMITED", "PROVIDER_UNAVAILABLE", "NETWORK_FAILED"]);
 
 /** Faults an operator must fix; never a reason to silently route spend elsewhere. */
-const CONFIGURATION: ReadonlySet<ModelFailureKind> = new Set<ModelFailureKind>(["AUTH_FAILED", "INVALID_MODEL"]);
+const CONFIGURATION: ReadonlySet<ModelFailureKind> = new Set<ModelFailureKind>(["AUTH_FAILED", "INVALID_MODEL", "OUTPUT_LIMIT_INVALID"]);
 
 export class ModelProviderError extends Error {
   readonly retryable: boolean;

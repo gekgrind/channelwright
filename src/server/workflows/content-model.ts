@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  CONTENT_BACKLOG_MAX,
   channelContentIntelligenceContentSchema,
   contentTopicOpportunitySchema,
   contentTopicScoreSchema,
@@ -14,7 +15,7 @@ import {
   type ModelAttribution,
   type TopicDiscoveryBundle,
 } from "@/domain/production-workflows";
-import type { ModelRole, NormalizedModelUsage, StructuredModelProvider } from "@/server/ai/provider";
+import { toProviderJsonSchema, type ModelRole, type NormalizedModelUsage, type StructuredModelProvider } from "@/server/ai/provider";
 import type { RoleRouter } from "@/server/ai/role-router";
 import type { ResearchUsageCounters, ResearchUsageMeter, ResearchUsageOperationKind } from "./research-usage";
 import type { ChannelContentIntelligenceBudget } from "./content-config";
@@ -24,7 +25,7 @@ export const pillarExpansionPlanSchema = z.object({
 }).strict();
 
 export const topicAssessmentSchema = z.object({
-  topics: z.array(contentTopicOpportunitySchema).min(1).max(12),
+  topics: z.array(contentTopicOpportunitySchema).min(1).max(CONTENT_BACKLOG_MAX),
 }).strict();
 
 /**
@@ -36,13 +37,13 @@ export const topicAssessmentSchema = z.object({
  * that Channelwright is the arbiter.
  */
 export const backlogSynthesisSchema = z.object({
-  scores: z.array(contentTopicScoreSchema.omit({ weightedTotal: true })).min(1).max(12),
+  scores: z.array(contentTopicScoreSchema.omit({ weightedTotal: true })).min(1).max(CONTENT_BACKLOG_MAX),
   backlog: z.array(z.object({
     topicId: z.string(),
-    rank: z.number().int().min(1).max(12),
+    rank: z.number().int().min(1).max(CONTENT_BACKLOG_MAX),
     tier: z.enum(["PRIORITY", "STRONG", "VIABLE", "HOLD"]),
     inclusionRationale: z.string().min(1).max(600),
-  }).strict()).min(1).max(12),
+  }).strict()).min(1).max(CONTENT_BACKLOG_MAX),
   nextVideoRecommendation: nextVideoRecommendationSchema,
   risks: channelContentIntelligenceContentSchema.shape.risks,
   assumptions: channelContentIntelligenceContentSchema.shape.assumptions,
@@ -172,7 +173,14 @@ export class RoutedContentModel implements ContentModel {
     const kind = ROLE_OPERATION[role];
     const callCounter: ResearchUsageCounters = { [COUNTER[kind]]: 1 };
     const serialized = JSON.stringify(payload);
-    const inputCeiling = Buffer.byteLength(system, "utf8") + Buffer.byteLength(serialized, "utf8");
+    // Bytes are used as a deliberately conservative token ceiling. The provider
+    // also bills the structured-output schema, which is not part of the payload
+    // and can exceed the byte-vs-token slack on small prompts, so it is counted
+    // too. Under-reserving is fatal: finalize rejects actual usage above the
+    // reservation.
+    const inputCeiling = Buffer.byteLength(system, "utf8")
+      + Buffer.byteLength(serialized, "utf8")
+      + Buffer.byteLength(JSON.stringify(toProviderJsonSchema(schema)), "utf8");
     const reservationUsage: ResearchUsageCounters = {
       ...callCounter,
       inputTokens: inputCeiling,

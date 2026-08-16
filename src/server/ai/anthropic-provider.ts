@@ -36,7 +36,10 @@ function classify(status: number, body: AnthropicErrorBody, model: string) {
   if (type === "not_found_error" || /model/i.test(message) && /not (found|exist)/i.test(message)) {
     return new ModelProviderError("INVALID_MODEL", "anthropic", model, `Anthropic does not recognize the configured model "${model}".`);
   }
-  if (/prompt is too long|max_tokens|context window/i.test(message)) return new ModelProviderError("CONTEXT_LENGTH", "anthropic", model, "The request exceeded the model context window.");
+  // A max_tokens ceiling violation is an operator configuration fault, not an
+  // oversized prompt: reporting it as CONTEXT_LENGTH hid the real cause.
+  if (/max_tokens/i.test(message)) return new ModelProviderError("OUTPUT_LIMIT_INVALID", "anthropic", model, `The configured output limit exceeds what "${model}" accepts: ${message}`);
+  if (/prompt is too long|context window|too many tokens/i.test(message)) return new ModelProviderError("CONTEXT_LENGTH", "anthropic", model, "The request exceeded the model context window.");
   return new ModelProviderError("REQUEST_REJECTED", "anthropic", model, `Anthropic rejected the request (HTTP ${status}).`);
 }
 
