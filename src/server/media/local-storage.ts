@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { logFailure } from "@/server/observability";
 import type { ObjectStorage } from "./storage";
 import { assertDownloadedBytes, assertOwnedObjectKey, MEDIA_BUCKET, prepareVerifiedUpload, sha256 } from "./storage";
 
@@ -31,7 +32,7 @@ export class LocalObjectStorage implements ObjectStorage {
         await rename(temporary, destination);
         created = true;
       } finally {
-        await rm(temporary, { force: true }).catch(() => undefined);
+        await rm(temporary, { force: true }).catch((cleanupError: unknown) => logFailure("media_temporary_object_cleanup_failed", cleanupError, { key }));
       }
     }
     return { bucket: MEDIA_BUCKET, key, checksumSha256, byteSize: input.bytes.byteLength, contentType: input.contentType, created };

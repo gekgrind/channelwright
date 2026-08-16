@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { claimedWorkflowStepSchema, getWorkflowDefinition, type ClaimedWorkflowStep } from "@/domain/production-workflows";
 import { createSupabaseAdminClient } from "@/server/supabase-admin";
+import { errorMessage, logFailure } from "@/server/observability";
 import { ChannelConceptValidationExecutor, type WorkflowStepExecutor } from "./concept-validation-executor";
 import { ChannelResearchExecutor } from "./channel-research-executor";
 import { ChannelStrategyExecutor } from "./channel-strategy-executor";
@@ -61,8 +62,9 @@ export class ProductionWorkflowWorker {
       heartbeatInFlight = true;
       try {
         leaseActive = await this.repository.heartbeat(step.id, step.leaseToken, leaseSeconds);
-      } catch {
+      } catch (error) {
         leaseActive = false;
+        logFailure("workflow_lease_heartbeat_failed", error, { stepId: step.id, workerId });
       } finally {
         heartbeatInFlight = false;
       }
@@ -74,7 +76,10 @@ export class ProductionWorkflowWorker {
       const result = await this.repository.complete(step.id, step.leaseToken, output);
       return { status: "COMPLETED" as const, stepId: step.id, result };
     } catch (error) {
-      if (!leaseActive) return { status: "LEASE_LOST" as const, stepId: step.id };
+      if (!leaseActive) {
+        logFailure("workflow_step_abandoned_after_lease_loss", error, { stepId: step.id, workflowType: step.workflowType, stepKey: step.stepKey });
+        return { status: "LEASE_LOST" as const, stepId: step.id };
+      }
       const classified = error && typeof error === "object" ? error as { code?: unknown; retryable?: unknown } : {};
       const terminal = error instanceof ZodError
         || classified.retryable === false
@@ -89,6 +94,10 @@ export class ProductionWorkflowWorker {
           : terminal
             ? "The workflow step failed a terminal validation gate."
             : "The workflow step failed before producing durable output.";
+      const diagnostic = error instanceof ZodError
+        ? `ZodError:${error.issues.map((issue) => `${issue.path.join(".")}/${issue.code}`).join(",")}`
+        : errorMessage(error);
+      logFailure("workflow_step_failed", { message: diagnostic }, { stepId: step.id, workflowType: step.workflowType, stepKey: step.stepKey, code, retryable: !terminal });
       const result = await this.repository.fail(step.id, step.leaseToken, code, message, !terminal);
       return { status: "FAILED" as const, stepId: step.id, retryable: !terminal, result };
     } finally {

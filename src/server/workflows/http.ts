@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/server/auth";
 import { isMockMode } from "@/server/config";
+import { logFailure } from "@/server/observability";
 import { ProductionWorkflowError } from "./production-workflow-repository";
 
 export const workflowUuidSchema = z.string().uuid();
 
 export function workflowErrorResponse(error: unknown) {
   if (error instanceof ProductionWorkflowError) return NextResponse.json({ error: { code: error.code, message: error.message } }, { status: error.status });
-  console.error("Production workflow operation failed", { error: error instanceof Error ? error.message : "unknown" });
+  logFailure("production_workflow_operation_failed", error);
   return NextResponse.json({ error: { code: "INTERNAL_ERROR", message: "The workflow operation failed without advancing state." } }, { status: 500 });
 }
 

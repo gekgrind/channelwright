@@ -1,5 +1,6 @@
 import { hostname } from "node:os";
 import { workflowWorkerConfig } from "@/server/config";
+import { logFailure } from "@/server/observability";
 import { ProductionWorkflowWorker } from "./workflow-worker";
 
 const config = workflowWorkerConfig();
@@ -15,7 +16,7 @@ while (!stopping) {
     const result = await worker.runOnce(config.workerId || `workflow-${hostname()}-${process.pid}`, config.leaseSeconds);
     if (result.status === "IDLE" || result.status === "LEASE_LOST") await pause(config.pollIntervalMs);
   } catch (error) {
-    console.error("workflow_worker_iteration_failed", { error: error instanceof Error ? error.message : "unknown" });
+    logFailure("workflow_worker_iteration_failed", error, { workerId: config.workerId });
     await pause(config.pollIntervalMs);
   }
 }

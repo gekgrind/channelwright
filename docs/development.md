@@ -16,7 +16,7 @@ npm.cmd install
 npm.cmd run dev
 ```
 
-Use any valid email and a password of six or more characters. Credentials are not stored; the local auth route creates a 12-hour HTTP-only demo cookie derived from the email. Fixture mode is forcibly disabled when `NODE_ENV=production`, even if the mock flag is accidentally left enabled.
+Use any valid email and a password of six or more characters. Credentials are not stored; the local auth route creates a 12-hour HTTP-only demo cookie derived from the email and signed with `CHANNELWRIGHT_MOCK_SESSION_SECRET` so it cannot be forged or edited to impersonate another fixture user. Set that secret to a stable value of at least 32 characters to keep fixture sessions valid across restarts; otherwise each process signs with an ephemeral secret. Fixture mode is forcibly disabled when `NODE_ENV=production`, even if the mock flag is accidentally left enabled.
 
 ## Production configuration
 
