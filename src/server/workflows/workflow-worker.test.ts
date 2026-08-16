@@ -43,6 +43,32 @@ describe("production workflow worker", () => {
     );
   });
 
+  it("records why a heartbeat failed before treating the lease as lost", async () => {
+    vi.useFakeTimers();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let finish!: (value: { status: string; conclusion: string; evidenceRequired: string[]; suppliedSignals: string[] }) => void;
+    const executing = new Promise<{ status: string; conclusion: string; evidenceRequired: string[]; suppliedSignals: string[] }>((resolve) => { finish = resolve; });
+    const repository = { claim: vi.fn().mockResolvedValue(step), complete: vi.fn(), fail: vi.fn(), heartbeat: vi.fn().mockRejectedValue(new Error("WORKFLOW_HEARTBEAT_FAILED:connection reset")) };
+    const running = new ProductionWorkflowWorker(repository, { execute: vi.fn().mockReturnValue(executing) }).runOnce("worker-a", 30);
+    await vi.advanceTimersByTimeAsync(10_000);
+    finish({ status: "NEEDS_EVIDENCE", conclusion: "Needs evidence", evidenceRequired: ["Topic inventory"], suppliedSignals: [] });
+    await expect(running).resolves.toMatchObject({ status: "LEASE_LOST" });
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining("workflow_lease_heartbeat_failed"));
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining("connection reset"));
+    consoleError.mockRestore();
+  });
+
+  it("logs the underlying step failure alongside the safe persisted message", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const repository = { claim: vi.fn().mockResolvedValue(step), complete: vi.fn(), fail: vi.fn().mockResolvedValue({ status: "FAILED" }), heartbeat: vi.fn() };
+    const executor = { execute: vi.fn().mockRejectedValue(new Error("upstream socket hang up")) };
+    await new ProductionWorkflowWorker(repository, executor).runOnce("worker-a", 120);
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining("workflow_step_failed"));
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining("upstream socket hang up"));
+    expect(repository.fail).toHaveBeenCalledWith(step.id, step.leaseToken, "WORKFLOW_STEP_FAILED", expect.any(String), true);
+    consoleError.mockRestore();
+  });
+
   it("returns idle without mutating anything when no step is eligible", async () => {
     const repository = { claim: vi.fn().mockResolvedValue(null), complete: vi.fn(), fail: vi.fn(), heartbeat: vi.fn() };
     const result = await new ProductionWorkflowWorker(repository, { execute: vi.fn() }).runOnce("worker-a", 120);

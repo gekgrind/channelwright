@@ -6,6 +6,7 @@ import { workflowStartRequestSchema } from "@/domain/production-workflows";
 import { getCurrentUser } from "@/server/auth";
 import { isMockMode } from "@/server/config";
 import { ChannelwrightOrchestrator, WorkflowError } from "@/server/orchestrator";
+import { logFailure } from "@/server/observability";
 import { JsonWorkspaceRepository } from "@/server/repository";
 import { FixtureMediaOrchestrator } from "@/server/media/fixture-media-orchestrator";
 import { ProductionMediaRepository } from "@/server/media/production-media-repository";
@@ -74,7 +75,7 @@ export async function POST(request: Request) {
     }));
   } catch (error) {
     if (error instanceof WorkflowError) return NextResponse.json({ error: error.message }, { status: error.status });
-    console.error("Workflow operation failed", { error: error instanceof Error ? error.message : "unknown" });
+    logFailure("workflow_operation_failed", error, { actionType: parsed.data.type });
     return NextResponse.json({ error: "Workflow operation failed without advancing state" }, { status: 500 });
   }
 }

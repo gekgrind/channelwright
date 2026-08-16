@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { classifySupabaseAuthError, parsePasswordLogin } from "@/domain/password-auth";
 import { isMockMode } from "@/server/config";
 import { MOCK_SESSION_COOKIE, signMockSession } from "@/server/mock-session";
+import { logFailure } from "@/server/observability";
 import { signInWithCaptcha } from "@/server/password-auth";
 import { createSupabaseServerClient } from "@/server/supabase";
 
@@ -28,7 +29,8 @@ export async function POST(request: Request) {
     const { error } = await signInWithCaptcha(supabase, parsed.data);
     const code = classifySupabaseAuthError(error);
     return NextResponse.redirect(new URL(code ? `/login?error=${code}` : "/studio", request.url), 303);
-  } catch {
+  } catch (error) {
+    logFailure("password_login_provider_unavailable", error);
     return NextResponse.redirect(new URL("/login?error=unavailable", request.url), 303);
   }
 }
