@@ -11,7 +11,15 @@ import {
   type ChannelStrategyResult,
   type StrategyQAResult,
 } from "@/domain/production-workflows";
-import type { WorkflowList } from "./channel-research-workspace";
+import {
+  fetchWorkflowDetail,
+  fetchWorkflowList,
+  POLLING_WORKFLOW_STATUSES,
+  startWorkflow,
+  submitApprovalDecision,
+  type ApprovalDecision,
+  type WorkflowList,
+} from "./workflow-api";
 
 type WorkflowDetail = {
   workflow: { id: string; status: string; created_at: string; current_run_id: string };
@@ -23,14 +31,6 @@ type WorkflowDetail = {
   researchBudgets: Array<{ workflow_run_id: string; parent_run_id: string | null; root_run_id: string; used_totals: Record<string, number>; provider_identities: string[]; model_identities: string[]; exhaustion_code: string | null }>;
   researchUsageOperations: unknown[];
 };
-
-function message(payload: unknown, fallback: string) {
-  if (!payload || typeof payload !== "object") return fallback;
-  const error = (payload as { error?: unknown }).error;
-  if (typeof error === "string") return error;
-  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") return error.message;
-  return fallback;
-}
 
 export function ChannelStrategyWorkspace({ initial }: { initial?: WorkflowList }) {
   const [engine, setEngine] = useState(initial);
@@ -44,16 +44,11 @@ export function ChannelStrategyWorkspace({ initial }: { initial?: WorkflowList }
   const activeId = detail?.workflow.id ?? strategyWorkflows[0]?.id;
 
   const load = async (workflowId?: string) => {
-    const listResponse = await fetch("/api/workflows", { cache: "no-store" });
-    const listPayload = await listResponse.json();
-    if (!listResponse.ok) throw new Error(message(listPayload, "Could not refresh strategy workflows."));
+    const listPayload = await fetchWorkflowList("Could not refresh strategy workflows.");
     setEngine(listPayload.workflowEngine);
-    const selected = workflowId ?? detail?.workflow.id ?? listPayload.workflowEngine.workflows.find((item: { workflow_type: string }) => item.workflow_type === "CHANNEL_STRATEGY")?.id;
+    const selected = workflowId ?? detail?.workflow.id ?? listPayload.workflowEngine.workflows.find((item) => item.workflow_type === "CHANNEL_STRATEGY")?.id;
     if (!selected) return;
-    const response = await fetch(`/api/workflows/${selected}`, { cache: "no-store" });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(message(payload, "Could not load the strategy workflow."));
-    setDetail(payload);
+    setDetail(await fetchWorkflowDetail<WorkflowDetail>(selected, "Could not load the strategy workflow."));
   };
 
   useEffect(() => {
@@ -62,7 +57,7 @@ export function ChannelStrategyWorkspace({ initial }: { initial?: WorkflowList }
     const refresh = () => load(activeId).catch((cause: unknown) => { if (!disposed) setError(cause instanceof Error ? cause.message : "Could not refresh strategy."); });
     void refresh();
     const status = detail?.workflow.status ?? strategyWorkflows[0]?.status ?? "";
-    const timer = ["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL"].includes(status) ? setInterval(refresh, 4_000) : undefined;
+    const timer = POLLING_WORKFLOW_STATUSES.includes(status) ? setInterval(refresh, 4_000) : undefined;
     return () => { disposed = true; if (timer) clearInterval(timer); };
     // Polling intentionally follows durable workflow identity and status.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -73,19 +68,18 @@ export function ChannelStrategyWorkspace({ initial }: { initial?: WorkflowList }
     const form = new FormData(event.currentTarget);
     setBusy(true); setError(null); setNotice(null);
     try {
-      const response = await fetch("/api/workflows", {
-        method: "POST", headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
-        body: JSON.stringify({ operation: "START_WORKFLOW", workflowType: "CHANNEL_STRATEGY", definitionVersion: 1, input: { researchWorkflowId: String(form.get("researchWorkflowId")), researchRunId: String(form.get("researchRunId")) } }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(message(payload, "Could not start channel strategy."));
+      const payload = await startWorkflow(
+        "CHANNEL_STRATEGY",
+        { researchWorkflowId: String(form.get("researchWorkflowId")), researchRunId: String(form.get("researchRunId")) },
+        "Could not start channel strategy.",
+      );
       await load(payload.operationResult.workflowId);
       setNotice("Strategy queued from the exact approved research run. The server persisted its immutable integrity snapshot.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not start channel strategy."); }
     finally { setBusy(false); }
   };
 
-  const decide = async (decision: "APPROVE" | "REJECT" | "REQUEST_REVISION") => {
+  const decide = async (decision: ApprovalDecision) => {
     const run = detail?.runs[0];
     const approval = detail?.approvals.find((item) => item.workflow_run_id === run?.id && item.status === "PENDING");
     if (!approval || !detail) return;
@@ -93,9 +87,7 @@ export function ChannelStrategyWorkspace({ initial }: { initial?: WorkflowList }
     if (decision === "REQUEST_REVISION" && !note) return;
     setBusy(true); setError(null);
     try {
-      const response = await fetch(`/api/workflows/${detail.workflow.id}/approvals/${approval.id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decision, note }) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(message(payload, "Could not record the strategy decision."));
+      await submitApprovalDecision(detail.workflow.id, approval.id, decision, note, "Could not record the strategy decision.");
       await load(detail.workflow.id);
       if (decision === "REQUEST_REVISION") setRevisionNote("");
       setNotice(`${decision.replaceAll("_", " ")} recorded. Exact-version lineage remains immutable.`);

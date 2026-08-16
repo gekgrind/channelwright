@@ -39,6 +39,20 @@ export function validateUpload(bytes: Uint8Array, contentType: string, maxBytes 
   }
 }
 
+/** Validates an upload and derives its immutable content-addressed location. */
+export function prepareVerifiedUpload(input: { ownerId: string; bytes: Uint8Array; contentType: string; expectedChecksumSha256?: string; maxBytes?: number; purpose?: "assets" | "masters" }) {
+  validateUpload(input.bytes, input.contentType, input.maxBytes);
+  const checksumSha256 = sha256(input.bytes);
+  if (input.expectedChecksumSha256 && input.expectedChecksumSha256 !== checksumSha256) throw new Error("Uploaded media checksum does not match the declared SHA-256");
+  return { checksumSha256, key: immutableObjectKey(input.ownerId, checksumSha256, input.contentType, input.purpose) };
+}
+
+export function assertDownloadedBytes(bytes: Uint8Array, expectedChecksumSha256: string, maxBytes = DEFAULT_MAX_ASSET_BYTES) {
+  if (bytes.byteLength > maxBytes) throw new Error("Stored media exceeds the allowed download size");
+  if (sha256(bytes) !== expectedChecksumSha256) throw new Error("Stored media checksum mismatch");
+  return bytes;
+}
+
 export function sniffContentType(bytes: Uint8Array): string | null {
   const prefix = Buffer.from(bytes.subarray(0, 16));
   if (prefix.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) return "image/jpeg";

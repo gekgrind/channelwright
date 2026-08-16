@@ -9,14 +9,10 @@ import { SupabaseObjectStorage } from "@/server/media/supabase-storage";
 import { createSupabaseServerClient } from "@/server/supabase";
 import { inspectAssetBytes } from "@/server/media/asset-inspection";
 import { JsonWorkspaceRepository } from "@/server/repository";
+import { createSerialQueue } from "@/server/serial-queue";
 
 const fixtureRepository = new JsonWorkspaceRepository();
-let fixtureUploadQueue = Promise.resolve();
-const exclusiveFixtureUpload = async <T>(operation: () => Promise<T>) => {
-  const result = fixtureUploadQueue.then(operation, operation);
-  fixtureUploadQueue = result.then(() => undefined, () => undefined);
-  return result;
-};
+const exclusiveFixtureUpload = createSerialQueue();
 
 const metadataSchema = z.object({
   kind: assetKindSchema,

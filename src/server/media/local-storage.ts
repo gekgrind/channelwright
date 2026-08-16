@@ -2,7 +2,7 @@ import { constants } from "node:fs";
 import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ObjectStorage } from "./storage";
-import { assertOwnedObjectKey, immutableObjectKey, MEDIA_BUCKET, sha256, validateUpload } from "./storage";
+import { assertDownloadedBytes, assertOwnedObjectKey, MEDIA_BUCKET, prepareVerifiedUpload, sha256 } from "./storage";
 
 export class LocalObjectStorage implements ObjectStorage {
   readonly evidence = "LOCAL_FILESYSTEM" as const;
@@ -13,10 +13,7 @@ export class LocalObjectStorage implements ObjectStorage {
   }
 
   async putVerified(input: { ownerId: string; bytes: Uint8Array; contentType: string; expectedChecksumSha256?: string; maxBytes?: number; purpose?: "assets" | "masters" }) {
-    validateUpload(input.bytes, input.contentType, input.maxBytes);
-    const checksumSha256 = sha256(input.bytes);
-    if (input.expectedChecksumSha256 && input.expectedChecksumSha256 !== checksumSha256) throw new Error("Uploaded media checksum does not match the declared SHA-256");
-    const key = immutableObjectKey(input.ownerId, checksumSha256, input.contentType, input.purpose);
+    const { checksumSha256, key } = prepareVerifiedUpload(input);
     const destination = this.resolveOwned(input.ownerId, key);
     await mkdir(path.dirname(destination), { recursive: true });
     let created = false;
@@ -42,9 +39,7 @@ export class LocalObjectStorage implements ObjectStorage {
 
   async readVerified(input: { ownerId: string; key: string; expectedChecksumSha256: string; maxBytes?: number }) {
     const bytes = await readFile(this.resolveOwned(input.ownerId, input.key));
-    if (bytes.byteLength > (input.maxBytes ?? 500 * 1024 * 1024)) throw new Error("Stored media exceeds the allowed download size");
-    if (sha256(bytes) !== input.expectedChecksumSha256) throw new Error("Stored media checksum mismatch");
-    return bytes;
+    return assertDownloadedBytes(bytes, input.expectedChecksumSha256, input.maxBytes);
   }
 
   async remove(input: { ownerId: string; key: string }) {
