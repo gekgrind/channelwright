@@ -92,13 +92,16 @@ describe("Supabase research evidence cache", () => {
 
   it("still writes when the opportunistic purge fails", async () => {
     const { upsert } = writeClient(null, { code: "40001" });
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // The purge failure is reported through the shared logFailure helper, which
+    // writes structured JSON to console.error rather than console.warn.
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await expect(new SupabaseResearchCache().put(ownerId, cacheKey, "hidden business systems", {}, evidenceBundleFixture)).resolves.toBeUndefined();
 
     expect(upsert).toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledWith("research_cache_purge_failed", { code: "40001" });
-    warn.mockRestore();
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("research_cache_purge_failed"));
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("40001"));
+    logged.mockRestore();
   });
 
   it("fails closed with a stable code when the cache write fails", async () => {

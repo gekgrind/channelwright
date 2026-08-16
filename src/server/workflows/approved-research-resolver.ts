@@ -7,6 +7,7 @@ import {
   type ApprovedResearchReference,
 } from "@/domain/production-workflows";
 import { createSupabaseAdminClient } from "@/server/supabase-admin";
+import { canonicalEquals } from "./canonical-json";
 
 export interface ApprovedResearchResolver {
   resolve(workflowId: string, runId: string, expected: ApprovedResearchReference): Promise<ApprovedResearchArtifact>;
@@ -26,7 +27,7 @@ export class SupabaseApprovedResearchResolver implements ApprovedResearchResolve
     if (error) throw new ApprovedResearchIntegrityError("APPROVED_RESEARCH_INVALID", "The exact approved research artifact could not be revalidated.");
     const artifact = approvedResearchArtifactSchema.parse(data);
     const persisted = approvedResearchReferenceSchema.parse(expected);
-    if (JSON.stringify(artifact.reference) !== JSON.stringify(persisted)) {
+    if (!canonicalEquals(artifact.reference, persisted)) {
       throw new ApprovedResearchIntegrityError("UPSTREAM_RESEARCH_INTEGRITY_MISMATCH", "The persisted approved-research reference no longer matches authoritative state.");
     }
     return artifact;

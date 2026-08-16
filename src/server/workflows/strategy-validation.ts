@@ -5,6 +5,7 @@ import {
   type ChannelStrategyResult,
   type ResearchQAResult,
 } from "@/domain/production-workflows";
+import { canonicalEquals } from "./canonical-json";
 import { hasConsistentEvidenceIdentity, mergeSemanticQAFindings } from "./evidence-qa";
 import type { ModelUsage } from "./openai-research-model";
 import type { StrategySemanticQAOutput } from "./openai-strategy-model";
@@ -37,7 +38,7 @@ function allText(value: unknown): string[] {
 export function deterministicStrategyValidation(resultValue: unknown, upstream: ApprovedResearchArtifact): Finding[] {
   const result = channelStrategyResultSchema.parse(resultValue);
   const findings: Finding[] = [];
-  if (JSON.stringify(result.upstreamResearch) !== JSON.stringify(upstream.reference)) {
+  if (!canonicalEquals(result.upstreamResearch, upstream.reference)) {
     findings.push({ severity: "error", code: "UPSTREAM_RESEARCH_REFERENCE_CHANGED", message: "The strategy changed the exact approved-research reference.", evidenceIds: [] });
   }
   const known = new Map(upstream.evidenceBundle.evidence.map((item) => [item.id, item]));

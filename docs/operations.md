@@ -27,6 +27,14 @@ npm.cmd run worker:workflow
 
 The worker claims only registered `WORKER` steps. `APPROVAL` steps never enter the service-role queue; they remain `WAITING_FOR_APPROVAL` until the authenticated owner decides them. Monitor workflow queue depth, oldest eligible step, expired leases, attempts by error code, terminal failures, approval age, and canceled stale-worker completions. Do not log workflow input, full user content, tokens, or model prompts.
 
+The provider-backed workflows additionally require an explicitly configured OpenAI model. There is no default identifier: `CHANNEL_RESEARCH` and `CHANNEL_STRATEGY` steps fail closed with `AI_MODEL_NOT_CONFIGURED` before reserving any budget when none of `OPENAI_STRATEGY_SYNTHESIS_MODEL`, `OPENAI_SYNTHESIS_MODEL`, or `OPENAI_MODEL` is set. Treat that error as a deployment configuration fault, not a transient provider failure; it is not retryable.
+
+Three paid-run limits are enforced in PostgreSQL rather than the browser. `RESEARCH_LIMIT_REACHED` rejects a second active `CHANNEL_RESEARCH` run per owner. `STRATEGY_LIMIT_REACHED` rejects a second active `CHANNEL_STRATEGY` run per owner and approved upstream research run, backed by `workflow_runs_active_strategy_uniq`. `CONTENT_LIMIT_REACHED` rejects a second active `CHANNEL_CONTENT_INTELLIGENCE` run per owner and approved strategy run, backed by `workflow_runs_active_content_uniq`. All three surface as HTTP 429. Human-revision successors and regeneration after a terminal run remain permitted.
+
+`CHANNEL_CONTENT_INTELLIGENCE` is the most provider-intensive workflow because it fans out across approved content pillars. Its defaults (8 searches, 24 provider requests, 900 quota units) sit inside the unchanged database ceilings of 12 / 36 / 1200; `search.list` costs 100 quota units, which is what caps the search count. Monitor searches and quota units per run, not just token spend. Budget exhaustion is typed `CONTENT_RESOURCE_BUDGET_EXHAUSTED` and is terminal.
+
+Two content-intelligence failures are deliberately terminal rather than retried or revised. `CONTENT_INTEGRITY_UNREVISABLE` means a topic's premise is deceptive or unsupported and automated revision is refused; `CONTENT_QA_REJECTED` means final QA held a material error. Both indicate a generation-quality problem to inspect, not a transient fault.
+
 ## Required variables
 
 - `NEXT_PUBLIC_SUPABASE_URL`

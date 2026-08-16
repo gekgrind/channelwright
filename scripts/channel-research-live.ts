@@ -32,7 +32,9 @@ if (process.env.CHANNEL_RESEARCH_LIVE_CHAIN === "true") {
   const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
   if (!openAiApiKey) throw new Error("OPENAI_API_KEY is required for the opt-in live synthesis/QA chain.");
   const input = { channelConcept: query, constraints: { faceless: true, language: "English" } };
-  const model = new OpenAIResearchModel(openAiApiKey, process.env.OPENAI_MODEL?.trim() || "gpt-5.6-luna", budget);
+  const configuredModel = process.env.OPENAI_SYNTHESIS_MODEL?.trim() || process.env.OPENAI_MODEL?.trim();
+  if (!configuredModel) throw new Error("Set OPENAI_SYNTHESIS_MODEL or OPENAI_MODEL for the opt-in live synthesis/QA chain; no default model is assumed.");
+  const model = new OpenAIResearchModel(openAiApiKey, configuredModel, budget);
   const executor = new ChannelResearchExecutor({ retrieve: async () => bundle }, model);
   const baseStep: ClaimedWorkflowStep = {
     id: crypto.randomUUID(), ownerId: crypto.randomUUID(), workflowId: crypto.randomUUID(), runId: crypto.randomUUID(),

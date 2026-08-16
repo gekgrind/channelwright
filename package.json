@@ -24,6 +24,8 @@
     "gate:supabase:inspect": "tsx scripts/supabase-gate/inspect.ts",
     "gate:supabase:live": "tsx scripts/supabase-gate/live.ts",
     "gate:research:persisted": "tsx scripts/channel-research-persisted-live.ts",
+    "gate:strategy:persisted": "tsx scripts/channel-strategy-persisted-live.ts",
+    "gate:multimodel:live": "tsx scripts/multi-model-content-live.ts",
     "research:provider:live": "tsx scripts/channel-research-live.ts"
   },
   "dependencies": {
@@ -56,5 +58,8 @@
     "tsx": "^4.23.12",
     "typescript": "6.0.3",
     "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   }
 }

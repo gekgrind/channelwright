@@ -69,6 +69,16 @@ Starting a workflow takes an owner-scoped idempotency key and input fingerprint 
 
 Every transition appends a structured event identifying workflow, run, optional step/attempt, actor type, actor identifier, timestamp, and bounded non-secret detail. Durable context is a map of validated step outputs, not an unbounded prompt store. AI/provider execution sits behind capability-specific executors so the workflow engine does not know which future model implements `strategist`, `researcher`, or `monetization-strategist`.
 
+Each workflow type declares one canonical finalizer whose output becomes the run's durable `output_payload`: `synthesize-validation` for `CHANNEL_CONCEPT_VALIDATION` and `CHANNEL_RESEARCH`, `finalize-strategy` for `CHANNEL_STRATEGY`, `finalize-content-intelligence` for `CHANNEL_CONTENT_INTELLIGENCE`. Promotion is keyed on the run's type, so intermediate steps never become the final artifact. Paid workflows are additionally rate-bounded in the database: one active research run per owner, one active strategy run per owner and approved research run, and one active content-intelligence run per owner and approved strategy run.
+
+## Evidence chain and the Viewer Value invariant
+
+The three provider-backed workflows form one provenance chain. `CHANNEL_RESEARCH` establishes whether a channel opportunity is real; `CHANNEL_STRATEGY` consumes one exact approved research artifact and decides how the channel competes; `CHANNEL_CONTENT_INTELLIGENCE` consumes one exact approved strategy artifact and decides what to make next. Each downstream workflow resolves its upstream artifact through a database-authoritative RPC, persists an immutable reference, and re-verifies that reference before any model use. The content-intelligence reference transitively carries the research reference, so both chains remain queryable from the final artifact.
+
+AI execution sits behind a provider-neutral boundary (`src/server/ai`). Workflow code asks for a capability and a role; a server-controlled role router resolves the vendor. CONTENT_INTELLIGENCE generates on one provider and is critiqued and QA'd by another, with Channelwright arbitrating deterministically. See [the multi-model architecture](multi-model-architecture.md).
+
+`src/domain/viewer-value.ts` defines a stage-agnostic Viewer Value contract, assessment, and gate that every recommendation must satisfy, plus a `viewerValueProvenance` record carrying a canonical contract hash so later stages can detect value drift rather than assume it away. See [the Viewer Value doctrine](viewer-value-doctrine.md).
+
 ## Media consistency model
 
 - Upload bytes enter a fixed private bucket through trusted server code. Temporary objects are verified and cleaned; immutable content-addressed objects are never overwritten.
