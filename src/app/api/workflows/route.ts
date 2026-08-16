@@ -49,7 +49,7 @@ export async function POST(request: Request) {
   const workflowStart = workflowStartRequestSchema.safeParse(body);
   if (workflowStart.success) {
     if (isMockMode()) return NextResponse.json({ error: { code: "PRODUCTION_REQUIRED", message: "Durable production workflows require Supabase mode." } }, { status: 501 });
-    if (["CHANNEL_RESEARCH", "CHANNEL_STRATEGY"].includes(workflowStart.data.workflowType) && !requestedKey) {
+    if (["CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE"].includes(workflowStart.data.workflowType) && !requestedKey) {
       return NextResponse.json({ error: { code: "IDEMPOTENCY_KEY_REQUIRED", message: "Paid workflow starts require an Idempotency-Key header." } }, { status: 400 });
     }
     try {

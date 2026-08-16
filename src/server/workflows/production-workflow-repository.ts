@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { getWorkflowDefinition, serializeWorkflowSteps, type WorkflowApprovalDecision, type WorkflowStartRequest } from "@/domain/production-workflows";
 import { createSupabaseServerClient } from "@/server/supabase";
 
-export type ProductionWorkflowErrorCode = "UNAUTHORIZED" | "VALIDATION_ERROR" | "PAYLOAD_TOO_LARGE" | "WORKFLOW_TYPE_INVALID" | "IDEMPOTENCY_CONFLICT" | "RESEARCH_LIMIT_REACHED" | "UPSTREAM_RESEARCH_INVALID" | "NOT_FOUND" | "INVALID_TRANSITION" | "LEASE_NOT_ACTIVE" | "DATABASE_ERROR";
+export type ProductionWorkflowErrorCode = "UNAUTHORIZED" | "VALIDATION_ERROR" | "PAYLOAD_TOO_LARGE" | "WORKFLOW_TYPE_INVALID" | "IDEMPOTENCY_CONFLICT" | "RESEARCH_LIMIT_REACHED" | "STRATEGY_LIMIT_REACHED" | "CONTENT_LIMIT_REACHED" | "UPSTREAM_RESEARCH_INVALID" | "UPSTREAM_STRATEGY_INVALID" | "NOT_FOUND" | "INVALID_TRANSITION" | "LEASE_NOT_ACTIVE" | "DATABASE_ERROR";
 
 export class ProductionWorkflowError extends Error {
   constructor(public readonly code: ProductionWorkflowErrorCode, public readonly status: number, message: string) { super(message); }
@@ -12,11 +12,15 @@ export class ProductionWorkflowError extends Error {
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
-function databaseError(error: { message: string }) {
+/** Maps a raised PostgreSQL error onto a stable typed code and HTTP status. Exported for regression tests. */
+export function databaseError(error: { message: string }) {
   const entries: Array<[string, ProductionWorkflowErrorCode, number, string]> = [
     ["IDEMPOTENCY_CONFLICT", "IDEMPOTENCY_CONFLICT", 409, "The idempotency key was already used for different workflow input."],
     ["RESEARCH_LIMIT_REACHED", "RESEARCH_LIMIT_REACHED", 429, "Finish or cancel the active research run before starting another paid run."],
+    ["STRATEGY_LIMIT_REACHED", "STRATEGY_LIMIT_REACHED", 429, "Finish, cancel, or decide the active strategy run for this approved research before starting another paid run."],
+    ["CONTENT_LIMIT_REACHED", "CONTENT_LIMIT_REACHED", 429, "Finish, cancel, or decide the active content-intelligence run for this approved strategy before starting another paid run."],
     ["UPSTREAM_RESEARCH_", "UPSTREAM_RESEARCH_INVALID", 409, "The exact research run is not completed, approved, immutable, and integrity-valid for strategy."],
+    ["UPSTREAM_STRATEGY_", "UPSTREAM_STRATEGY_INVALID", 409, "The exact strategy run is not completed, approved, immutable, and integrity-valid for content intelligence."],
     ["WORKFLOW_TYPE_INVALID", "WORKFLOW_TYPE_INVALID", 422, "The workflow type or version is not supported."],
     ["PAYLOAD_TOO_LARGE", "PAYLOAD_TOO_LARGE", 413, "The workflow payload exceeds the allowed size."],
     ["NOT_FOUND", "NOT_FOUND", 404, "The requested workflow resource was not found."],

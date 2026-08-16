@@ -12,6 +12,7 @@ import type { ReferenceReportSection } from "@/domain/studio-contracts";
 import type { MediaProductionSnapshot } from "@/domain/media-production";
 import { ChannelResearchWorkspace, type WorkflowList } from "./channel-research-workspace";
 import { ChannelStrategyWorkspace } from "./channel-strategy-workspace";
+import { ContentIntelligenceWorkspace } from "./content-intelligence-workspace";
 
 type ApiSnapshot = { channels: Channel[]; videos: VideoProject[]; buildProjects: BuildProject[]; products: Array<{ id: string }>; agentRuns: Array<{ id: string; agent: string; status: string; costUsd: number; fixture?: boolean; provider?: string; startedAt: string }>; auditEvents: Array<{ id: string; type: string; entityId?: string; at: string }>; conversationMessages: Array<{ id: string; channelId: string; role: "USER" | "SYSTEM"; content: string; targetType: string; createdAt: string }>; mediaProduction: MediaProductionSnapshot; workflowEngine?: WorkflowList };
 
@@ -72,7 +73,7 @@ export default function StudioApp({ user }: { user: { email: string; mode: "mock
         {notice && <div className="success-banner" role="status"><Check size={17} /> {notice}<button onClick={() => setNotice(null)}>×</button></div>}
         {busy && <div className="working-bar" role="status"><LoaderCircle className="spin" size={15} /> Validating output and advancing workflow…</div>}
 
-        {!snapshot ? <LoadingState /> : user.mode === "supabase" && !activeChannel ? <><ChannelResearchWorkspace initial={snapshot.workflowEngine} media={snapshot.mediaProduction} /><ChannelStrategyWorkspace initial={snapshot.workflowEngine} /></> : showNew || !activeChannel ? <NewChannelForm busy={busy} onSubmit={act} /> : (
+        {!snapshot ? <LoadingState /> : user.mode === "supabase" && !activeChannel ? <><ChannelResearchWorkspace initial={snapshot.workflowEngine} media={snapshot.mediaProduction} /><ChannelStrategyWorkspace initial={snapshot.workflowEngine} /><ContentIntelligenceWorkspace initial={snapshot.workflowEngine} /></> : showNew || !activeChannel ? <NewChannelForm busy={busy} onSubmit={act} /> : (
           <div id="workspace" className="workspace-grid">
             <section className="conversation-pane"><ConversationWorkspace snapshot={snapshot} channel={activeChannel} video={activeVideo} build={activeBuild} busy={busy} act={act} /><ActivityRail snapshot={snapshot} channel={activeChannel} /></section>
             <section className="workspace-primary artifact-workspace" aria-label="Artifact workspace">

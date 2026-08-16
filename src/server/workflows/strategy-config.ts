@@ -25,13 +25,19 @@ export function channelStrategyConfig() {
 
 export type ChannelStrategyBudget = ReturnType<typeof channelStrategyConfig>;
 
+/**
+ * Resolves the strategy synthesis and QA models from explicit operator
+ * configuration, narrowing from strategy-specific to shared settings. There is
+ * deliberately no built-in default model identifier: production must never
+ * attempt a call against a placeholder model after reserving paid budget.
+ */
 export function assertChannelStrategyModelConfig() {
   const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
   if (!openAiApiKey) throw new StrategyConfigurationError("AI_CREDENTIALS_MISSING", "OPENAI_API_KEY is required by the strategy worker.");
   const synthesisModel = process.env.OPENAI_STRATEGY_SYNTHESIS_MODEL?.trim()
     || process.env.OPENAI_SYNTHESIS_MODEL?.trim()
-    || process.env.OPENAI_MODEL?.trim()
-    || "gpt-5.6-luna";
+    || process.env.OPENAI_MODEL?.trim();
+  if (!synthesisModel) throw new StrategyConfigurationError("AI_MODEL_NOT_CONFIGURED", "Set OPENAI_STRATEGY_SYNTHESIS_MODEL, OPENAI_SYNTHESIS_MODEL, or OPENAI_MODEL; the strategy worker does not assume a default model.");
   const qaModel = process.env.OPENAI_STRATEGY_QA_MODEL?.trim()
     || process.env.OPENAI_QA_MODEL?.trim()
     || synthesisModel;

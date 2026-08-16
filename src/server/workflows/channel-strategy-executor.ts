@@ -5,7 +5,6 @@ import {
   strategyDraftSchema,
   strategyQAResultSchema,
   strategyRevisionSchema,
-  type ApprovedResearchArtifact,
   type ChannelStrategyResult,
   type ClaimedWorkflowStep,
 } from "@/domain/production-workflows";

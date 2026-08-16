@@ -1,18 +1,21 @@
 import { ZodError } from "zod";
-import { claimedWorkflowStepSchema, getWorkflowDefinition, type ClaimedWorkflowStep } from "@/domain/production-workflows";
+import { claimedWorkflowStepSchema, getWorkflowDefinition, WORKFLOW_FINALIZER_STEP, type ClaimedWorkflowStep } from "@/domain/production-workflows";
 import { createSupabaseAdminClient } from "@/server/supabase-admin";
 import { ChannelConceptValidationExecutor, type WorkflowStepExecutor } from "./concept-validation-executor";
 import { ChannelResearchExecutor } from "./channel-research-executor";
 import { ChannelStrategyExecutor } from "./channel-strategy-executor";
+import { ChannelContentIntelligenceExecutor } from "./content-intelligence-executor";
 
 class RoutingWorkflowStepExecutor implements WorkflowStepExecutor {
   private readonly concept = new ChannelConceptValidationExecutor();
   private readonly research = new ChannelResearchExecutor();
   private readonly strategy = new ChannelStrategyExecutor();
+  private readonly content = new ChannelContentIntelligenceExecutor();
   execute(step: ClaimedWorkflowStep) {
     return step.workflowType === "CHANNEL_RESEARCH" ? this.research.execute(step)
       : step.workflowType === "CHANNEL_STRATEGY" ? this.strategy.execute(step)
-        : this.concept.execute(step);
+        : step.workflowType === "CHANNEL_CONTENT_INTELLIGENCE" ? this.content.execute(step)
+          : this.concept.execute(step);
   }
 }
 
@@ -70,7 +73,7 @@ export class ProductionWorkflowWorker {
     try {
       const output = await this.executor.execute(step);
       if (!leaseActive) return { status: "LEASE_LOST" as const, stepId: step.id };
-      if (step.stepKey === "synthesize-validation" || step.stepKey === "finalize-strategy") getWorkflowDefinition(step.workflowType, step.definitionVersion).outputSchema.parse(output);
+      if (step.stepKey === WORKFLOW_FINALIZER_STEP[step.workflowType]) getWorkflowDefinition(step.workflowType, step.definitionVersion).outputSchema.parse(output);
       const result = await this.repository.complete(step.id, step.leaseToken, output);
       return { status: "COMPLETED" as const, stepId: step.id, result };
     } catch (error) {
@@ -82,9 +85,11 @@ export class ProductionWorkflowWorker {
       const code = typeof classified.code === "string" ? classified.code : terminal ? "WORKFLOW_OUTPUT_INVALID" : "WORKFLOW_STEP_FAILED";
       const message = error instanceof ZodError
         ? "The workflow step produced invalid structured output."
-        : code === "RESEARCH_QA_REJECTED"
+        : code === "RESEARCH_QA_REJECTED" || code === "STRATEGY_QA_REJECTED" || code === "CONTENT_QA_REJECTED"
           ? "Final QA found material errors; no recommendation was advanced to human review."
-          : code === "RESEARCH_RESOURCE_BUDGET_EXHAUSTED" || code === "STRATEGY_RESOURCE_BUDGET_EXHAUSTED"
+          : code === "CONTENT_INTEGRITY_UNREVISABLE"
+            ? "A blocking viewer-value or content-integrity failure cannot be resolved by automated revision."
+          : code === "RESEARCH_RESOURCE_BUDGET_EXHAUSTED" || code === "STRATEGY_RESOURCE_BUDGET_EXHAUSTED" || code === "CONTENT_RESOURCE_BUDGET_EXHAUSTED"
             ? "The durable workflow-run resource budget was exhausted; no further external calls were made."
           : terminal
             ? "The workflow step failed a terminal validation gate."

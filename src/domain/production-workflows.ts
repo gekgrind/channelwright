@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { viewerValueAssessmentSchema } from "./viewer-value";
 
-export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY"]);
+export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE"]);
 export type ProductionWorkflowType = z.infer<typeof workflowTypeSchema>;
 
 export const workflowStatusSchema = z.enum(["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL", "BLOCKED", "COMPLETED", "FAILED", "CANCELED"]);
@@ -332,6 +333,276 @@ export const strategyRevisionSchema = z.object({
   modelUsage: researchDraftSchema.shape.modelUsage,
 }).strict();
 
+// ---------------------------------------------------------------------------
+// CHANNEL_CONTENT_INTELLIGENCE
+//
+// Size discipline: this result becomes a durable step output and the run's
+// `output_payload`, both bounded at 64 KiB by the workflow engine. Every
+// collection below is capped so a realistic artifact fits with margin, and
+// deterministic QA additionally rejects an oversized payload before persistence
+// so the failure is a typed QA error rather than PAYLOAD_TOO_LARGE.
+// ---------------------------------------------------------------------------
+
+export const approvedStrategyReferenceSchema = z.object({
+  strategyWorkflowId: z.string().uuid(),
+  strategyRunId: z.string().uuid(),
+  workflowDefinitionVersion: z.number().int().positive(),
+  outputSchemaVersion: z.literal(1),
+  approvalId: z.string().uuid(),
+  approvedBy: z.string().uuid(),
+  approvedAt: z.string().datetime(),
+  finalQaState: z.enum(["accept", "human_review_required"]),
+  finalQaScore: z.number().int().min(0).max(100),
+  strategyArtifactHash: sha256Schema,
+  strategyProvenanceHash: sha256Schema,
+  parentRunId: z.string().uuid().nullable(),
+  rootRunId: z.string().uuid(),
+  // Transitive provenance: strategy already proved its own upstream research.
+  upstreamResearch: approvedResearchReferenceSchema,
+}).strict();
+
+export const CONTENT_BACKLOG_MIN = 5;
+export const CONTENT_BACKLOG_MAX = 8;
+
+export const contentIntelligenceRequestInputSchema = z.object({
+  strategyWorkflowId: z.string().uuid(),
+  strategyRunId: z.string().uuid(),
+  targetBacklogSize: z.number().int().min(CONTENT_BACKLOG_MIN).max(CONTENT_BACKLOG_MAX).optional(),
+  pillarFilter: z.array(z.string().trim().min(1).max(300)).min(1).max(8).optional(),
+}).strict();
+
+export const contentIntelligenceInputSchema = contentIntelligenceRequestInputSchema.extend({
+  approvedStrategyReference: approvedStrategyReferenceSchema,
+  humanRevisionNote: z.string().trim().min(1).max(2_000).optional(),
+}).strict();
+
+const contentEvidenceIdSchema = z.string().regex(/^yt:(?:video|channel|search):[A-Za-z0-9_-]{1,64}$/);
+const contentEvidenceIdsSchema = z.array(contentEvidenceIdSchema).max(40);
+const citedEvidenceIdsSchema = z.array(contentEvidenceIdSchema).min(1).max(20);
+const topicIdSchema = z.string().regex(/^topic:[a-z0-9][a-z0-9-]{0,58}$/);
+const pillarIdSchema = z.string().regex(/^pillar:[a-z0-9][a-z0-9-]{0,58}$/);
+
+export const topicDiscoveryEvidenceSchema = z.object({
+  id: contentEvidenceIdSchema,
+  provider: z.literal("YOUTUBE_DATA_API_V3"),
+  sourceType: z.enum(["video", "channel", "search"]),
+  sourceId: z.string().min(1).max(200),
+  // Search observations describe a query, not a canonical resource, so they carry no URL.
+  url: z.string().url().max(500).nullable(),
+  title: nullableText(300),
+  channelTitle: nullableText(300),
+  publishedAt: z.string().datetime().nullable(),
+  retrievedAt: z.string().datetime(),
+  metrics: z.record(z.string(), z.union([z.number(), z.string().max(200), z.null()])),
+  query: z.string().min(1).max(300),
+  pillarId: pillarIdSchema,
+  rawReference: z.string().min(1).max(300),
+  origin: z.enum(["LIVE", "CACHE"]),
+}).strict();
+
+export const contentDiscoveryUsageSchema = z.object({
+  provider: z.literal("YOUTUBE_DATA_API_V3"),
+  cacheHits: z.number().int().min(0).max(40),
+  cacheMisses: z.number().int().min(0).max(40),
+  searchQueries: z.number().int().min(0).max(24),
+  providerRequests: z.number().int().min(0).max(60),
+  quotaUnits: z.number().int().min(0).max(3_000),
+  videosExamined: z.number().int().min(0).max(200),
+  channelsExamined: z.number().int().min(0).max(200),
+  retrievedAt: z.string().datetime(),
+  budgetExhausted: z.boolean(),
+}).strict();
+
+export const topicDiscoveryBundleSchema = z.object({
+  normalizedQueries: z.array(z.string().min(1).max(300)).min(1).max(24),
+  evidence: z.array(topicDiscoveryEvidenceSchema).min(1).max(90),
+  completionStatus: z.enum(["complete", "partial"]),
+  limitations: z.array(z.string().min(1).max(300)).max(24),
+  usage: contentDiscoveryUsageSchema,
+}).strict();
+
+export const approvedStrategyArtifactSchema = z.object({
+  reference: approvedStrategyReferenceSchema,
+  strategyResult: channelStrategyResultSchema,
+  researchEvidenceBundle: researchEvidenceBundleSchema,
+}).strict();
+
+export const pillarExpansionSchema = z.object({
+  pillarId: pillarIdSchema,
+  pillarName: z.string().min(1).max(300),
+  audienceProblem: z.string().min(1).max(600),
+  rationale: z.string().min(1).max(600),
+  subtopicClusters: z.array(z.object({
+    name: z.string().min(1).max(200),
+    viewerIntent: z.string().min(1).max(400),
+    exampleQuestions: z.array(z.string().min(1).max(300)).min(1).max(6),
+  }).strict()).min(1).max(6),
+  discoveryQueries: z.array(z.string().min(1).max(200)).min(1).max(6),
+  assumptions: z.array(z.string().min(1).max(400)).max(6),
+}).strict();
+
+export const contentScoreDimensionSchema = z.enum([
+  "STRATEGY_ALIGNMENT", "AUDIENCE_NEED", "VIEWER_VALUE", "EVIDENCE_STRENGTH", "DIFFERENTIATION",
+  "OPPORTUNITY", "COMPETITION", "SHELF_LIFE", "MONETIZATION_FIT", "PRODUCTION_FEASIBILITY", "CHANNEL_SUSTAINABILITY",
+]);
+
+/** No aggregate score exists without its decomposition; every component states its own basis. */
+export const contentScoreComponentSchema = z.object({
+  dimension: contentScoreDimensionSchema,
+  score: z.number().int().min(0).max(10),
+  weight: z.number().min(0).max(1),
+  rationale: z.string().min(1).max(600),
+  basis: z.enum(["EVIDENCE", "STRATEGY", "ASSUMPTION", "HEURISTIC"]),
+  evidenceIds: contentEvidenceIdsSchema,
+}).strict();
+
+export const contentTopicScoreSchema = z.object({
+  topicId: topicIdSchema,
+  components: z.array(contentScoreComponentSchema).min(5).max(11),
+  weightedTotal: z.number().min(0).max(10),
+  tier: z.enum(["PRIORITY", "STRONG", "VIABLE", "HOLD"]),
+}).strict();
+
+export const contentTopicOpportunitySchema = z.object({
+  topicId: topicIdSchema,
+  pillarId: pillarIdSchema,
+  workingConcept: z.string().min(1).max(400),
+  workingAngle: z.string().min(1).max(400),
+  viewerQuestion: z.string().min(1).max(400),
+  viewerIntent: z.enum(["LEARN", "SOLVE", "DECIDE", "COMPARE", "EXPLORE", "STAY_INFORMED", "BE_ENTERTAINED", "OTHER"]),
+  proposedViewerValue: z.string().min(1).max(600),
+  differentiatedContribution: z.string().min(1).max(600),
+  // A topic must cite its own discovery evidence; inherited research evidence alone is not validation.
+  evidenceIds: citedEvidenceIdsSchema,
+  competitionSignal: z.object({
+    level: z.enum(["high", "medium", "low", "unknown"]),
+    rationale: z.string().min(1).max(600),
+    evidenceIds: contentEvidenceIdsSchema,
+  }).strict(),
+  saturationAssessment: z.string().min(1).max(600),
+  differentiationOpportunity: z.string().min(1).max(600),
+  shelfLife: z.object({
+    classification: z.enum(["EVERGREEN", "SEMI_EVERGREEN", "TIMELY", "EVENT_DRIVEN"]),
+    rationale: z.string().min(1).max(600),
+    decayNote: z.string().min(1).max(600).nullable(),
+  }).strict(),
+  productionComplexity: z.enum(["high", "medium", "low"]),
+  strategicFit: z.string().min(1).max(600),
+  monetizationRelevance: z.string().min(1).max(600).nullable(),
+  assumptions: z.array(z.string().min(1).max(400)).min(1).max(8),
+  uncertainties: z.array(z.string().min(1).max(400)).min(1).max(8),
+  viewerValue: viewerValueAssessmentSchema,
+}).strict();
+
+export const nextVideoRecommendationSchema = z.object({
+  topicId: topicIdSchema,
+  reasons: z.array(z.string().min(1).max(500)).min(3).max(8),
+  viewerValueRationale: z.string().min(1).max(600),
+  strategyAlignment: z.string().min(1).max(600),
+  competitiveRationale: z.string().min(1).max(600),
+  differentiationRationale: z.string().min(1).max(600),
+  feasibilityRationale: z.string().min(1).max(600),
+  evidenceIds: citedEvidenceIdsSchema,
+  confidence: z.enum(["high", "medium", "low"]),
+  conditions: z.array(z.string().min(1).max(500)).max(8),
+}).strict();
+
+export const channelContentIntelligenceContentSchema = z.object({
+  schemaVersion: z.literal(1),
+  workflowType: z.literal("CHANNEL_CONTENT_INTELLIGENCE"),
+  pillarExpansions: z.array(pillarExpansionSchema).min(1).max(8),
+  topics: z.array(contentTopicOpportunitySchema).min(1).max(CONTENT_BACKLOG_MAX),
+  scores: z.array(contentTopicScoreSchema).min(1).max(CONTENT_BACKLOG_MAX),
+  backlog: z.array(z.object({
+    topicId: topicIdSchema,
+    rank: z.number().int().min(1).max(CONTENT_BACKLOG_MAX),
+    tier: z.enum(["PRIORITY", "STRONG", "VIABLE", "HOLD"]),
+    inclusionRationale: z.string().min(1).max(600),
+  }).strict()).min(1).max(CONTENT_BACKLOG_MAX),
+  nextVideoRecommendation: nextVideoRecommendationSchema,
+  risks: z.array(z.object({
+    risk: z.string().min(1).max(600),
+    severity: z.enum(["high", "medium", "low"]),
+    mitigation: z.string().min(1).max(600).nullable(),
+  }).strict()).min(1).max(12),
+  assumptions: z.array(z.string().min(1).max(500)).min(1).max(16),
+  openQuestions: z.array(z.string().min(1).max(500)).min(1).max(16),
+  recommendedNextAction: z.string().min(1).max(600),
+}).strict();
+
+/**
+ * Compact model provenance. Enough to audit which specialist produced or
+ * reviewed an artifact, without turning the durable payload into a log.
+ */
+export const modelAttributionSchema = z.object({
+  provider: z.enum(["openai", "anthropic"]),
+  model: z.string().min(1).max(200),
+  role: z.enum(["GENERATOR", "STRATEGIST", "CRITIC", "VIEWER_VALUE_REVIEWER", "QA", "REVISION"]),
+  operation: z.string().min(1).max(80),
+  invokedAt: z.string().datetime(),
+}).strict();
+
+export const crossModelDispositionSchema = z.enum([
+  "AGREED",
+  "CRITIC_RAISED_ISSUE",
+  "REVISED",
+  "OVERRIDDEN_BY_DETERMINISTIC_RULE",
+  "HUMAN_REVIEW_REQUIRED",
+]);
+
+/**
+ * A single critic observation. `rationale` is a concise, user-safe summary; no
+ * hidden chain-of-thought is requested from the provider or persisted here.
+ */
+export const crossModelFindingSchema = z.object({
+  code: z.string().regex(/^[A-Z][A-Z0-9_]{2,79}$/),
+  severity: z.enum(["error", "warning", "info"]),
+  affectedField: z.string().min(1).max(200),
+  // Bounded at 900 because live critics legitimately need to name the field, the
+  // claim, and why the evidence does not support it. Still a concise summary,
+  // never unrestricted chain-of-thought.
+  rationale: z.string().min(1).max(900),
+  evidenceIds: contentEvidenceIdsSchema,
+  disposition: crossModelDispositionSchema,
+}).strict();
+
+export const crossModelReviewSchema = z.object({
+  generator: modelAttributionSchema,
+  critic: modelAttributionSchema,
+  outcome: crossModelDispositionSchema,
+  findings: z.array(crossModelFindingSchema).max(12),
+  // Live critics produce a thorough single-paragraph assessment; 2500 keeps it a
+  // bounded summary while accommodating real output.
+  summary: z.string().min(1).max(2_500),
+}).strict();
+
+export const channelContentIntelligenceResultSchema = channelContentIntelligenceContentSchema.extend({
+  upstreamStrategy: approvedStrategyReferenceSchema,
+  crossModelReview: crossModelReviewSchema.nullable(),
+  modelProvenance: z.array(modelAttributionSchema).max(8),
+}).strict();
+
+export const contentQAFindingSchema = researchQAFindingSchema;
+export const contentQAResultSchema = researchQAResultSchema;
+
+export const contentDraftSchema = z.object({
+  result: channelContentIntelligenceResultSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+}).strict();
+
+/** Initial QA persists both the merged verdict and the independent critic's record. */
+export const contentQAStepSchema = z.object({
+  qa: contentQAResultSchema,
+  crossModelReview: crossModelReviewSchema,
+}).strict();
+
+export const contentRevisionSchema = z.object({
+  attempted: z.boolean(),
+  reason: z.string().min(1).max(1_000),
+  result: channelContentIntelligenceResultSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+}).strict();
+
 export const channelConceptValidationInputSchema = z.object({
   proposedConcept: z.string().trim().min(20).max(2_000),
   audienceContext: z.string().trim().min(3).max(2_000).optional(),
@@ -347,13 +618,15 @@ export const workflowStartRequestSchema = z.object({
 }).strict().superRefine((request, context) => {
   const schema = request.workflowType === "CHANNEL_RESEARCH" ? channelResearchInputSchema
     : request.workflowType === "CHANNEL_STRATEGY" ? channelStrategyRequestInputSchema
-      : channelConceptValidationInputSchema;
+      : request.workflowType === "CHANNEL_CONTENT_INTELLIGENCE" ? contentIntelligenceRequestInputSchema
+        : channelConceptValidationInputSchema;
   const parsed = schema.safeParse(request.input);
   if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue, path: ["input", ...issue.path] });
 }).transform((request) => request as
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_CONCEPT_VALIDATION"; definitionVersion: 1; input: ChannelConceptValidationInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_RESEARCH"; definitionVersion: 1; input: ChannelResearchInput }
-  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_STRATEGY"; definitionVersion: 1; input: ChannelStrategyRequestInput });
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_STRATEGY"; definitionVersion: 1; input: ChannelStrategyRequestInput }
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_CONTENT_INTELLIGENCE"; definitionVersion: 1; input: ContentIntelligenceRequestInput });
 
 export const workflowApprovalDecisionSchema = z.object({
   decision: z.enum(["APPROVE", "REJECT", "REQUEST_REVISION"]),
@@ -395,6 +668,21 @@ export type ChannelStrategyInput = z.infer<typeof channelStrategyInputSchema>;
 export type ChannelStrategyContent = z.infer<typeof channelStrategyContentSchema>;
 export type ChannelStrategyResult = z.infer<typeof channelStrategyResultSchema>;
 export type StrategyQAResult = z.infer<typeof strategyQAResultSchema>;
+export type ApprovedStrategyReference = z.infer<typeof approvedStrategyReferenceSchema>;
+export type ApprovedStrategyArtifact = z.infer<typeof approvedStrategyArtifactSchema>;
+export type ContentIntelligenceRequestInput = z.infer<typeof contentIntelligenceRequestInputSchema>;
+export type ContentIntelligenceInput = z.infer<typeof contentIntelligenceInputSchema>;
+export type TopicDiscoveryEvidence = z.infer<typeof topicDiscoveryEvidenceSchema>;
+export type TopicDiscoveryBundle = z.infer<typeof topicDiscoveryBundleSchema>;
+export type ContentTopicOpportunity = z.infer<typeof contentTopicOpportunitySchema>;
+export type ContentTopicScore = z.infer<typeof contentTopicScoreSchema>;
+export type ChannelContentIntelligenceContent = z.infer<typeof channelContentIntelligenceContentSchema>;
+export type ChannelContentIntelligenceResult = z.infer<typeof channelContentIntelligenceResultSchema>;
+export type ContentQAResult = z.infer<typeof contentQAResultSchema>;
+export type ModelAttribution = z.infer<typeof modelAttributionSchema>;
+export type CrossModelFinding = z.infer<typeof crossModelFindingSchema>;
+export type CrossModelReview = z.infer<typeof crossModelReviewSchema>;
+export type CrossModelDisposition = z.infer<typeof crossModelDispositionSchema>;
 export type WorkflowStartRequest = z.infer<typeof workflowStartRequestSchema>;
 export type WorkflowApprovalDecision = z.infer<typeof workflowApprovalDecisionSchema>;
 
@@ -465,11 +753,48 @@ const channelStrategyDefinition: WorkflowDefinition<ChannelStrategyRequestInput,
   ],
 };
 
+const channelContentIntelligenceDefinition: WorkflowDefinition<ContentIntelligenceRequestInput, ChannelContentIntelligenceResult> = {
+  type: "CHANNEL_CONTENT_INTELLIGENCE",
+  version: 1,
+  objective: "Turn one exact approved CHANNEL_STRATEGY artifact into an evidence-backed, viewer-value-gated, independently QA'd content backlog and next-video recommendation",
+  inputSchema: contentIntelligenceRequestInputSchema,
+  outputSchema: channelContentIntelligenceResultSchema,
+  steps: [
+    { key: "validate-approved-strategy", kind: "WORKER", capability: "approved-strategy-validation", dependsOn: [], maxAttempts: 2, retryBaseSeconds: 5 },
+    { key: "expand-content-pillars", kind: "WORKER", capability: "content-pillar-expansion", dependsOn: ["validate-approved-strategy"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "discover-youtube-topics", kind: "WORKER", capability: "youtube-topic-discovery", dependsOn: ["expand-content-pillars"], maxAttempts: 3, retryBaseSeconds: 10 },
+    { key: "assess-topic-opportunities", kind: "WORKER", capability: "topic-opportunity-assessment", dependsOn: ["discover-youtube-topics"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "synthesize-backlog", kind: "WORKER", capability: "content-backlog-synthesis", dependsOn: ["assess-topic-opportunities"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "initial-content-qa", kind: "WORKER", capability: "independent-content-qa", dependsOn: ["synthesize-backlog"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "bounded-content-revision", kind: "WORKER", capability: "content-revision", dependsOn: ["initial-content-qa"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "final-content-qa", kind: "WORKER", capability: "independent-content-qa", dependsOn: ["bounded-content-revision"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "finalize-content-intelligence", kind: "WORKER", capability: "content-finalizer", dependsOn: ["final-content-qa"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "review-content-intelligence", kind: "APPROVAL", capability: "human", dependsOn: ["finalize-content-intelligence"], maxAttempts: 1, retryBaseSeconds: 0 },
+  ],
+};
+
 const registry = new Map<string, WorkflowDefinition>([
   [`${channelConceptValidationDefinition.type}:${channelConceptValidationDefinition.version}`, channelConceptValidationDefinition],
   [`${channelResearchDefinition.type}:${channelResearchDefinition.version}`, channelResearchDefinition],
   [`${channelStrategyDefinition.type}:${channelStrategyDefinition.version}`, channelStrategyDefinition],
+  [`${channelContentIntelligenceDefinition.type}:${channelContentIntelligenceDefinition.version}`, channelContentIntelligenceDefinition],
 ]);
+
+/** Canonical finalizer per workflow type; its output becomes the run's durable `output_payload`. */
+export const WORKFLOW_FINALIZER_STEP: Record<ProductionWorkflowType, string> = {
+  CHANNEL_CONCEPT_VALIDATION: "synthesize-validation",
+  CHANNEL_RESEARCH: "synthesize-validation",
+  CHANNEL_STRATEGY: "finalize-strategy",
+  CHANNEL_CONTENT_INTELLIGENCE: "finalize-content-intelligence",
+};
+
+/** Step whose output is hashed as the run's provenance record at final human decision. */
+export const WORKFLOW_PROVENANCE_STEP: Record<ProductionWorkflowType, string | null> = {
+  CHANNEL_CONCEPT_VALIDATION: null,
+  CHANNEL_RESEARCH: "retrieve-youtube-evidence",
+  CHANNEL_STRATEGY: "validate-approved-research",
+  CHANNEL_CONTENT_INTELLIGENCE: "discover-youtube-topics",
+};
 
 export function getWorkflowDefinition(type: ProductionWorkflowType, version: number) {
   const definition = registry.get(`${type}:${version}`);

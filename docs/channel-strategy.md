@@ -41,12 +41,30 @@ At most one automated revision receives the exact findings. It cannot replace th
 
 Human approval binds to one exact run. A revision request creates a new separately budgeted run with the same immutable upstream reference and preserved parent/root lineage. The original output, step outputs, approval, hashes, and lineage-bearing input/context cannot change after a final human decision.
 
+## Final artifact persistence
+
+`finalize-strategy` is the canonical finalizer for `CHANNEL_STRATEGY`. `complete_workflow_step` promotes that step's output to `workflow_runs.output_payload`, which is what the studio and the `/api/workflows/{id}` contract read.
+
+This required the forward migration `202608140002_finalize_strategy_output.sql`. The original engine promoted only the CHANNEL_RESEARCH finalizer (`synthesize-validation`), so finalized strategies were persisted as step output but never as run output. Promotion is now keyed on the run's `workflow_type`, so `validate-approved-research`, `draft-strategy`, `initial-strategy-qa`, `bounded-strategy-revision`, and `final-strategy-qa` can never become the run's final artifact.
+
+## One active strategy run per approved research artifact
+
+Starting a strategy run is a paid operation, so `start_workflow` refuses a second active run for the same owner and the same approved upstream research run and returns `STRATEGY_LIMIT_REACHED` (HTTP 429). The partial unique index `workflow_runs_active_strategy_uniq` enforces the same rule transactionally, so two simultaneous requests cannot both create independently budgeted runs; the index violation is translated to the same typed error.
+
+The guard is scoped to the server-resolved `approvedResearchReference`, never to raw client input. It does not restrict:
+
+- completed, canceled, or failed historical strategy runs;
+- human-revision successors, because the predecessor is moved to `BLOCKED` before the successor is inserted and `BLOCKED` is outside the guarded status set;
+- a fresh strategy run once the previous chain is terminal.
+
 ## Durable accounting and configuration
 
 Strategy reuses the Step 9B accounting tables/RPCs. The legacy `research_*` names remain compatibility names; there is no parallel accounting system. Strategy has zero provider/search allowance and default ceilings of one synthesis call, two QA calls, one revision call, one automated revision, 320,000 aggregate input units, 36,000 output tokens, and 356,000 total tokens. Serialized UTF-8 bytes are used as a conservative pre-call input reservation.
 
-- `OPENAI_STRATEGY_SYNTHESIS_MODEL` falls back to `OPENAI_SYNTHESIS_MODEL`, then `OPENAI_MODEL`.
-- `OPENAI_STRATEGY_QA_MODEL` falls back to `OPENAI_QA_MODEL`, then the strategy synthesis model.
+Model selection is required; there is no built-in default identifier. An unset model raises `AI_MODEL_NOT_CONFIGURED` before any budget is reserved, so production can never spend a reservation calling a placeholder model.
+
+- `OPENAI_STRATEGY_SYNTHESIS_MODEL` falls back to `OPENAI_SYNTHESIS_MODEL`, then `OPENAI_MODEL`, then fails closed.
+- `OPENAI_STRATEGY_QA_MODEL` falls back to `OPENAI_QA_MODEL`, then the resolved strategy synthesis model.
 - `CHANNEL_STRATEGY_MODEL_TIMEOUT_MS=60000`
 - `CHANNEL_STRATEGY_MODEL_MAX_OUTPUT_TOKENS=9000`
 - `CHANNEL_STRATEGY_MAX_AGGREGATE_SYNTHESIS_CALLS=1`
@@ -63,3 +81,33 @@ Strategy reuses the Step 9B accounting tables/RPCs. The legacy `research_*` name
 RLS scopes workflow reads by `auth.uid()`. Authenticated clients cannot invoke worker/accounting RPCs, mutate workflow rows, forge approval, or resolve another owner’s research. The shared project stays isolated to `channelwright`; the ledger stays in `channelwright_migrations`.
 
 Strategy uses a bounded public YouTube research sample, not a complete census of YouTube or the broader market. It ingests no YouTube Analytics or private creator metrics. Monetization paths and proposed targets remain hypotheses. Step 10 creates no video ideas, titles, hooks, thumbnails, scripts, calendars, media, or publishing actions.
+
+Provenance comparison uses a canonical, key-order-independent serializer (`src/server/workflows/canonical-json.ts`) rather than `JSON.stringify`, so reordered keys are not mistaken for tampering while every identity, hash, and lineage change is still rejected.
+
+## Production verification procedure
+
+Deterministic, credential-free checks:
+
+```bash
+npm run typecheck && npm run lint && npm run test && npm run build
+```
+
+Shared-project and real-provider gates, in order. Each requires `.env.local`, including `CHANNELWRIGHT_SHARED_DATABASE_CA_PATH` pointing at the Supabase project CA downloaded from Database Settings, and an explicit OpenAI model.
+
+```bash
+npm run gate:supabase:inspect
+```
+
+```bash
+npm run gate:supabase:migrate
+```
+
+```bash
+npm run gate:supabase:live
+```
+
+```bash
+npm run gate:strategy:persisted
+```
+
+`gate:strategy:persisted` drives the real chain end to end: a real approved CHANNEL_RESEARCH artifact, an authenticated HTTP strategy start, the duplicate-start rejection, the production worker, `finalize-strategy` becoming durable run output that parses as `ChannelStrategyResult`, zero YouTube allowance, a human revision successor with its own budget and correct parent/root lineage, approval hashes, rejected post-approval mutation, and removal of every temporary identity and row. It refuses to run if migration `202608140002` is not applied.

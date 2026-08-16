@@ -31,12 +31,19 @@ export function channelResearchConfig() {
   };
 }
 
+/**
+ * Resolves the research synthesis model from explicit operator configuration.
+ * There is deliberately no built-in default: a placeholder identifier would let
+ * production call a model that does not exist, and the provider failure would
+ * surface late, after a durable budget reservation had already been charged.
+ */
 export function assertChannelResearchProviderConfig() {
   const youtubeApiKey = process.env.YOUTUBE_DATA_API_KEY?.trim();
   if (!youtubeApiKey) throw new ResearchConfigurationError("YOUTUBE_CREDENTIALS_MISSING", "YOUTUBE_DATA_API_KEY is required by the research worker.");
   const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
   if (!openAiApiKey) throw new ResearchConfigurationError("AI_CREDENTIALS_MISSING", "OPENAI_API_KEY is required by the research worker.");
-  const synthesisModel = process.env.OPENAI_SYNTHESIS_MODEL?.trim() || process.env.OPENAI_MODEL?.trim() || "gpt-5.6-luna";
+  const synthesisModel = process.env.OPENAI_SYNTHESIS_MODEL?.trim() || process.env.OPENAI_MODEL?.trim();
+  if (!synthesisModel) throw new ResearchConfigurationError("AI_MODEL_NOT_CONFIGURED", "Set OPENAI_SYNTHESIS_MODEL or OPENAI_MODEL; the research worker does not assume a default model.");
   const qaModel = process.env.OPENAI_QA_MODEL?.trim() || synthesisModel;
   return { youtubeApiKey, openAiApiKey, openAiModel: synthesisModel, openAiQaModel: qaModel };
 }
