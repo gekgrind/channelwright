@@ -1,8 +1,4 @@
-const boundedInteger = (name: string, fallback: number, min: number, max: number) => {
-  const parsed = Number(process.env[name] ?? fallback);
-  if (!Number.isInteger(parsed) || parsed < min || parsed > max) throw new Error(`${name} must be an integer between ${min} and ${max}`);
-  return parsed;
-};
+import { boundedIntegerEnv as boundedInteger } from "@/server/config";
 
 export function channelStrategyConfig() {
   return {

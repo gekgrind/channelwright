@@ -11,11 +11,14 @@ export function assertSupabaseConfig() {
   return { url, anonKey };
 }
 
-const boundedInteger = (value: string | undefined, fallback: number, min: number, max: number) => {
+export function boundedInteger(value: string | undefined, fallback: number, min: number, max: number, name?: string) {
   const parsed = Number(value ?? fallback);
-  if (!Number.isInteger(parsed) || parsed < min || parsed > max) throw new Error(`Expected an integer between ${min} and ${max}`);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) throw new Error(`${name ? `${name} must be` : "Expected"} an integer between ${min} and ${max}`);
   return parsed;
-};
+}
+
+export const boundedIntegerEnv = (name: string, fallback: number, min: number, max: number) =>
+  boundedInteger(process.env[name], fallback, min, max, name);
 
 export function workflowWorkerConfig() {
   return {

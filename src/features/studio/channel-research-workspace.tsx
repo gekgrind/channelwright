@@ -13,12 +13,17 @@ import {
   type ResearchEvidenceBundle,
   type ResearchQAResult,
 } from "@/domain/production-workflows";
+import {
+  fetchWorkflowDetail,
+  fetchWorkflowList,
+  POLLING_WORKFLOW_STATUSES,
+  startWorkflow,
+  submitApprovalDecision,
+  type ApprovalDecision,
+  type WorkflowList,
+} from "./workflow-api";
 
-export type WorkflowList = {
-  workflows: Array<{ id: string; workflow_type: string; status: string; created_at: string; current_run_id: string }>;
-  runs: Array<{ id: string; workflow_id: string; status: string; output_payload: unknown; error_code: string | null; created_at: string; completed_at: string | null }>;
-  pendingApprovals: Array<{ id: string; workflow_id: string; workflow_run_id: string; gate_key: string; status: string; requested_at: string }>;
-};
+export type { WorkflowList } from "./workflow-api";
 
 type WorkflowDetail = {
   workflow: { id: string; status: string; created_at: string };
@@ -41,14 +46,6 @@ type WorkflowDetail = {
   researchUsageOperations: unknown[];
 };
 
-function message(payload: unknown, fallback: string) {
-  if (!payload || typeof payload !== "object") return fallback;
-  const error = (payload as { error?: unknown }).error;
-  if (typeof error === "string") return error;
-  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") return error.message;
-  return fallback;
-}
-
 export function ChannelResearchWorkspace({ initial, media }: { initial?: WorkflowList; media: MediaProductionSnapshot }) {
   const [engine, setEngine] = useState(initial);
   const [detail, setDetail] = useState<WorkflowDetail | null>(null);
@@ -60,16 +57,11 @@ export function ChannelResearchWorkspace({ initial, media }: { initial?: Workflo
   const activeId = detail?.workflow.id ?? researchWorkflows[0]?.id;
 
   const load = async (workflowId?: string) => {
-    const listResponse = await fetch("/api/workflows", { cache: "no-store" });
-    const listPayload = await listResponse.json();
-    if (!listResponse.ok) throw new Error(message(listPayload, "Could not refresh research workflows."));
+    const listPayload = await fetchWorkflowList("Could not refresh research workflows.");
     setEngine(listPayload.workflowEngine);
-    const selected = workflowId ?? detail?.workflow.id ?? listPayload.workflowEngine.workflows.find((item: { workflow_type: string }) => item.workflow_type === "CHANNEL_RESEARCH")?.id;
+    const selected = workflowId ?? detail?.workflow.id ?? listPayload.workflowEngine.workflows.find((item) => item.workflow_type === "CHANNEL_RESEARCH")?.id;
     if (!selected) return;
-    const response = await fetch(`/api/workflows/${selected}`, { cache: "no-store" });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(message(payload, "Could not load the research workflow."));
-    setDetail(payload);
+    setDetail(await fetchWorkflowDetail<WorkflowDetail>(selected, "Could not load the research workflow."));
   };
 
   useEffect(() => {
@@ -78,7 +70,7 @@ export function ChannelResearchWorkspace({ initial, media }: { initial?: Workflo
     const refresh = () => load(activeId).catch((cause: unknown) => { if (!disposed) setError(cause instanceof Error ? cause.message : "Could not refresh research."); });
     void refresh();
     const status = detail?.workflow.status ?? researchWorkflows[0]?.status ?? "";
-    const timer = ["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL"].includes(status) ? setInterval(refresh, 4_000) : undefined;
+    const timer = POLLING_WORKFLOW_STATUSES.includes(status) ? setInterval(refresh, 4_000) : undefined;
     return () => { disposed = true; if (timer) clearInterval(timer); };
     // durable id/status intentionally bound polling; load is not stable across renders
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -102,25 +94,21 @@ export function ChannelResearchWorkspace({ initial, media }: { initial?: Workflo
       },
     };
     try {
-      const response = await fetch("/api/workflows", { method: "POST", headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() }, body: JSON.stringify({ operation: "START_WORKFLOW", workflowType: "CHANNEL_RESEARCH", definitionVersion: 1, input }) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(message(payload, "Could not start channel research."));
+      const payload = await startWorkflow("CHANNEL_RESEARCH", input, "Could not start channel research.");
       await load(payload.operationResult.workflowId);
       setNotice("Research queued. A trusted workflow worker must claim the bounded provider steps.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not start channel research."); }
     finally { setBusy(false); }
   };
 
-  const decide = async (decision: "APPROVE" | "REJECT" | "REQUEST_REVISION") => {
+  const decide = async (decision: ApprovalDecision) => {
     const approval = detail?.approvals.find((item) => item.status === "PENDING");
     if (!approval || !detail) return;
     const note = decision === "REQUEST_REVISION" ? revisionNote.trim() : undefined;
     if (decision === "REQUEST_REVISION" && !note) return;
     setBusy(true); setError(null);
     try {
-      const response = await fetch(`/api/workflows/${detail.workflow.id}/approvals/${approval.id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decision, note }) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(message(payload, "Could not record the review decision."));
+      await submitApprovalDecision(detail.workflow.id, approval.id, decision, note, "Could not record the review decision.");
       await load(detail.workflow.id);
       if (decision === "REQUEST_REVISION") setRevisionNote("");
       setNotice(`${decision.replaceAll("_", " ")} recorded on the exact research run.`);
