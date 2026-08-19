@@ -6,17 +6,20 @@ import { ChannelConceptValidationExecutor, type WorkflowStepExecutor } from "./c
 import { ChannelResearchExecutor } from "./channel-research-executor";
 import { ChannelStrategyExecutor } from "./channel-strategy-executor";
 import { ChannelContentIntelligenceExecutor } from "./content-intelligence-executor";
+import { ChannelVideoBriefExecutor } from "./video-brief-executor";
 
 class RoutingWorkflowStepExecutor implements WorkflowStepExecutor {
   private readonly concept = new ChannelConceptValidationExecutor();
   private readonly research = new ChannelResearchExecutor();
   private readonly strategy = new ChannelStrategyExecutor();
   private readonly content = new ChannelContentIntelligenceExecutor();
+  private readonly videoBrief = new ChannelVideoBriefExecutor();
   execute(step: ClaimedWorkflowStep) {
     return step.workflowType === "CHANNEL_RESEARCH" ? this.research.execute(step)
       : step.workflowType === "CHANNEL_STRATEGY" ? this.strategy.execute(step)
         : step.workflowType === "CHANNEL_CONTENT_INTELLIGENCE" ? this.content.execute(step)
-          : this.concept.execute(step);
+          : step.workflowType === "CHANNEL_VIDEO_BRIEF" ? this.videoBrief.execute(step)
+            : this.concept.execute(step);
   }
 }
 
@@ -92,9 +95,9 @@ export class ProductionWorkflowWorker {
         ? "The workflow step produced invalid structured output."
         : code === "RESEARCH_QA_REJECTED" || code === "STRATEGY_QA_REJECTED" || code === "CONTENT_QA_REJECTED"
           ? "Final QA found material errors; no recommendation was advanced to human review."
-          : code === "CONTENT_INTEGRITY_UNREVISABLE"
+          : code === "CONTENT_INTEGRITY_UNREVISABLE" || code === "VIDEO_BRIEF_INTEGRITY_UNREVISABLE"
             ? "A blocking viewer-value or content-integrity failure cannot be resolved by automated revision."
-          : code === "RESEARCH_RESOURCE_BUDGET_EXHAUSTED" || code === "STRATEGY_RESOURCE_BUDGET_EXHAUSTED" || code === "CONTENT_RESOURCE_BUDGET_EXHAUSTED"
+          : code === "RESEARCH_RESOURCE_BUDGET_EXHAUSTED" || code === "STRATEGY_RESOURCE_BUDGET_EXHAUSTED" || code === "CONTENT_RESOURCE_BUDGET_EXHAUSTED" || code === "VIDEO_BRIEF_RESOURCE_BUDGET_EXHAUSTED"
             ? "The durable workflow-run resource budget was exhausted; no further external calls were made."
           : terminal
             ? "The workflow step failed a terminal validation gate."

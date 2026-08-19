@@ -6,7 +6,7 @@ import { z } from "zod";
  * Everything Channelwright recommends, plans, scripts, produces, packages, or
  * publishes must deliver identifiable value to an intended viewer. This module
  * is deliberately stage-agnostic: CONTENT_INTELLIGENCE creates the first
- * assessment, and every later stage (video strategy, script, packaging,
+ * assessment, and every later stage (video brief, script, packaging,
  * production, publishing) re-evaluates the same contract so value drift is
  * detectable rather than assumed away.
  *
@@ -164,7 +164,7 @@ export const viewerValueAssessmentSchema = z.object({
  * silently changes the promise, the hash no longer matches its source.
  */
 export const viewerValueProvenanceSchema = z.object({
-  originStage: z.enum(["CONTENT_INTELLIGENCE", "VIDEO_STRATEGY", "SCRIPT", "PACKAGING", "PRODUCTION", "PUBLISHING"]),
+  originStage: z.enum(["CONTENT_INTELLIGENCE", "VIDEO_BRIEF", "SCRIPT", "PACKAGING", "PRODUCTION", "PUBLISHING"]),
   originWorkflowType: z.string().min(1).max(80),
   originRunId: z.string().uuid(),
   subjectId: z.string().min(1).max(120),

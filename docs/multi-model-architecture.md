@@ -45,7 +45,7 @@ Only infrastructure faults (`TIMEOUT`, `RATE_LIMITED`, `PROVIDER_UNAVAILABLE`, `
 Provider: `<NS>_<ROLE>_PROVIDER` → `<NS>_DEFAULT_PROVIDER` → `CHANNELWRIGHT_DEFAULT_PROVIDER` → `openai`.
 Model: `<NS>_<ROLE>_MODEL` → `<PROVIDER>_<NS>_MODEL` → `<PROVIDER>_MODEL` → **fail closed** with `AI_MODEL_NOT_CONFIGURED`.
 
-Namespaces (`CONTENT`, `RESEARCH`, `STRATEGY`) are independent, so content routing cannot change research or strategy behaviour.
+Namespaces (`CONTENT`, `RESEARCH`, `STRATEGY`, `VIDEO_BRIEF`) are independent, so content routing cannot change research, strategy, or video-brief behaviour.
 
 ## Verified starting split for CONTENT_INTELLIGENCE
 
@@ -60,6 +60,19 @@ Namespaces (`CONTENT`, `RESEARCH`, `STRATEGY`) are independent, so content routi
 | final-content-qa | QA | Anthropic |
 
 This is a starting configuration, not dogma. It is fully reconfigurable, and should change when measurement says so.
+
+## Starting split for CHANNEL_VIDEO_BRIEF
+
+| Step | Role | Provider |
+|---|---|---|
+| design-viewer-promise | GENERATOR | OpenAI |
+| build-video-brief | GENERATOR | OpenAI |
+| initial-video-brief-qa (critique) | CRITIC | Anthropic |
+| initial-video-brief-qa (semantic QA) | QA | Anthropic |
+| bounded-video-brief-revision | REVISION | OpenAI |
+| final-video-brief-qa | QA | Anthropic |
+
+The same shape as content intelligence, and equally reconfigurable. See `docs/video-brief.md`.
 
 ## Why not dual generation
 

@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { viewerValueAssessmentSchema } from "./viewer-value";
+import { originalContributionKindSchema, viewerNeedKindSchema, viewerValueAssessmentSchema, viewerValueProvenanceSchema } from "./viewer-value";
 
-export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE"]);
+export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF"]);
 export type ProductionWorkflowType = z.infer<typeof workflowTypeSchema>;
 
 export const workflowStatusSchema = z.enum(["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL", "BLOCKED", "COMPLETED", "FAILED", "CANCELED"]);
@@ -604,6 +604,350 @@ export const contentRevisionSchema = z.object({
   modelUsage: researchDraftSchema.shape.modelUsage,
 }).strict();
 
+// ---------------------------------------------------------------------------
+// CHANNEL_VIDEO_BRIEF
+//
+// The quality gate between "what should we make?" and "let's produce it".
+// It consumes one exact approved CHANNEL_CONTENT_INTELLIGENCE artifact plus one
+// eligible topic from that artifact's ranked backlog, and produces the creative
+// and production direction for a single video.
+//
+// It deliberately produces no final title, thumbnail copy or asset, script,
+// storyboard, media, voiceover, recut, upload, or publish action. Those stay
+// downstream, and deterministic QA rejects them as scope violations. The
+// contract is shaped so those later stages inherit structured input rather than
+// re-deriving it.
+// ---------------------------------------------------------------------------
+
+/** Immutable reference to the exact approved content-intelligence artifact. */
+export const approvedContentIntelligenceReferenceSchema = z.object({
+  contentWorkflowId: z.string().uuid(),
+  contentRunId: z.string().uuid(),
+  workflowDefinitionVersion: z.number().int().positive(),
+  outputSchemaVersion: z.literal(1),
+  approvalId: z.string().uuid(),
+  approvedBy: z.string().uuid(),
+  approvedAt: z.string().datetime(),
+  finalQaState: z.enum(["accept", "human_review_required"]),
+  finalQaScore: z.number().int().min(0).max(100),
+  contentArtifactHash: sha256Schema,
+  contentProvenanceHash: sha256Schema,
+  parentRunId: z.string().uuid().nullable(),
+  rootRunId: z.string().uuid(),
+  // Transitive provenance: content intelligence already proved its own upstream
+  // strategy, which in turn already proved its upstream research. One reference
+  // therefore anchors the whole RESEARCH -> STRATEGY -> CONTENT chain.
+  upstreamStrategy: approvedStrategyReferenceSchema,
+}).strict();
+
+/**
+ * Which backlog topic this brief is for, and how it was chosen. The Viewer Value
+ * provenance is lifted from the upstream topic's own assessment, so a brief that
+ * silently changes the promise no longer matches its source contract hash.
+ */
+export const selectedVideoOpportunitySchema = z.object({
+  topicId: topicIdSchema,
+  pillarId: pillarIdSchema,
+  backlogRank: z.number().int().min(1).max(CONTENT_BACKLOG_MAX),
+  tier: z.enum(["PRIORITY", "STRONG", "VIABLE", "HOLD"]),
+  selectionSource: z.enum(["NEXT_VIDEO_RECOMMENDATION", "OPERATOR_SELECTED"]),
+  inheritedViewerValueProvenance: viewerValueProvenanceSchema,
+}).strict();
+
+export const videoBriefRequestInputSchema = z.object({
+  contentIntelligenceWorkflowId: z.string().uuid(),
+  contentIntelligenceRunId: z.string().uuid(),
+  /** Absent means "use the artifact's authoritative nextVideoRecommendation". */
+  topicId: topicIdSchema.optional(),
+}).strict();
+
+export const videoBriefInputSchema = videoBriefRequestInputSchema.extend({
+  approvedContentReference: approvedContentIntelligenceReferenceSchema,
+  selectedTopicId: topicIdSchema,
+  humanRevisionNote: z.string().trim().min(1).max(2_000).optional(),
+}).strict();
+
+/** Resolver output: the authoritative upstream artifact and the resolved topic. */
+export const approvedContentOpportunityArtifactSchema = z.object({
+  reference: approvedContentIntelligenceReferenceSchema,
+  contentResult: channelContentIntelligenceResultSchema,
+  discoveryBundle: topicDiscoveryBundleSchema,
+  selectedTopic: contentTopicOpportunitySchema,
+  selection: selectedVideoOpportunitySchema,
+}).strict();
+
+const sectionIdSchema = z.string().regex(/^beat:[a-z0-9][a-z0-9-]{0,58}$/);
+const claimIdSchema = z.string().regex(/^claim:[a-z0-9][a-z0-9-]{0,58}$/);
+const hookConceptIdSchema = z.string().regex(/^hook:[a-z0-9][a-z0-9-]{0,58}$/);
+
+export const videoBriefSourceSchema = z.object({
+  topicId: topicIdSchema,
+  pillarId: pillarIdSchema,
+  pillarName: z.string().min(1).max(300),
+  workingConcept: z.string().min(1).max(400),
+  workingAngle: z.string().min(1).max(400),
+  strategicContext: z.string().min(1).max(900),
+  sourceEvidenceIds: citedEvidenceIdsSchema,
+}).strict();
+
+/**
+ * Who this is for, described in terms the upstream evidence can actually
+ * support. `demographicPrecisionLimit` forces the brief to state what it does
+ * not know rather than inventing an age range or income bracket.
+ */
+export const videoBriefViewerSchema = z.object({
+  primaryViewer: z.string().min(1).max(600),
+  viewerState: z.string().min(1).max(600),
+  viewerQuestion: z.string().min(1).max(400),
+  viewerIntent: z.enum(["LEARN", "SOLVE", "DECIDE", "COMPARE", "EXPLORE", "STAY_INFORMED", "BE_ENTERTAINED", "OTHER"]),
+  needKind: viewerNeedKindSchema,
+  needStatement: z.string().min(1).max(600),
+  alreadyKnows: z.array(z.string().min(1).max(400)).min(1).max(8),
+  stillNeeds: z.array(z.string().min(1).max(400)).min(1).max(8),
+  assumptions: z.array(z.string().min(1).max(400)).min(1).max(8),
+  uncertainties: z.array(z.string().min(1).max(400)).min(1).max(8),
+  demographicPrecisionLimit: z.string().min(1).max(600),
+}).strict();
+
+/** Non-exhaustive; multiple kinds legitimately apply to one video. */
+export const videoValueTypeSchema = z.enum([
+  "EDUCATION", "PROBLEM_SOLVING", "DECISION_SUPPORT", "ENTERTAINMENT", "INSPIRATION", "DISCOVERY", "OTHER",
+]);
+
+/**
+ * The promise must be specific enough to QA. "Learn everything you need to
+ * know" cannot be checked against the content architecture; "decide whether to
+ * self-host or use a managed service, using a 4-factor cost model" can.
+ */
+export const viewerPromiseSchema = z.object({
+  statement: z.string().min(20).max(600),
+  outcomeKind: z.enum(["UNDERSTAND", "ACHIEVE", "DECIDE", "AVOID", "BE_ABLE_TO"]),
+  whyItMatters: z.string().min(1).max(600),
+  transformation: z.object({
+    before: z.string().min(1).max(500),
+    after: z.string().min(1).max(500),
+  }).strict(),
+  concreteValue: z.string().min(1).max(600),
+  valueTypes: z.array(z.object({ kind: videoValueTypeSchema, label: z.string().min(1).max(200).nullable() }).strict()).min(1).max(6),
+  /** What this video deliberately does not promise; keeps the hook honest. */
+  explicitNonPromises: z.array(z.string().min(1).max(400)).min(1).max(6),
+  /** How a reviewer could tell whether the finished video kept the promise. */
+  verifiability: z.string().min(1).max(600),
+}).strict();
+
+export const videoOriginalContributionSchema = z.object({
+  kinds: z.array(z.object({ kind: originalContributionKindSchema, label: z.string().min(1).max(200).nullable() }).strict()).min(1).max(6),
+  statement: z.string().min(1).max(700),
+  comparedToExisting: z.string().min(1).max(700),
+  whyMoreUseful: z.string().min(1).max(700),
+  evidenceIds: contentEvidenceIdsSchema,
+}).strict();
+
+/**
+ * Every material claim the video intends to make, and whether the current
+ * evidence actually supports it. RESEARCH_REQUIRED is the honest answer when it
+ * does not; fabricating support is the failure mode this exists to prevent.
+ */
+export const evidencePlanItemSchema = z.object({
+  claimId: claimIdSchema,
+  claim: z.string().min(1).max(600),
+  status: z.enum(["SUPPORTED", "STRATEGIC_ASSUMPTION", "PRODUCTION_ASSUMPTION", "RESEARCH_REQUIRED", "MUST_NOT_CLAIM"]),
+  materiality: z.enum(["core", "supporting", "incidental"]),
+  evidenceIds: contentEvidenceIdsSchema,
+  rationale: z.string().min(1).max(600),
+  /** What would have to be established before this claim may be scripted. */
+  researchNote: z.string().min(1).max(600).nullable(),
+}).strict();
+
+export const evidencePlanSchema = z.object({
+  items: z.array(evidencePlanItemSchema).min(1).max(20),
+  gaps: z.array(z.string().min(1).max(400)).max(10),
+  sufficiency: z.enum(["SUFFICIENT_TO_SCRIPT", "SUFFICIENT_WITH_NOTED_GAPS", "RESEARCH_REQUIRED_BEFORE_SCRIPT"]),
+  sufficiencyRationale: z.string().min(1).max(600),
+}).strict();
+
+/**
+ * High-level direction, not assets. A tutorial, an investigative explainer, a
+ * documentary, and a comparison should not collapse into one template, so these
+ * fields are descriptive rather than enumerated where the shape genuinely varies.
+ */
+export const creativeDirectionSchema = z.object({
+  format: z.enum(["TUTORIAL", "EXPLAINER", "INVESTIGATION", "DOCUMENTARY", "COMPARISON", "CASE_STUDY", "DEMONSTRATION", "ESSAY", "LIST_WITH_ANALYSIS", "INTERVIEW", "NARRATIVE", "OTHER"]),
+  formatLabel: z.string().min(1).max(200).nullable(),
+  formatRationale: z.string().min(1).max(600),
+  tone: z.string().min(1).max(400),
+  pacing: z.enum(["deliberate", "measured", "brisk", "varied"]),
+  pacingRationale: z.string().min(1).max(600),
+  narrativeApproach: z.string().min(1).max(600),
+  presentationStyle: z.string().min(1).max(600),
+  informationDensity: z.enum(["high", "medium", "low"]),
+  visualStrategy: z.string().min(1).max(700),
+  demonstrationOpportunities: z.array(z.string().min(1).max(400)).max(8),
+  proofMoments: z.array(z.string().min(1).max(400)).min(1).max(8),
+  emotionalArc: z.string().min(1).max(600).nullable(),
+  credibilityStrategy: z.string().min(1).max(700),
+  useOfExamples: z.string().min(1).max(600),
+  storytellingOpportunities: z.array(z.string().min(1).max(400)).max(6),
+  productionComplexity: z.enum(["high", "medium", "low"]),
+  productionComplexityRationale: z.string().min(1).max(600),
+}).strict();
+
+/**
+ * Structured beats, not narration. `informationToCommunicate` is a list of
+ * points, and a short example line is tolerated only where it clarifies intent —
+ * deterministic QA rejects anything script-shaped.
+ */
+export const contentBeatSchema = z.object({
+  sectionId: sectionIdSchema,
+  title: z.string().min(1).max(200),
+  role: z.enum(["OPENING", "CONTEXT", "CORE", "PROOF", "DEMONSTRATION", "COUNTERPOINT", "RESOLUTION", "PAYOFF", "NEXT_ACTION", "OTHER"]),
+  purpose: z.string().min(1).max(500),
+  viewerQuestion: z.string().min(1).max(400),
+  valueDelivered: z.string().min(1).max(500),
+  evidenceRequired: contentEvidenceIdsSchema,
+  claimIds: z.array(claimIdSchema).max(8),
+  informationToCommunicate: z.array(z.string().min(1).max(400)).min(1).max(8),
+  transitionIntent: z.string().min(1).max(400),
+  retentionRisk: z.string().min(1).max(400),
+  visualTreatment: z.string().min(1).max(400),
+  /** Relative share of the video, not a duration promise. */
+  relativeWeight: z.enum(["major", "moderate", "minor"]),
+}).strict();
+
+export const contentArchitectureSchema = z.object({
+  structureRationale: z.string().min(1).max(700),
+  beats: z.array(contentBeatSchema).min(3).max(14),
+  payoffLocation: sectionIdSchema,
+}).strict();
+
+/** Strategic hook concepts, never finished opening copy or a final title. */
+export const hookStrategySchema = z.object({
+  audienceTension: z.string().min(1).max(600),
+  curiosityMechanism: z.string().min(1).max(600),
+  problemOrOpportunity: z.string().min(1).max(600),
+  expectedPayoff: z.string().min(1).max(600),
+  payoffLocation: sectionIdSchema,
+  credibilityNeed: z.string().min(1).max(600),
+  communicateImmediately: z.array(z.string().min(1).max(300)).min(1).max(6),
+  risks: z.array(z.string().min(1).max(400)).min(1).max(6),
+  concepts: z.array(z.object({
+    conceptId: hookConceptIdSchema,
+    approach: z.string().min(1).max(400),
+    rationale: z.string().min(1).max(500),
+    /** How the video actually keeps what this hook implies. */
+    payoffAlignment: z.string().min(1).max(500),
+    deceptionRisk: z.enum(["none", "low", "material"]),
+  }).strict()).min(1).max(5),
+}).strict();
+
+/**
+ * Retention as continuous value delivery. There is deliberately no field for a
+ * predicted retention percentage or watch time: those would be fabrications.
+ */
+export const retentionArchitectureSchema = z.object({
+  earlyAbandonmentRisks: z.array(z.string().min(1).max(400)).min(1).max(6),
+  dragRisks: z.array(z.object({ sectionId: sectionIdSchema, risk: z.string().min(1).max(400), mitigation: z.string().min(1).max(400) }).strict()).max(8),
+  informationOrderDecisions: z.array(z.string().min(1).max(400)).min(1).max(8),
+  proofTiming: z.string().min(1).max(500),
+  demonstrationTiming: z.string().min(1).max(500).nullable(),
+  openQuestionSequencing: z.array(z.string().min(1).max(400)).max(6),
+  patternChanges: z.array(z.string().min(1).max(400)).max(6),
+  cognitiveLoadRisks: z.array(z.string().min(1).max(400)).max(6),
+  payoffTiming: z.string().min(1).max(500),
+}).strict();
+
+export const ctaStrategySchema = z.object({
+  objective: z.enum(["SUBSCRIBE", "COMMENT", "NEXT_VIDEO", "FREE_RESOURCE", "TOOL", "EMAIL_LIST", "PRODUCT", "NONE"]),
+  rationale: z.string().min(1).max(600),
+  placement: z.string().min(1).max(400).nullable(),
+  viewerBenefit: z.string().min(1).max(500).nullable(),
+  trustRisk: z.string().min(1).max(500).nullable(),
+}).strict();
+
+/**
+ * Monetization relevance only. There is no field for predicted revenue, and
+ * NONE is a legitimate and often correct answer.
+ */
+export const monetizationAlignmentSchema = z.object({
+  relevance: z.enum(["NONE", "SPONSORSHIP", "AFFILIATE", "LEAD_GENERATION", "DIGITAL_PRODUCT", "MEMBERSHIP", "SERVICES", "OTHER"]),
+  label: z.string().min(1).max(200).nullable(),
+  rationale: z.string().min(1).max(600),
+  sponsorCategory: z.string().min(1).max(300).nullable(),
+  affiliateRelevance: z.string().min(1).max(400).nullable(),
+  leadMagnetOpportunity: z.string().min(1).max(400).nullable(),
+  paidProductAlignment: z.string().min(1).max(400).nullable(),
+  /** Explicitly judged, so monetization cannot quietly outrank viewer value. */
+  viewerValueImpact: z.enum(["none", "neutral", "supports", "competes"]),
+  viewerValueImpactRationale: z.string().min(1).max(500),
+}).strict();
+
+/** Concept only. The resource itself belongs to a later stage. */
+export const supportingResourceSchema = z.object({
+  resourceKind: z.enum(["CHECKLIST", "WORKSHEET", "TEMPLATE", "CALCULATOR", "PROMPT_PACK", "REFERENCE_GUIDE", "COMPARISON_TABLE", "CHEAT_SHEET", "PLANNING_DOCUMENT", "OTHER"]),
+  label: z.string().min(1).max(200).nullable(),
+  concept: z.string().min(1).max(600),
+  viewerBenefit: z.string().min(1).max(500),
+  whyItImprovesTheVideo: z.string().min(1).max(500),
+  placement: z.string().min(1).max(400),
+  pricingRecommendation: z.enum(["FREE", "POTENTIALLY_PAID"]),
+  pricingRationale: z.string().min(1).max(400),
+}).strict();
+
+export const channelVideoBriefContentSchema = z.object({
+  schemaVersion: z.literal(1),
+  workflowType: z.literal("CHANNEL_VIDEO_BRIEF"),
+  source: videoBriefSourceSchema,
+  viewer: videoBriefViewerSchema,
+  viewerPromise: viewerPromiseSchema,
+  originalContribution: videoOriginalContributionSchema,
+  evidencePlan: evidencePlanSchema,
+  creativeDirection: creativeDirectionSchema,
+  contentArchitecture: contentArchitectureSchema,
+  hookStrategy: hookStrategySchema,
+  retentionArchitecture: retentionArchitectureSchema,
+  ctaStrategy: ctaStrategySchema,
+  monetizationAlignment: monetizationAlignmentSchema,
+  /** Null is the correct answer when a companion resource would be artificial. */
+  supportingResource: supportingResourceSchema.nullable(),
+  /** This stage's own Viewer Value judgement, under the same shared doctrine. */
+  viewerValue: viewerValueAssessmentSchema,
+  risks: z.array(z.object({
+    risk: z.string().min(1).max(500),
+    severity: z.enum(["high", "medium", "low"]),
+    mitigation: z.string().min(1).max(500).nullable(),
+  }).strict()).min(1).max(10),
+  assumptions: z.array(z.string().min(1).max(400)).min(1).max(12),
+  openQuestions: z.array(z.string().min(1).max(400)).min(1).max(12),
+  recommendedNextAction: z.string().min(1).max(500),
+}).strict();
+
+export const channelVideoBriefResultSchema = channelVideoBriefContentSchema.extend({
+  upstreamContentIntelligence: approvedContentIntelligenceReferenceSchema,
+  selectedTopic: selectedVideoOpportunitySchema,
+  crossModelReview: crossModelReviewSchema.nullable(),
+  modelProvenance: z.array(modelAttributionSchema).max(8),
+}).strict();
+
+export const videoBriefQAFindingSchema = researchQAFindingSchema;
+export const videoBriefQAResultSchema = researchQAResultSchema;
+
+export const videoBriefDraftSchema = z.object({
+  result: channelVideoBriefResultSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+}).strict();
+
+export const videoBriefQAStepSchema = z.object({
+  qa: videoBriefQAResultSchema,
+  crossModelReview: crossModelReviewSchema,
+}).strict();
+
+export const videoBriefRevisionSchema = z.object({
+  attempted: z.boolean(),
+  reason: z.string().min(1).max(1_000),
+  result: channelVideoBriefResultSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+}).strict();
+
 export const channelConceptValidationInputSchema = z.object({
   proposedConcept: z.string().trim().min(20).max(2_000),
   audienceContext: z.string().trim().min(3).max(2_000).optional(),
@@ -684,6 +1028,16 @@ export type ModelAttribution = z.infer<typeof modelAttributionSchema>;
 export type CrossModelFinding = z.infer<typeof crossModelFindingSchema>;
 export type CrossModelReview = z.infer<typeof crossModelReviewSchema>;
 export type CrossModelDisposition = z.infer<typeof crossModelDispositionSchema>;
+export type ApprovedContentIntelligenceReference = z.infer<typeof approvedContentIntelligenceReferenceSchema>;
+export type ApprovedContentOpportunityArtifact = z.infer<typeof approvedContentOpportunityArtifactSchema>;
+export type SelectedVideoOpportunity = z.infer<typeof selectedVideoOpportunitySchema>;
+export type VideoBriefRequestInput = z.infer<typeof videoBriefRequestInputSchema>;
+export type VideoBriefInput = z.infer<typeof videoBriefInputSchema>;
+export type ChannelVideoBriefContent = z.infer<typeof channelVideoBriefContentSchema>;
+export type ChannelVideoBriefResult = z.infer<typeof channelVideoBriefResultSchema>;
+export type VideoBriefQAResult = z.infer<typeof videoBriefQAResultSchema>;
+export type EvidencePlanItem = z.infer<typeof evidencePlanItemSchema>;
+export type ContentBeat = z.infer<typeof contentBeatSchema>;
 export type WorkflowStartRequest = z.infer<typeof workflowStartRequestSchema>;
 export type WorkflowApprovalDecision = z.infer<typeof workflowApprovalDecisionSchema>;
 
@@ -774,11 +1128,30 @@ const channelContentIntelligenceDefinition: WorkflowDefinition<ContentIntelligen
   ],
 };
 
+const channelVideoBriefDefinition: WorkflowDefinition<VideoBriefRequestInput, ChannelVideoBriefResult> = {
+  type: "CHANNEL_VIDEO_BRIEF",
+  version: 1,
+  objective: "Turn one exact approved CHANNEL_CONTENT_INTELLIGENCE topic into a viewer-value-gated, evidence-aware, independently critiqued production brief for a single video",
+  inputSchema: videoBriefRequestInputSchema,
+  outputSchema: channelVideoBriefResultSchema,
+  steps: [
+    { key: "validate-approved-content", kind: "WORKER", capability: "approved-content-validation", dependsOn: [], maxAttempts: 2, retryBaseSeconds: 5 },
+    { key: "design-viewer-promise", kind: "WORKER", capability: "viewer-promise-design", dependsOn: ["validate-approved-content"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "build-video-brief", kind: "WORKER", capability: "video-brief-synthesis", dependsOn: ["design-viewer-promise"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "initial-video-brief-qa", kind: "WORKER", capability: "independent-video-brief-qa", dependsOn: ["build-video-brief"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "bounded-video-brief-revision", kind: "WORKER", capability: "video-brief-revision", dependsOn: ["initial-video-brief-qa"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "final-video-brief-qa", kind: "WORKER", capability: "independent-video-brief-qa", dependsOn: ["bounded-video-brief-revision"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "finalize-video-brief", kind: "WORKER", capability: "video-brief-finalizer", dependsOn: ["final-video-brief-qa"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "review-video-brief", kind: "APPROVAL", capability: "human", dependsOn: ["finalize-video-brief"], maxAttempts: 1, retryBaseSeconds: 0 },
+  ],
+};
+
 const registry = new Map<string, WorkflowDefinition>([
   [`${channelConceptValidationDefinition.type}:${channelConceptValidationDefinition.version}`, channelConceptValidationDefinition],
   [`${channelResearchDefinition.type}:${channelResearchDefinition.version}`, channelResearchDefinition],
   [`${channelStrategyDefinition.type}:${channelStrategyDefinition.version}`, channelStrategyDefinition],
   [`${channelContentIntelligenceDefinition.type}:${channelContentIntelligenceDefinition.version}`, channelContentIntelligenceDefinition],
+  [`${channelVideoBriefDefinition.type}:${channelVideoBriefDefinition.version}`, channelVideoBriefDefinition],
 ]);
 
 /** Canonical finalizer per workflow type; its output becomes the run's durable `output_payload`. */
@@ -787,6 +1160,7 @@ export const WORKFLOW_FINALIZER_STEP: Record<ProductionWorkflowType, string> = {
   CHANNEL_RESEARCH: "synthesize-validation",
   CHANNEL_STRATEGY: "finalize-strategy",
   CHANNEL_CONTENT_INTELLIGENCE: "finalize-content-intelligence",
+  CHANNEL_VIDEO_BRIEF: "finalize-video-brief",
 };
 
 export function getWorkflowDefinition(type: ProductionWorkflowType, version: number) {
