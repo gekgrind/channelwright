@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 const read = (name: string) => readFileSync(resolve(process.cwd(), "supabase/migrations", name), "utf8").toLowerCase();
 const content = read("202608140003_content_intelligence.sql");
 const migration = read("202608150001_video_brief.sql");
+const searchPathRepair = read("202608150002_extension_search_path.sql");
 
 describe("CHANNEL_VIDEO_BRIEF migration", () => {
   it("stays inside the isolated schema and touches no unrelated schema", () => {
@@ -188,6 +189,39 @@ describe("CHANNEL_VIDEO_BRIEF migration", () => {
   });
 });
 
+describe("extension search_path repair", () => {
+  it("puts extensions on the search_path of every function that calls digest()", () => {
+    // pgcrypto lives in `extensions` on Supabase. Without it on the search_path
+    // these functions raise "function digest(text, unknown) does not exist" at
+    // call time. plpgsql resolves identifiers at runtime, so the original
+    // migrations applied cleanly and only failed on first real use.
+    for (const fn of [
+      "resolve_approved_research_artifact(uuid, uuid)",
+      "resolve_approved_strategy_artifact(uuid, uuid)",
+      "resolve_approved_content_artifact(uuid, uuid, text)",
+      "decide_workflow_approval(uuid, uuid, text, text)",
+    ]) {
+      expect(searchPathRepair).toContain(`alter function channelwright.${fn}`);
+    }
+    const settings = searchPathRepair.match(/set search_path = channelwright, extensions, pg_temp/g) ?? [];
+    expect(settings.length).toBe(4);
+  });
+
+  it("keeps public off the search_path", () => {
+    // Widening to `public` would reintroduce the search_path hazard the narrow
+    // setting exists to prevent.
+    expect(searchPathRepair).not.toMatch(/search_path[^;]*public/);
+  });
+
+  it("uses ALTER FUNCTION so the repaired bodies cannot drift", () => {
+    expect(searchPathRepair).not.toContain("create or replace function");
+  });
+
+  it("fails loudly if pgcrypto is ever relocated", () => {
+    expect(searchPathRepair).toContain("pgcrypto_schema_unexpected");
+  });
+});
+
 describe("forward-only migration discipline", () => {
   it("does not modify any already-written migration", () => {
     // The content-intelligence migration must be byte-identical to what shipped:
@@ -201,9 +235,16 @@ describe("forward-only migration discipline", () => {
     expect(indexes.length).toBe(1);
   });
 
+  it("repairs search_path in a new migration rather than editing an applied one", () => {
+    // 202608150001 is applied to the shared project, so its checksum is frozen.
+    expect(migration).toContain("set search_path = channelwright, pg_temp");
+    expect(searchPathRepair).toContain("alter function");
+  });
+
   it("orders after the content-intelligence migration", () => {
     const files = readdirSync(resolve(process.cwd(), "supabase/migrations")).sort();
     expect(files.indexOf("202608150001_video_brief.sql")).toBeGreaterThan(files.indexOf("202608140003_content_intelligence.sql"));
-    expect(files[files.length - 1]).toBe("202608150001_video_brief.sql");
+    expect(files.indexOf("202608150002_extension_search_path.sql")).toBeGreaterThan(files.indexOf("202608150001_video_brief.sql"));
+    expect(files[files.length - 1]).toBe("202608150002_extension_search_path.sql");
   });
 });
