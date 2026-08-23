@@ -16,6 +16,36 @@ describe("workflow database error mapping", () => {
     expect(map("RESEARCH_LIMIT_REACHED: an active research run already exists")).toEqual({ code: "RESEARCH_LIMIT_REACHED", status: 429 });
   });
 
+  it("surfaces the PostgreSQL video-brief guards as stable application errors", () => {
+    expect(map("VIDEO_BRIEF_LIMIT_REACHED: an active video-brief run already exists for this approved topic")).toEqual({ code: "VIDEO_BRIEF_LIMIT_REACHED", status: 429 });
+    expect(map("VIDEO_BRIEF_LIMIT_REACHED: a concurrent video-brief run was already created for this approved topic")).toEqual({ code: "VIDEO_BRIEF_LIMIT_REACHED", status: 429 });
+  });
+
+  it("maps every upstream-content invalidity to one opaque 409 conflict", () => {
+    for (const message of [
+      "UPSTREAM_CONTENT_NOT_FINAL: content intelligence must be completed and final",
+      "UPSTREAM_CONTENT_NOT_APPROVED: exact content-intelligence run is not human approved",
+      "UPSTREAM_CONTENT_INTEGRITY_MISMATCH: stored integrity data does not match",
+      "UPSTREAM_CONTENT_QA_INVALID: final QA did not pass",
+      "UPSTREAM_CONTENT_PROVENANCE_INVALID: discovery evidence is missing",
+      "UPSTREAM_CONTENT_LINEAGE_INVALID",
+    ]) expect(map(message)).toEqual({ code: "UPSTREAM_CONTENT_INVALID", status: 409 });
+  });
+
+  it("separates an unusable topic selection from a broken upstream artifact", () => {
+    for (const message of [
+      "TOPIC_NOT_IN_APPROVED_BACKLOG: the selected topic is not in the approved ranked backlog",
+      "TOPIC_NOT_IN_APPROVED_ARTIFACT: the selected topic does not belong to this content-intelligence artifact",
+      "TOPIC_VIEWER_VALUE_NOT_ELIGIBLE: the selected topic did not pass the Viewer Value gate",
+      "TOPIC_EVIDENCE_MISSING: the selected topic cites no discovery evidence",
+    ]) expect(map(message)).toEqual({ code: "TOPIC_INVALID", status: 422 });
+  });
+
+  it("keeps a cross-owner content-intelligence lookup non-enumerable", () => {
+    expect(map("NOT_FOUND: exact CHANNEL_CONTENT_INTELLIGENCE run")).toEqual({ code: "NOT_FOUND", status: 404 });
+    expect(map("NOT_FOUND: exact CHANNEL_CONTENT_INTELLIGENCE workflow")).toEqual({ code: "NOT_FOUND", status: 404 });
+  });
+
   it("maps the established workflow failure surface unchanged", () => {
     expect(map("IDEMPOTENCY_CONFLICT: key reused with different workflow input")).toEqual({ code: "IDEMPOTENCY_CONFLICT", status: 409 });
     expect(map("UPSTREAM_RESEARCH_NOT_APPROVED: exact research run is not human approved")).toEqual({ code: "UPSTREAM_RESEARCH_INVALID", status: 409 });

@@ -67,13 +67,14 @@ export interface ResearchUsageMeter {
 }
 
 export class ResearchBudgetError extends Error {
-  readonly code: "RESEARCH_RESOURCE_BUDGET_EXHAUSTED" | "STRATEGY_RESOURCE_BUDGET_EXHAUSTED" | "CONTENT_RESOURCE_BUDGET_EXHAUSTED";
+  readonly code: "RESEARCH_RESOURCE_BUDGET_EXHAUSTED" | "STRATEGY_RESOURCE_BUDGET_EXHAUSTED" | "CONTENT_RESOURCE_BUDGET_EXHAUSTED" | "VIDEO_BRIEF_RESOURCE_BUDGET_EXHAUSTED";
   readonly retryable = false;
   constructor(readonly exhaustionCode: string, workflowType: ClaimedWorkflowStep["workflowType"] = "CHANNEL_RESEARCH") {
     super(`The durable ${workflowType} run budget is exhausted (${exhaustionCode}).`);
     this.code = workflowType === "CHANNEL_STRATEGY" ? "STRATEGY_RESOURCE_BUDGET_EXHAUSTED"
       : workflowType === "CHANNEL_CONTENT_INTELLIGENCE" ? "CONTENT_RESOURCE_BUDGET_EXHAUSTED"
-        : "RESEARCH_RESOURCE_BUDGET_EXHAUSTED";
+        : workflowType === "CHANNEL_VIDEO_BRIEF" ? "VIDEO_BRIEF_RESOURCE_BUDGET_EXHAUSTED"
+          : "RESEARCH_RESOURCE_BUDGET_EXHAUSTED";
   }
 }
 

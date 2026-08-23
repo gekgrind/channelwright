@@ -36,10 +36,13 @@ describe("CHANNEL_STRATEGY durable budget shape", () => {
   it("types exhaustion per workflow and keeps it terminal", () => {
     const strategy = new ResearchBudgetError("RESEARCH_RESOURCE_BUDGET_EXHAUSTED:inputTokens", "CHANNEL_STRATEGY");
     const research = new ResearchBudgetError("RESEARCH_RESOURCE_BUDGET_EXHAUSTED:searches", "CHANNEL_RESEARCH");
+    const videoBrief = new ResearchBudgetError("RESEARCH_RESOURCE_BUDGET_EXHAUSTED:totalTokens", "CHANNEL_VIDEO_BRIEF");
     expect(strategy.code).toBe("STRATEGY_RESOURCE_BUDGET_EXHAUSTED");
     expect(research.code).toBe("RESEARCH_RESOURCE_BUDGET_EXHAUSTED");
+    expect(videoBrief.code).toBe("VIDEO_BRIEF_RESOURCE_BUDGET_EXHAUSTED");
     expect(strategy.retryable).toBe(false);
     expect(research.retryable).toBe(false);
+    expect(videoBrief.retryable).toBe(false);
   });
 });
 

@@ -925,7 +925,10 @@ export const channelVideoBriefResultSchema = channelVideoBriefContentSchema.exte
   upstreamContentIntelligence: approvedContentIntelligenceReferenceSchema,
   selectedTopic: selectedVideoOpportunitySchema,
   crossModelReview: crossModelReviewSchema.nullable(),
-  modelProvenance: z.array(modelAttributionSchema).max(8),
+  // A finalized brief is always model-generated: the synthesis step stamps at
+  // least the generator's attribution. An empty trail would mean an artifact
+  // with no accountable author, which must never persist.
+  modelProvenance: z.array(modelAttributionSchema).min(1).max(8),
 }).strict();
 
 export const videoBriefQAFindingSchema = researchQAFindingSchema;
@@ -964,14 +967,16 @@ export const workflowStartRequestSchema = z.object({
   const schema = request.workflowType === "CHANNEL_RESEARCH" ? channelResearchInputSchema
     : request.workflowType === "CHANNEL_STRATEGY" ? channelStrategyRequestInputSchema
       : request.workflowType === "CHANNEL_CONTENT_INTELLIGENCE" ? contentIntelligenceRequestInputSchema
-        : channelConceptValidationInputSchema;
+        : request.workflowType === "CHANNEL_VIDEO_BRIEF" ? videoBriefRequestInputSchema
+          : channelConceptValidationInputSchema;
   const parsed = schema.safeParse(request.input);
   if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue, path: ["input", ...issue.path] });
 }).transform((request) => request as
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_CONCEPT_VALIDATION"; definitionVersion: 1; input: ChannelConceptValidationInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_RESEARCH"; definitionVersion: 1; input: ChannelResearchInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_STRATEGY"; definitionVersion: 1; input: ChannelStrategyRequestInput }
-  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_CONTENT_INTELLIGENCE"; definitionVersion: 1; input: ContentIntelligenceRequestInput });
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_CONTENT_INTELLIGENCE"; definitionVersion: 1; input: ContentIntelligenceRequestInput }
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_BRIEF"; definitionVersion: 1; input: VideoBriefRequestInput });
 
 export const workflowApprovalDecisionSchema = z.object({
   decision: z.enum(["APPROVE", "REJECT", "REQUEST_REVISION"]),
