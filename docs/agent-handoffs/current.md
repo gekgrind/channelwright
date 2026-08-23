@@ -1,94 +1,74 @@
 ---
-Agent: Claude Code
-Implementation commit: `ac7c409`
-Base commit: `687787b`
-Status: `READY FOR CODEX VERIFICATION`
+Agent: Codex
+Implementation commit verified: `ac7c40924eef82205a894adcfbc12a91c0f8c7ed`
+Verified repository HEAD: `145f2d3a1931ff5b05779ef1a35fadda8833323c`
+Verdict: `PASS WITH MINOR COVERAGE GAPS`
 ---
 
----
-type: agent-handoff
-project: Channelwright
-agent: Claude Code
-date: 2026-08-23
-verdict: IMPLEMENTATION COMPLETE — READY FOR CODEX VERIFICATION
----
-
-> NOTE: This handoff could not be written directly to the Obsidian vault — the
-> `vault-as-mcp` read AND write tools are auto-denied in this non-interactive
-> session. Copy this file to `02 - Channelwright/Agent Handoffs/` in the
-> Entrepreneuria HQ vault.
-
-# Video Brief Application Contracts Restored
+# CHANNEL_VIDEO_BRIEF Application-Contract Verification
 
 ## Agent
 
-Claude Code
+Codex
 
 ## Verdict
 
-**IMPLEMENTATION COMPLETE — READY FOR CODEX VERIFICATION**
+**PASS WITH MINOR COVERAGE GAPS**
 
-## Repository State
+No runtime implementation defect was found in the application-contract reconciliation. The implementation satisfies the requested routing, provenance bounds, database-error mapping, and typed terminal budget behavior. Two regression tests are shallower than the behavior they are intended to pin.
 
-- **Worktree**: `C:\Users\gekgr\.zenflow\worktrees\you-are-the-primary-implementati-c6a7`
-- **Branch**: `you-are-the-primary-implementati-c6a7`
-- **HEAD before**: `687787b` (docs: record live verification status and the open media-pipeline defect)
-- **HEAD after**: `ac7c409` (fix: restore CHANNEL_VIDEO_BRIEF application contracts)
-- **git status**: clean after commit (6 files committed)
-- **Upstream**: no upstream configured; NOT pushed. `origin` = https://github.com/gekgrind/channelwright.git
+## Repository Truth
 
-Canonical ancestry confirmed present in this worktree: `84084a7` (video brief workflow slice), `bebfa35` (canonical JSON parity), `b5adf25` (pgcrypto search_path fix), plus `supabase/migrations/202608150001_video_brief.sql`. Correct worktree/branch — not a wrong-worktree situation.
+- Worktree: `C:\DevProjects\channelwright`
+- Branch: `feat/channel-video-brief`
+- Verified pre-handoff HEAD: `145f2d3a1931ff5b05779ef1a35fadda8833323c`
+- Upstream: `origin/feat/channel-video-brief`
+- Ahead/behind before handoff: `0/0`
+- Status before verification handoff edits: clean
+- Implementation commit: `ac7c40924eef82205a894adcfbc12a91c0f8c7ed`
+- Ancestry: `687787b25ce840dc184da15da651e464ae26ea2b` is an ancestor of `ac7c409`; `ac7c409` is an ancestor of verified HEAD.
 
-## Context
+## Verification Results
 
-The valuable missing work matched a prior agent's sibling commit `a4a4e06` ("fix: restore video brief application contracts") on branch `you-are-performing-an-independen-c451`. Rather than blind cherry-pick, each hunk was independently verified against the current domain schemas (`videoBriefRequestInputSchema`, `channelVideoBriefResultSchema`, `modelAttributionSchema`, `ClaimedWorkflowStep`) and against the actual error markers emitted by `202608150001_video_brief.sql`. The resulting working tree is byte-identical to the verified restoration (`git diff a4a4e06` = empty over the six files).
+- Directly inspected all six changed implementation/test files and migration `202608150001_video_brief.sql`.
+- Confirmed `CHANNEL_VIDEO_BRIEF` routes through `videoBriefRequestInputSchema` and the transformed request union contains `VideoBriefRequestInput`.
+- Confirmed `channelVideoBriefResultSchema.modelProvenance` is `.min(1).max(8)`.
+- Confirmed mappings match every migration-emitted family in scope:
+  - `VIDEO_BRIEF_LIMIT_REACHED` -> typed 429
+  - `UPSTREAM_CONTENT_*` -> opaque `UPSTREAM_CONTENT_INVALID` 409
+  - `TOPIC_*` -> `TOPIC_INVALID` 422
+  - cross-owner `NOT_FOUND` remains opaque 404
+- Confirmed `ResearchBudgetError` maps `CHANNEL_VIDEO_BRIEF` to `VIDEO_BRIEF_RESOURCE_BUDGET_EXHAUSTED`, sets `retryable = false`, and the worker persists the typed code as a terminal failure.
+- Confirmed no affected implementation/test file differs between `ac7c409` and verified HEAD. Later commits changed only `.zenflow` handoff material, `package-lock.json`, and repository-local documentation.
+- Commit `a4a4e06` is not present in the local object database, so the claimed byte-identical comparison could not be independently reproduced.
 
-Notable defect fixed: `CHANNEL_VIDEO_BRIEF` start requests previously fell through `workflowStartRequestSchema` to the concept-validation input schema (misrouting), despite the type being in the enum and having a definition.
+## Commands and Results
 
-## Changes Made
+- `git merge-base --is-ancestor ac7c409 HEAD` -> PASS (exit 0)
+- `git merge-base --is-ancestor 687787b ac7c409` -> PASS (exit 0)
+- `git diff --exit-code ac7c409..HEAD -- <six affected files>` -> PASS (no diff)
+- `npx.cmd vitest run src/domain/production-workflows.test.ts src/server/workflows/workflow-error-mapping.test.ts src/server/workflows/strategy-accounting.test.ts src/server/workflows/workflow-worker.test.ts` -> PASS (4 files, 31 tests)
+- `npm.cmd run typecheck` -> PASS
+- `npm.cmd run lint` -> PASS
+- `npm.cmd test` -> PASS (74 files, 648 tests)
 
-- **src/domain/production-workflows.ts**
-  - Route `CHANNEL_VIDEO_BRIEF` through `videoBriefRequestInputSchema` in `workflowStartRequestSchema` (was defaulting to `channelConceptValidationInputSchema`); added the discriminated `CHANNEL_VIDEO_BRIEF` transform union member.
-  - `channelVideoBriefResultSchema.modelProvenance`: `.max(8)` → `.min(1).max(8)` — a finalized brief must carry at least one accountable model attribution.
-- **src/server/workflows/production-workflow-repository.ts**
-  - Added error codes `VIDEO_BRIEF_LIMIT_REACHED`, `UPSTREAM_CONTENT_INVALID`, `TOPIC_INVALID` to `ProductionWorkflowErrorCode`.
-  - Added `databaseError()` marker mappings: `VIDEO_BRIEF_LIMIT_REACHED` → 429, `UPSTREAM_CONTENT_` → `UPSTREAM_CONTENT_INVALID` 409, `TOPIC_` → `TOPIC_INVALID` 422.
-- **src/server/workflows/research-usage.ts**
-  - `ResearchBudgetError`: added `VIDEO_BRIEF_RESOURCE_BUDGET_EXHAUSTED` code and the `CHANNEL_VIDEO_BRIEF` branch; remains non-retryable/terminal.
-- **src/domain/production-workflows.test.ts**
-  - Router regression: exact `CHANNEL_VIDEO_BRIEF` payload accepted (with/without topicId); concept-validation payload, bad UUID, bad topicId, and unexpected keys all rejected.
-  - Provenance regression: empty `modelProvenance` rejected; single valid attribution accepted.
-- **src/server/workflows/workflow-error-mapping.test.ts**
-  - Regression coverage for `VIDEO_BRIEF_LIMIT_REACHED`, all `UPSTREAM_CONTENT_*` → one opaque 409, all `TOPIC_*` → 422, and cross-owner content-intelligence `NOT_FOUND` staying non-enumerable (404).
-- **src/server/workflows/strategy-accounting.test.ts**
-  - Budget regression: `CHANNEL_VIDEO_BRIEF` → `VIDEO_BRIEF_RESOURCE_BUDGET_EXHAUSTED`, terminal.
+No paid provider calls were run. No migrations were applied. Nothing was pushed or deployed.
 
-Diff summary: 6 files changed, 93 insertions(+), 7 deletions(-).
+## Defects Found
 
-## Verification Performed
+No runtime implementation defects found.
 
-All run in the worktree after `npm install` (deps were absent).
+Minor regression-coverage defects:
 
-- `npx vitest run src/domain/production-workflows.test.ts src/server/workflows/workflow-error-mapping.test.ts src/server/workflows/strategy-accounting.test.ts` → **PASS** (3 files, 23 tests).
-- `npm run typecheck` (`tsc --noEmit`) → **PASS** (no errors).
-- `npm run lint` (`eslint .`) → **PASS** (no errors).
-- `npm test` (`vitest run`, full suite) → **PASS** (74 files, 648 tests).
+1. The provenance test proves zero entries fail and one entry succeeds, but does not prove the preserved upper bound by rejecting nine entries.
+2. The budget test directly constructs `ResearchBudgetError`; it does not drive a mocked `REJECTED` reservation through `SupabaseResearchUsageMeter.reserve()` to prove the live path supplies `CHANNEL_VIDEO_BRIEF` and yields the typed terminal error.
 
-No paid OpenAI/Anthropic provider calls were made. No migrations applied. No push/deploy. No TLS/auth/authz/provenance/budget controls weakened.
+## Remaining Risks
 
-## Risks or Unresolved Issues
+- The comparison to unavailable commit `a4a4e06` remains an unverified handoff claim.
+- No database migration, shared-Supabase, or paid-provider execution was performed; those evidence boundaries were outside this application-contract verification and explicitly prohibited or unnecessary here.
+- The unrelated media-pipeline defect recorded at `687787b` remains open and was not changed by this reconciliation.
 
-- The open media-pipeline defect recorded in `687787b` is unrelated to this slice and remains open (out of scope here).
-- No provider-gate or shared-Supabase persisted gate was exercised this session (not requested; paid gate not authorized in canonical state).
-- Handoff could not be written to the Obsidian vault (MCP vault tools auto-denied); this file is the fallback copy.
+## Exact Next Action for Claude Code
 
-## Codex Verification Instructions
-
-1. Confirm HEAD `ac7c409` on branch `you-are-the-primary-implementati-c6a7`; `git diff a4a4e06 -- <the six files>` should be empty.
-2. Re-run: `npm ci` (or `npm install`), then `npm run typecheck`, `npm run lint`, and `npm test` — expect the same green results (648 tests).
-3. Independently confirm the migration markers still align with the mappings: `VIDEO_BRIEF_LIMIT_REACHED`, `UPSTREAM_CONTENT_*`, `TOPIC_*` in `supabase/migrations/202608150001_video_brief.sql`.
-4. Optionally run the disposable-PostgreSQL gate (`npm run gate:video-brief:postgres`) if a local Postgres boundary is desired — do NOT run shared/provider gates without explicit authorization.
-
-## Recommended Next Step
-
-Codex independently re-runs typecheck + lint + full `npm test` in a clean checkout of `ac7c409` to confirm the restoration, then decide whether to open a PR merging this branch (do not push/deploy without operator authorization).
+Add only the two missing regression cases: (1) assert that nine valid model-attribution entries are rejected by `channelVideoBriefResultSchema.shape.modelProvenance`; (2) mock a rejected usage reservation for a `CHANNEL_VIDEO_BRIEF` claimed step and assert the live usage-meter path throws `{ code: "VIDEO_BRIEF_RESOURCE_BUDGET_EXHAUSTED", retryable: false }`. Run the targeted tests, typecheck, lint, and full suite; commit the tests and update this handoff for Codex re-verification. Do not change production behavior, push, deploy, call paid providers, or apply migrations.
