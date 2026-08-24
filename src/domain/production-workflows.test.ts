@@ -57,15 +57,20 @@ describe("production workflow registry", () => {
     }
   });
 
-  it("requires at least one accountable model attribution on a VIDEO_BRIEF result", () => {
-    expect(channelVideoBriefResultSchema.shape.modelProvenance.safeParse([]).success).toBe(false);
-    expect(channelVideoBriefResultSchema.shape.modelProvenance.safeParse([{
-      provider: "openai",
+  it("bounds accountable model attribution on a VIDEO_BRIEF result to between one and eight entries", () => {
+    const attribution = (index: number) => ({
+      provider: "openai" as const,
       model: "configured-model",
-      role: "GENERATOR",
-      operation: "video_brief_synthesis",
+      role: "GENERATOR" as const,
+      operation: `video_brief_synthesis_${index}`,
       invokedAt: "2026-08-15T10:00:00.000Z",
-    }]).success).toBe(true);
+    });
+    const trail = (count: number) => Array.from({ length: count }, (_unused, index) => attribution(index));
+
+    expect(channelVideoBriefResultSchema.shape.modelProvenance.safeParse(trail(0)).success).toBe(false);
+    expect(channelVideoBriefResultSchema.shape.modelProvenance.safeParse(trail(1)).success).toBe(true);
+    expect(channelVideoBriefResultSchema.shape.modelProvenance.safeParse(trail(8)).success).toBe(true);
+    expect(channelVideoBriefResultSchema.shape.modelProvenance.safeParse(trail(9)).success).toBe(false);
   });
 
   it("serializes bounded retry policy and dependency metadata", () => {
