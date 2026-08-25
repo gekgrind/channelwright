@@ -77,9 +77,13 @@ guard test was hardened.
   narrow `search_path = channelwright, pg_temp` is preserved. **Hardened** it so a future *unqualified*
   `digest(` cannot silently reintroduce the resolver defect: it now asserts every `digest(` occurrence is an
   `extensions.digest(` (count parity). This pins the exact invariant that keeps the function immune.
-- The existing guard in `202608150002_extension_search_path.sql` additionally raises
-  `PGCRYPTO_SCHEMA_UNEXPECTED` if pgcrypto ever leaves the `extensions` schema — the only condition that
-  could break the qualified call — so that risk is also already covered.
+- `execute_media_production_action` itself avoids any search-path dependency by calling
+  `extensions.digest(...)` explicitly. The repository/migration contract expects pgcrypto to live in the
+  `extensions` schema, and `202608150002_extension_search_path.sql` validates that expectation **at apply
+  time** — it raises `PGCRYPTO_SCHEMA_UNEXPECTED` if pgcrypto is not in `extensions` when that migration
+  runs. This is apply-time validation, not continuous monitoring, and a schema relocation is not the only
+  theoretical way digest resolution could break; for this function specifically, the explicit qualification
+  is what removes the risk.
 
 ## Files Changed
 
