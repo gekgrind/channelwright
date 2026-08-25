@@ -50,7 +50,7 @@ covered by explicit tests. No production code was changed; no new runtime defect
 - `docs/agent-handoffs/current.md` — this handoff
 - `docs/agent-handoffs/archive/2026-08-23-codex-video-brief-contract-verification.md` — prior Codex handoff, archived
 
-No production/source files were modified.
+No production runtime files were modified (the only `src/` changes are test files, listed above).
 
 ## Verification Results
 
