@@ -32,7 +32,11 @@ describe("media production migration contract", () => {
     // schema where pgcrypto lives, so an unqualified digest() would fail at call
     // time (the resolver defect repaired in 202608150002). Qualifying it here is
     // what makes this function immune without widening the search_path.
-    expect(sql.match(/digest\(/g) ?? []).toHaveLength((sql.match(/extensions\.digest\(/g) ?? []).length);
+    // Matched case-insensitively and tolerant of whitespace before `(` so
+    // `DIGEST(...)` and `digest (...)` are caught as unqualified too.
+    const allDigestCalls = sql.match(/\bdigest\s*\(/gi) ?? [];
+    const qualifiedDigestCalls = sql.match(/\bextensions\s*\.\s*digest\s*\(/gi) ?? [];
+    expect(allDigestCalls).toHaveLength(qualifiedDigestCalls.length);
     expect(sql).toContain("auth.jwt()->>'role'");
     expect(sql).not.toContain("auth.role()");
     expect(sql).toContain("security definer set search_path = channelwright, pg_temp");

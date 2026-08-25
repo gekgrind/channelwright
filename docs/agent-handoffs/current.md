@@ -3,9 +3,31 @@ Agent: Claude Code (Opus 4.8)
 Task: Investigate and, if present, repair the documented pgcrypto search-path defect in `channelwright.execute_media_production_action`
 Pre-task HEAD: `ef486a8ce17ef53a6f36e562bad4e19b0b85569b` (branch `main`)
 Verdict: `NOT REPRODUCIBLE — DOCUMENTED ROOT CAUSE IS WRONG; NO MIGRATION WARRANTED`
+Codex re-verification of `3d17237`: `PASS WITH MINOR GAPS` -> `MINOR GAPS CLOSED — READY FOR FINAL CODEX VERIFICATION`
 ---
 
 # Media-Production pgcrypto Search-Path Investigation
+
+## Codex Verification & Gap Closure (2026-08-25)
+
+Codex independently verified commit `3d17237b252a6d5a0609ba326d4891c1afa21e8d` with verdict
+**PASS WITH MINOR GAPS**, confirming the central conclusion `NOT REPRODUCIBLE — NO MIGRATION WARRANTED`.
+Two minor precision gaps were identified and are now closed (the central conclusion is unchanged):
+
+1. **Regression assertion precision** (`src/server/media/media-migration.test.ts`) — the `digest(` vs
+   `extensions.digest(` comparison was case-sensitive and assumed no whitespace before `(`. It is now
+   case-insensitive and whitespace-tolerant (`/\bdigest\s*\(/gi` vs `/\bextensions\s*\.\s*digest\s*\(/gi`),
+   so `DIGEST(...)`, `digest (...)`, and capitalization/whitespace variants of an unqualified call are also
+   caught. Not broadened into SQL parsing.
+2. **Documentation precision** (`docs/video-brief.md`) — the corrected paragraph no longer implies
+   `PGCRYPTO_SCHEMA_UNEXPECTED` continuously monitors the database, and no longer claims pgcrypto relocation
+   is the "only" condition that could affect resolution. It now states the guard validates pgcrypto's
+   expected schema **at apply time** of `202608150002`, that the repository/migration contract expects
+   pgcrypto in `extensions`, and that the function avoids search-path dependency by using
+   `extensions.digest(...)` explicitly.
+
+Central conclusion after gap closure: **unchanged** — `execute_media_production_action` has no search-path
+defect and requires no `ALTER FUNCTION` migration.
 
 ## Verdict
 
