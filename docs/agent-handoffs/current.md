@@ -1,84 +1,116 @@
 ---
 Agent: Claude Code (Opus 4.8)
-Task: Close the two regression-coverage gaps from Codex verification of `ac7c409`
-Implementation commit under test: `ac7c40924eef82205a894adcfbc12a91c0f8c7ed`
-Pre-task HEAD: `9d1bb9ecd058c525bb9183f1b241b96cb957e01d`
-Verdict: `COVERAGE GAPS CLOSED — production behavior unchanged`
+Task: Investigate and, if present, repair the documented pgcrypto search-path defect in `channelwright.execute_media_production_action`
+Pre-task HEAD: `ef486a8ce17ef53a6f36e562bad4e19b0b85569b` (branch `main`)
+Verdict: `NOT REPRODUCIBLE — DOCUMENTED ROOT CAUSE IS WRONG; NO MIGRATION WARRANTED`
 ---
 
-# CHANNEL_VIDEO_BRIEF Regression-Coverage Closure
-
-## Agent
-
-Claude Code (Opus 4.8)
+# Media-Production pgcrypto Search-Path Investigation
 
 ## Verdict
 
-**COVERAGE GAPS CLOSED — PRODUCTION BEHAVIOR UNCHANGED**
-
-The two minor regression-coverage gaps recorded by the prior Codex verification (archived at
-`docs/agent-handoffs/archive/2026-08-23-codex-video-brief-contract-verification.md`) are now
-covered by explicit tests. No production code was changed; no new runtime defect was exposed.
+**NOT REPRODUCIBLE.** The documented defect does not exist. `channelwright.execute_media_production_action`
+calls pgcrypto **schema-qualified** as `extensions.digest(...)`, which resolves independently of the
+function's `search_path`. No forward migration was created (a Phase-1 STOP condition: the documented root
+cause is wrong). Two low-risk corrections were made instead: the false doc claim was fixed and the existing
+guard test was hardened.
 
 ## Repository Truth
 
 - Worktree: `C:\DevProjects\channelwright`
-- Branch: `feat/channel-video-brief`
-- Pre-task HEAD: `9d1bb9ecd058c525bb9183f1b241b96cb957e01d`
-- Ancestry: `ac7c40924eef82205a894adcfbc12a91c0f8c7ed` is an ancestor of the pre-task HEAD (`git merge-base --is-ancestor` exit 0).
+- Branch created: `fix/media-production-pgcrypto-search-path` (from `main`)
+- Pre-task HEAD: `ef486a8ce17ef53a6f36e562bad4e19b0b85569b`
 - Status before edits: clean
+- Ancestry confirmed: `ac7c409` (video-brief contracts) and `b5adf25` (resolver pgcrypto repair) are both
+  ancestors of HEAD (`git merge-base --is-ancestor` exit 0). The prior CHANNEL_VIDEO_BRIEF work is merged.
+- No unexpected user modifications were present.
 
-## Coverage Added
+## Defect Verification
 
-1. **Provenance upper-bound rejection** (`src/domain/production-workflows.test.ts`)
-   The existing `min(1)` test was widened to a full-bound test: `channelVideoBriefResultSchema.shape.modelProvenance`
-   now asserts 0 entries fail, 1 entry passes, 8 entries pass (the exact upper bound), and **9 entries fail**.
-   This pins the intended `.min(1).max(8)` contract at both ends.
+- **Function signature:** `channelwright.execute_media_production_action(text, text, jsonb)`
+  (`p_idempotency_key text, p_input_fingerprint text, p_action jsonb`).
+- **Defined in:** `supabase/migrations/202608110001_media_production_pipeline.sql:322` — the only definition;
+  no later migration recreates or `ALTER`s it.
+- **Current search_path:** `channelwright, pg_temp` (narrow; `extensions` deliberately excluded).
+- **pgcrypto usage:** exactly one call, `extensions.digest((p_action->'renderInput')::text, 'sha256')` at
+  line 357 — **schema-qualified**. `grep` proves it is the only `digest(` in the file and it is
+  `extensions.digest(`.
+- **Root-cause evidence:** A schema-qualified reference bypasses `search_path` entirely, so the narrow
+  setting cannot break it. `git log -L 357,357` shows the call was born schema-qualified in the migration's
+  first commit (`602b14b`) and has never changed — it never had the resolver-style defect. The resolvers
+  repaired in `202608150002` used **unqualified** `digest()`; this function never did.
+- **Why the doc was wrong:** the media pipeline (authored in `602b14b`) qualifies pgcrypto calls, whereas
+  the later strategy/content/video-brief resolvers used unqualified calls. The prior handoff assumed "the
+  same" pattern without inspecting line 357.
 
-2. **Rejected-reservation usage-meter path** (`src/server/workflows/research-usage.test.ts`, new file)
-   A mocked `REJECTED` reservation is driven through the live `SupabaseResearchUsageMeter.reserve()` seam for a
-   `CHANNEL_VIDEO_BRIEF` claimed step. The test mocks `@/server/supabase-admin` (same convention as
-   `approved-strategy-resolver.test.ts`): the `ensure_research_run_budget` RPC returns no error, then the
-   `reserve_research_usage` RPC returns `{ status: "REJECTED", exhaustionCode: ... }`. It asserts `reserve()`
-   throws `{ code: "VIDEO_BRIEF_RESOURCE_BUDGET_EXHAUSTED", retryable: false }` and is an instance of
-   `ResearchBudgetError`, proving the live path supplies `this.step.workflowType` to the typed terminal error.
+## Implementation
+
+- **Migration added:** NONE. Creating `ALTER FUNCTION ... SET search_path = channelwright, extensions,
+  pg_temp` would widen a hardened search_path for zero benefit (the call is already qualified) and is
+  explicitly discouraged by the task. Correctly not done.
+
+## Regression Coverage
+
+- `src/server/media/media-migration.test.ts` already asserted `extensions.digest` is present and that the
+  narrow `search_path = channelwright, pg_temp` is preserved. **Hardened** it so a future *unqualified*
+  `digest(` cannot silently reintroduce the resolver defect: it now asserts every `digest(` occurrence is an
+  `extensions.digest(` (count parity). This pins the exact invariant that keeps the function immune.
+- The existing guard in `202608150002_extension_search_path.sql` additionally raises
+  `PGCRYPTO_SCHEMA_UNEXPECTED` if pgcrypto ever leaves the `extensions` schema — the only condition that
+  could break the qualified call — so that risk is also already covered.
 
 ## Files Changed
 
-- `src/domain/production-workflows.test.ts` — widened provenance bound test (test only)
-- `src/server/workflows/research-usage.test.ts` — new file, rejected-reservation meter regression (test only)
-- `docs/agent-handoffs/current.md` — this handoff
-- `docs/agent-handoffs/archive/2026-08-23-codex-video-brief-contract-verification.md` — prior Codex handoff, archived
+- `docs/video-brief.md` — replaced the false "remaining defect" paragraph (line 138) with the corrected
+  finding (function is not defective; schema-qualified; no ALTER needed).
+- `src/server/media/media-migration.test.ts` — hardened the pgcrypto-qualification assertion (test only).
+- `docs/agent-handoffs/current.md` — this handoff.
+- `docs/agent-handoffs/archive/2026-08-24-claude-video-brief-coverage-closure.md` — prior handoff, archived.
 
-No production runtime files were modified (the only `src/` changes are test files, listed above).
+No production runtime code and no migration files were modified.
 
 ## Verification Results
 
-- Targeted: `npx vitest run src/domain/production-workflows.test.ts src/server/workflows/research-usage.test.ts src/server/workflows/strategy-accounting.test.ts src/server/workflows/workflow-error-mapping.test.ts src/server/workflows/workflow-worker.test.ts` -> PASS (7 files, 42 tests)
-- Typecheck: `npm run typecheck` -> PASS (clean)
-- Lint: `npm run lint` -> PASS (0 errors; 2 pre-existing warnings in an unrelated `.claude/worktrees/...` path, not in changed files)
-- Full suite: `npm test` -> PASS (116 files, 834 tests)
+- Targeted: `npx vitest run src/server/media/media-migration.test.ts` -> PASS (2 files, 12 tests).
+- Typecheck: `npm run typecheck` -> PASS (clean).
+- Lint: `npm run lint` -> 0 errors (2 pre-existing warnings in an unrelated `.claude/worktrees/...` path,
+  not in changed files).
+- Full suite: `npm test` -> PASS (116 files, 834 tests).
+- Disposable Postgres / live gate: NOT run. Static + repository evidence is conclusive (schema-qualified
+  call), and the task defaults to local/static/disposable verification only. No shared Supabase mutation.
 
-No paid provider calls, no migrations, no Supabase mutation, nothing pushed or deployed.
+## Database / External Actions
 
-## Production Behavior Changed
-
-**No.** Only test files and handoff documentation were added/modified.
+None. No shared Supabase mutation, no migration applied, no paid-provider calls, nothing pushed or deployed.
 
 ## Commit
 
-This handoff is committed together with the two regression tests as the tip commit of
-`feat/channel-video-brief`. Resolve the exact SHA with `git rev-parse feat/channel-video-brief`
-(equivalently `git log -1 --format=%H`). A commit cannot embed its own final hash, so it is
-referenced by branch tip rather than a literal here.
+Committed on `fix/media-production-pgcrypto-search-path`. Resolve the exact SHA with
+`git rev-parse fix/media-production-pgcrypto-search-path`. Not merged, not pushed.
 
-## Exact Instructions for Codex Independent Re-verification
+## Exact Instructions for Independent Codex Verification
 
-1. Confirm repository truth:
-   - `git merge-base --is-ancestor ac7c40924eef82205a894adcfbc12a91c0f8c7ed HEAD` -> expect exit 0.
-   - `git diff --exit-code ac7c409..HEAD -- src/domain/production-workflows.ts src/server/workflows/research-usage.ts src/server/workflows/production-workflow-repository.ts` -> expect no diff (production code untouched since `ac7c409`).
-2. Confirm the two coverage cases exist and are meaningful:
-   - In `src/domain/production-workflows.test.ts`, verify a `trail(9)` (nine model attributions) is asserted `.success === false` against `channelVideoBriefResultSchema.shape.modelProvenance`, and `trail(8)` asserted `true`.
-   - In `src/server/workflows/research-usage.test.ts`, verify a mocked `reserve_research_usage` returning `status: "REJECTED"` for a `CHANNEL_VIDEO_BRIEF` step causes `SupabaseResearchUsageMeter.reserve()` to reject with `{ code: "VIDEO_BRIEF_RESOURCE_BUDGET_EXHAUSTED", retryable: false }`.
-3. Re-run gates: targeted vitest (above), `npm run typecheck`, `npm run lint`, `npm test`. Report exact pass/fail counts.
-4. Confirm no production behavior changed (test + docs only).
+1. Repository truth:
+   - `git merge-base --is-ancestor ac7c409 HEAD` and `... b5adf25 HEAD` -> both exit 0.
+2. Prove the function is not defective:
+   - `grep -nE "digest\(" supabase/migrations/202608110001_media_production_pipeline.sql` -> the only match
+     is line 357 and it is `extensions.digest(` (schema-qualified).
+   - `git log -L 357,357:supabase/migrations/202608110001_media_production_pipeline.sql` -> the call was
+     introduced schema-qualified in `602b14b` and never altered.
+   - Confirm the function's header (`202608110001_...:326`) is
+     `security definer set search_path = channelwright, pg_temp` and that no later migration `ALTER`s or
+     recreates `execute_media_production_action` (`grep -rn execute_media_production_action supabase/migrations`).
+   - Reason: a schema-qualified identifier bypasses `search_path`, so the narrow setting cannot break it.
+3. Confirm no migration was added: `git diff --name-only main..HEAD -- supabase/migrations` -> empty.
+4. Confirm the regression guard: in `src/server/media/media-migration.test.ts`, the pgcrypto test asserts
+   `digest(` count equals `extensions.digest(` count.
+5. Re-run gates: `npx vitest run src/server/media/media-migration.test.ts`, `npm run typecheck`,
+   `npm run lint`, `npm test`. Report exact pass/fail counts.
+
+## Remaining Media-Pipeline Findings
+
+None newly discovered in scope. The media-production function chain (`claim_render_job`,
+`heartbeat_render_job`, etc.) uses `gen_random_uuid()` (a `pg_catalog` builtin, not pgcrypto) and
+schema-qualified `extensions.digest`, so none carry the resolver-style search-path risk. Live provider and
+browser execution for the VIDEO_BRIEF slice remain blocked on model routing config (documented in
+`docs/video-brief.md`), unchanged by this task.

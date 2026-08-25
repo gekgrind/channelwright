@@ -27,6 +27,12 @@ describe("media production migration contract", () => {
 
   it("keeps security-definer dependencies explicit and uses current JWT claims", () => {
     expect(sql).toContain("extensions.digest");
+    // Every pgcrypto digest() call must stay schema-qualified. The functions run
+    // under `search_path = channelwright, pg_temp`, which excludes the `extensions`
+    // schema where pgcrypto lives, so an unqualified digest() would fail at call
+    // time (the resolver defect repaired in 202608150002). Qualifying it here is
+    // what makes this function immune without widening the search_path.
+    expect(sql.match(/digest\(/g) ?? []).toHaveLength((sql.match(/extensions\.digest\(/g) ?? []).length);
     expect(sql).toContain("auth.jwt()->>'role'");
     expect(sql).not.toContain("auth.role()");
     expect(sql).toContain("security definer set search_path = channelwright, pg_temp");
