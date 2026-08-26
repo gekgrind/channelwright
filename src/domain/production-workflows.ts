@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { originalContributionKindSchema, viewerNeedKindSchema, viewerValueAssessmentSchema, viewerValueProvenanceSchema } from "./viewer-value";
 
-export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF"]);
+export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT"]);
 export type ProductionWorkflowType = z.infer<typeof workflowTypeSchema>;
 
 export const workflowStatusSchema = z.enum(["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL", "BLOCKED", "COMPLETED", "FAILED", "CANCELED"]);
@@ -951,6 +951,223 @@ export const videoBriefRevisionSchema = z.object({
   modelUsage: researchDraftSchema.shape.modelUsage,
 }).strict();
 
+// ---------------------------------------------------------------------------
+// CHANNEL_VIDEO_SCRIPT
+//
+// The first concrete production artifact: it turns one exact approved
+// CHANNEL_VIDEO_BRIEF into a structured, timed, evidence-disciplined script for
+// a single video. Unlike the brief, which deliberately produces no narration,
+// the script stage IS the stage that writes spoken words. It stays bounded to
+// scripting: it produces no final title, no thumbnail copy or imagery, no
+// storyboard or shot list, no generated media (image/voice/video), no upload,
+// and no publishing action. Deterministic QA rejects those as scope violations.
+//
+// It reasons only over evidence already inherited through the approved brief and
+// its upstream chain (zero external retrieval). Every claim the script relies on
+// maps to an evidence-plan claim in the approved brief and inherits that claim's
+// status: a MUST_NOT_CLAIM claim may never become a factual script assertion, and
+// a RESEARCH_REQUIRED (or assumption) claim may never be asserted as established
+// fact.
+//
+// Size discipline: this result becomes a durable step output and the run's
+// `output_payload`, both bounded at 64 KiB by the workflow engine. Narration and
+// collection sizes are capped so a realistic single-video script fits with
+// margin, and deterministic QA additionally rejects an oversized payload before
+// persistence so the failure is a typed QA error rather than PAYLOAD_TOO_LARGE.
+// ---------------------------------------------------------------------------
+
+/** Immutable reference to the exact approved video-brief artifact. */
+export const approvedVideoBriefReferenceSchema = z.object({
+  briefWorkflowId: z.string().uuid(),
+  briefRunId: z.string().uuid(),
+  workflowDefinitionVersion: z.number().int().positive(),
+  outputSchemaVersion: z.literal(1),
+  approvalId: z.string().uuid(),
+  approvedBy: z.string().uuid(),
+  approvedAt: z.string().datetime(),
+  finalQaState: z.enum(["accept", "human_review_required"]),
+  finalQaScore: z.number().int().min(0).max(100),
+  briefArtifactHash: sha256Schema,
+  briefProvenanceHash: sha256Schema,
+  parentRunId: z.string().uuid().nullable(),
+  rootRunId: z.string().uuid(),
+  // Transitive provenance: the video brief already proved its own upstream
+  // content-intelligence artifact, which anchors the whole
+  // RESEARCH -> STRATEGY -> CONTENT -> VIDEO_BRIEF chain. One reference therefore
+  // carries the entire lineage.
+  upstreamContentIntelligence: approvedContentIntelligenceReferenceSchema,
+}).strict();
+
+export const videoScriptRequestInputSchema = z.object({
+  videoBriefWorkflowId: z.string().uuid(),
+  videoBriefRunId: z.string().uuid(),
+}).strict();
+
+export const videoScriptInputSchema = videoScriptRequestInputSchema.extend({
+  approvedVideoBriefReference: approvedVideoBriefReferenceSchema,
+  humanRevisionNote: z.string().trim().min(1).max(2_000).optional(),
+}).strict();
+
+/**
+ * Which brief this script is for, carried from authoritative resolver state. The
+ * inherited Viewer Value provenance is lifted from the approved brief's own
+ * assessment, so a script that silently changes the promise no longer matches
+ * its source contract hash.
+ */
+export const selectedVideoBriefScopeSchema = z.object({
+  briefTopicId: topicIdSchema,
+  pillarId: pillarIdSchema,
+  inheritedViewerValueProvenance: viewerValueProvenanceSchema,
+}).strict();
+
+/** Resolver output: the authoritative approved brief and its inherited evidence. */
+export const approvedVideoBriefArtifactSchema = z.object({
+  reference: approvedVideoBriefReferenceSchema,
+  briefResult: channelVideoBriefResultSchema,
+  discoveryBundle: topicDiscoveryBundleSchema,
+  scope: selectedVideoBriefScopeSchema,
+}).strict();
+
+const scriptSectionIdSchema = z.string().regex(/^scriptsec:[a-z0-9][a-z0-9-]{0,58}$/);
+
+/** Roles mirror the brief's content-architecture beat roles. */
+const scriptSectionRoleSchema = z.enum(["OPENING", "CONTEXT", "CORE", "PROOF", "DEMONSTRATION", "COUNTERPOINT", "RESOLUTION", "PAYOFF", "NEXT_ACTION", "OTHER"]);
+
+/**
+ * How each material claim the script relies on is handled. The inherited status
+ * is the approved brief's own evidence-plan status for that claim; the treatment
+ * is how the narration presents it. Deterministic QA enforces that an unproven
+ * status can never be treated as established fact, and that a MUST_NOT_CLAIM
+ * claim is omitted entirely.
+ */
+export const scriptClaimUsageSchema = z.object({
+  claimId: claimIdSchema,
+  inheritedStatus: z.enum(["SUPPORTED", "STRATEGIC_ASSUMPTION", "PRODUCTION_ASSUMPTION", "RESEARCH_REQUIRED", "MUST_NOT_CLAIM"]),
+  treatment: z.enum(["ASSERTED_AS_FACT", "PRESENTED_AS_HYPOTHESIS", "ATTRIBUTED", "HEDGED", "OMITTED"]),
+  scriptSectionIds: z.array(scriptSectionIdSchema).max(20),
+  rationale: z.string().min(1).max(600),
+}).strict();
+
+/**
+ * The scripted opening. This is real narration, not a strategy note: it is the
+ * hook the viewer will hear. It must keep the approved brief's promise rather
+ * than manufacturing a curiosity gap the video does not pay off.
+ */
+export const scriptOpeningHookSchema = z.object({
+  sectionId: scriptSectionIdSchema,
+  briefBeatId: sectionIdSchema,
+  spokenOpening: z.string().min(1).max(1_500),
+  onScreenText: z.string().min(1).max(300).nullable(),
+  durationSeconds: z.number().int().min(1).max(120),
+  curiosityMechanism: z.string().min(1).max(500),
+  promiseEchoed: z.boolean(),
+  deceptionRisk: z.enum(["none", "low", "material"]),
+  /** Any brief claims the hook itself asserts; each is tracked in claimUsage. */
+  claimIds: z.array(claimIdSchema).max(6),
+}).strict();
+
+/**
+ * One timed script section, mapped to exactly one approved brief content beat.
+ * `narration` is the spoken script; `visualDirection` carries only the visual
+ * intent inherited from the brief, never generated media or a formal shot list.
+ */
+export const scriptSectionSchema = z.object({
+  sectionId: scriptSectionIdSchema,
+  briefBeatId: sectionIdSchema,
+  title: z.string().min(1).max(200),
+  role: scriptSectionRoleSchema,
+  narration: z.string().min(1).max(2_000),
+  onScreenText: z.string().min(1).max(300).nullable(),
+  visualDirection: z.string().min(1).max(400).nullable(),
+  startSeconds: z.number().int().min(0).max(36_000),
+  durationSeconds: z.number().int().min(1).max(3_600),
+  deliversValue: z.string().min(1).max(400),
+  retentionTechnique: z.string().min(1).max(400),
+  claimIds: z.array(claimIdSchema).max(8),
+  evidenceIds: contentEvidenceIdsSchema,
+}).strict();
+
+/** Timing totals. No retention or watch-time prediction: those would be fabrication. */
+export const scriptTimingSchema = z.object({
+  totalDurationSeconds: z.number().int().min(1).max(36_000),
+  estimatedWordCount: z.number().int().min(1).max(20_000),
+  wordsPerMinute: z.number().int().min(60).max(240).nullable(),
+  pacingNote: z.string().min(1).max(500),
+}).strict();
+
+export const scriptCallToActionSchema = z.object({
+  objective: z.enum(["SUBSCRIBE", "COMMENT", "NEXT_VIDEO", "FREE_RESOURCE", "TOOL", "EMAIL_LIST", "PRODUCT", "NONE"]),
+  spokenCta: z.string().min(1).max(600).nullable(),
+  placementSectionId: scriptSectionIdSchema.nullable(),
+  viewerBenefit: z.string().min(1).max(500).nullable(),
+  trustRisk: z.string().min(1).max(500).nullable(),
+}).strict();
+
+export const channelVideoScriptContentSchema = z.object({
+  schemaVersion: z.literal(1),
+  workflowType: z.literal("CHANNEL_VIDEO_SCRIPT"),
+  source: z.object({
+    briefTopicId: topicIdSchema,
+    pillarId: pillarIdSchema,
+    pillarName: z.string().min(1).max(300),
+    workingConcept: z.string().min(1).max(400),
+    /** The promise this script keeps; must match the approved brief's promise. */
+    scriptedPromise: z.string().min(20).max(600),
+    /** The approved brief beats this script covers; every beat must be mapped. */
+    coveredBriefBeatIds: z.array(sectionIdSchema).min(1).max(14),
+  }).strict(),
+  openingHook: scriptOpeningHookSchema,
+  sections: z.array(scriptSectionSchema).min(3).max(14),
+  claimUsage: z.array(scriptClaimUsageSchema).min(1).max(20),
+  timing: scriptTimingSchema,
+  callToAction: scriptCallToActionSchema,
+  /** This stage's own Viewer Value judgement, under the same shared doctrine. */
+  viewerValue: viewerValueAssessmentSchema,
+  evidenceDiscipline: z.object({
+    researchRequiredClaimsDeferred: z.array(claimIdSchema).max(20),
+    mustNotClaimOmitted: z.array(claimIdSchema).max(20),
+    summary: z.string().min(1).max(600),
+  }).strict(),
+  risks: z.array(z.object({
+    risk: z.string().min(1).max(500),
+    severity: z.enum(["high", "medium", "low"]),
+    mitigation: z.string().min(1).max(500).nullable(),
+  }).strict()).min(1).max(10),
+  assumptions: z.array(z.string().min(1).max(400)).min(1).max(12),
+  openQuestions: z.array(z.string().min(1).max(400)).min(1).max(12),
+  recommendedNextAction: z.string().min(1).max(500),
+}).strict();
+
+export const channelVideoScriptResultSchema = channelVideoScriptContentSchema.extend({
+  upstreamVideoBrief: approvedVideoBriefReferenceSchema,
+  scriptScope: selectedVideoBriefScopeSchema,
+  crossModelReview: crossModelReviewSchema.nullable(),
+  // A finalized script is always model-generated: the synthesis step stamps at
+  // least the generator's attribution. An empty trail would mean an artifact
+  // with no accountable author, which must never persist.
+  modelProvenance: z.array(modelAttributionSchema).min(1).max(8),
+}).strict();
+
+export const videoScriptQAFindingSchema = researchQAFindingSchema;
+export const videoScriptQAResultSchema = researchQAResultSchema;
+
+export const videoScriptDraftSchema = z.object({
+  result: channelVideoScriptResultSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+}).strict();
+
+export const videoScriptQAStepSchema = z.object({
+  qa: videoScriptQAResultSchema,
+  crossModelReview: crossModelReviewSchema,
+}).strict();
+
+export const videoScriptRevisionSchema = z.object({
+  attempted: z.boolean(),
+  reason: z.string().min(1).max(1_000),
+  result: channelVideoScriptResultSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+}).strict();
+
 export const channelConceptValidationInputSchema = z.object({
   proposedConcept: z.string().trim().min(20).max(2_000),
   audienceContext: z.string().trim().min(3).max(2_000).optional(),
@@ -968,7 +1185,8 @@ export const workflowStartRequestSchema = z.object({
     : request.workflowType === "CHANNEL_STRATEGY" ? channelStrategyRequestInputSchema
       : request.workflowType === "CHANNEL_CONTENT_INTELLIGENCE" ? contentIntelligenceRequestInputSchema
         : request.workflowType === "CHANNEL_VIDEO_BRIEF" ? videoBriefRequestInputSchema
-          : channelConceptValidationInputSchema;
+          : request.workflowType === "CHANNEL_VIDEO_SCRIPT" ? videoScriptRequestInputSchema
+            : channelConceptValidationInputSchema;
   const parsed = schema.safeParse(request.input);
   if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue, path: ["input", ...issue.path] });
 }).transform((request) => request as
@@ -976,7 +1194,8 @@ export const workflowStartRequestSchema = z.object({
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_RESEARCH"; definitionVersion: 1; input: ChannelResearchInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_STRATEGY"; definitionVersion: 1; input: ChannelStrategyRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_CONTENT_INTELLIGENCE"; definitionVersion: 1; input: ContentIntelligenceRequestInput }
-  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_BRIEF"; definitionVersion: 1; input: VideoBriefRequestInput });
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_BRIEF"; definitionVersion: 1; input: VideoBriefRequestInput }
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_SCRIPT"; definitionVersion: 1; input: VideoScriptRequestInput });
 
 export const workflowApprovalDecisionSchema = z.object({
   decision: z.enum(["APPROVE", "REJECT", "REQUEST_REVISION"]),
@@ -1043,6 +1262,16 @@ export type ChannelVideoBriefResult = z.infer<typeof channelVideoBriefResultSche
 export type VideoBriefQAResult = z.infer<typeof videoBriefQAResultSchema>;
 export type EvidencePlanItem = z.infer<typeof evidencePlanItemSchema>;
 export type ContentBeat = z.infer<typeof contentBeatSchema>;
+export type ApprovedVideoBriefReference = z.infer<typeof approvedVideoBriefReferenceSchema>;
+export type ApprovedVideoBriefArtifact = z.infer<typeof approvedVideoBriefArtifactSchema>;
+export type SelectedVideoBriefScope = z.infer<typeof selectedVideoBriefScopeSchema>;
+export type VideoScriptRequestInput = z.infer<typeof videoScriptRequestInputSchema>;
+export type VideoScriptInput = z.infer<typeof videoScriptInputSchema>;
+export type ChannelVideoScriptContent = z.infer<typeof channelVideoScriptContentSchema>;
+export type ChannelVideoScriptResult = z.infer<typeof channelVideoScriptResultSchema>;
+export type VideoScriptQAResult = z.infer<typeof videoScriptQAResultSchema>;
+export type ScriptSection = z.infer<typeof scriptSectionSchema>;
+export type ScriptClaimUsage = z.infer<typeof scriptClaimUsageSchema>;
 export type WorkflowStartRequest = z.infer<typeof workflowStartRequestSchema>;
 export type WorkflowApprovalDecision = z.infer<typeof workflowApprovalDecisionSchema>;
 
@@ -1151,12 +1380,30 @@ const channelVideoBriefDefinition: WorkflowDefinition<VideoBriefRequestInput, Ch
   ],
 };
 
+const channelVideoScriptDefinition: WorkflowDefinition<VideoScriptRequestInput, ChannelVideoScriptResult> = {
+  type: "CHANNEL_VIDEO_SCRIPT",
+  version: 1,
+  objective: "Turn one exact approved CHANNEL_VIDEO_BRIEF into a viewer-value-gated, evidence-disciplined, independently critiqued, structured and timed script for a single video",
+  inputSchema: videoScriptRequestInputSchema,
+  outputSchema: channelVideoScriptResultSchema,
+  steps: [
+    { key: "validate-approved-brief", kind: "WORKER", capability: "approved-brief-validation", dependsOn: [], maxAttempts: 2, retryBaseSeconds: 5 },
+    { key: "draft-video-script", kind: "WORKER", capability: "video-script-synthesis", dependsOn: ["validate-approved-brief"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "initial-video-script-qa", kind: "WORKER", capability: "independent-video-script-qa", dependsOn: ["draft-video-script"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "bounded-video-script-revision", kind: "WORKER", capability: "video-script-revision", dependsOn: ["initial-video-script-qa"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "final-video-script-qa", kind: "WORKER", capability: "independent-video-script-qa", dependsOn: ["bounded-video-script-revision"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "finalize-video-script", kind: "WORKER", capability: "video-script-finalizer", dependsOn: ["final-video-script-qa"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "review-video-script", kind: "APPROVAL", capability: "human", dependsOn: ["finalize-video-script"], maxAttempts: 1, retryBaseSeconds: 0 },
+  ],
+};
+
 const registry = new Map<string, WorkflowDefinition>([
   [`${channelConceptValidationDefinition.type}:${channelConceptValidationDefinition.version}`, channelConceptValidationDefinition],
   [`${channelResearchDefinition.type}:${channelResearchDefinition.version}`, channelResearchDefinition],
   [`${channelStrategyDefinition.type}:${channelStrategyDefinition.version}`, channelStrategyDefinition],
   [`${channelContentIntelligenceDefinition.type}:${channelContentIntelligenceDefinition.version}`, channelContentIntelligenceDefinition],
   [`${channelVideoBriefDefinition.type}:${channelVideoBriefDefinition.version}`, channelVideoBriefDefinition],
+  [`${channelVideoScriptDefinition.type}:${channelVideoScriptDefinition.version}`, channelVideoScriptDefinition],
 ]);
 
 /** Canonical finalizer per workflow type; its output becomes the run's durable `output_payload`. */
@@ -1166,6 +1413,7 @@ export const WORKFLOW_FINALIZER_STEP: Record<ProductionWorkflowType, string> = {
   CHANNEL_STRATEGY: "finalize-strategy",
   CHANNEL_CONTENT_INTELLIGENCE: "finalize-content-intelligence",
   CHANNEL_VIDEO_BRIEF: "finalize-video-brief",
+  CHANNEL_VIDEO_SCRIPT: "finalize-video-script",
 };
 
 export function getWorkflowDefinition(type: ProductionWorkflowType, version: number) {

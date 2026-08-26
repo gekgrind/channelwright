@@ -19,7 +19,7 @@ export class ModelRoutingError extends Error {
 }
 
 /** Env prefix per workflow family, so roles are configurable independently per workflow. */
-export type RoutingNamespace = "CONTENT" | "RESEARCH" | "STRATEGY" | "VIDEO_BRIEF";
+export type RoutingNamespace = "CONTENT" | "RESEARCH" | "STRATEGY" | "VIDEO_BRIEF" | "VIDEO_SCRIPT";
 
 const ROLE_ENV: Record<ModelRole, string> = {
   GENERATOR: "GENERATOR",

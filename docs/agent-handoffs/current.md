@@ -1,142 +1,181 @@
 ---
 Agent: Claude Code (Opus 4.8)
-Task: Investigate and, if present, repair the documented pgcrypto search-path defect in `channelwright.execute_media_production_action`
-Pre-task HEAD: `ef486a8ce17ef53a6f36e562bad4e19b0b85569b` (branch `main`)
-Verdict: `NOT REPRODUCIBLE — DOCUMENTED ROOT CAUSE IS WRONG; NO MIGRATION WARRANTED`
-Codex re-verification of `3d17237`: `PASS WITH MINOR GAPS` -> `MINOR GAPS CLOSED — READY FOR FINAL CODEX VERIFICATION`
+Task: Implement CHANNEL_VIDEO_SCRIPT as the next provider-backed workflow vertical
+Pre-task HEAD: `0db4c814d4a19a0da5740d2667fe6f15d7a6088f` (branch `main`)
+Verdict: `IMPLEMENTATION COMPLETE — READY FOR INDEPENDENT VERIFICATION`
+Branch: `feat/channel-video-script`
 ---
 
-# Media-Production pgcrypto Search-Path Investigation
+# CHANNEL_VIDEO_SCRIPT Vertical Slice
 
-## Codex Verification & Gap Closure (2026-08-25)
+## Summary
 
-Codex independently verified commit `3d17237b252a6d5a0609ba326d4891c1afa21e8d` with verdict
-**PASS WITH MINOR GAPS**, confirming the central conclusion `NOT REPRODUCIBLE — NO MIGRATION WARRANTED`.
-Two minor precision gaps were identified and are now closed (the central conclusion is unchanged):
+`CHANNEL_VIDEO_SCRIPT` is implemented as the fifth provider-backed Track-A workflow
+vertical and the first concrete production artifact. It consumes exactly one
+approved `CHANNEL_VIDEO_BRIEF`, re-resolved and integrity-checked from
+authoritative database state, and produces a structured, timed, evidence-
+disciplined script for a single video. It reuses — rather than forking — the
+established deterministic-QA + independent-critic + semantic-QA + Viewer-Value +
+bounded-revision + human-approval architecture, and preserves usage accounting,
+provenance, canonicalization, RLS, concurrency, and fail-closed provider routing.
 
-1. **Regression assertion precision** (`src/server/media/media-migration.test.ts`) — the `digest(` vs
-   `extensions.digest(` comparison was case-sensitive and assumed no whitespace before `(`. It is now
-   case-insensitive and whitespace-tolerant (`/\bdigest\s*\(/gi` vs `/\bextensions\s*\.\s*digest\s*\(/gi`),
-   so `DIGEST(...)`, `digest (...)`, and capitalization/whitespace variants of an unqualified call are also
-   caught. Not broadened into SQL parsing.
-2. **Documentation precision** (`docs/video-brief.md`) — the corrected paragraph no longer implies
-   `PGCRYPTO_SCHEMA_UNEXPECTED` continuously monitors the database, and no longer claims pgcrypto relocation
-   is the "only" condition that could affect resolution. It now states the guard validates pgcrypto's
-   expected schema **at apply time** of `202608150002`, that the repository/migration contract expects
-   pgcrypto in `extensions`, and that the function avoids search-path dependency by using
-   `extensions.digest(...)` explicitly.
+The script stage is the stage that writes spoken narration (unlike the brief,
+which deliberately writes none). It stays bounded to scripting: deterministic QA
+rejects final titles, thumbnail copy/imagery, storyboards/shot lists, generated
+media (image/voice/video), uploads, and publishing as scope violations, while
+allowing spoken narration, on-screen text, and inherited prose visual direction.
 
-Central conclusion after gap closure: **unchanged** — `execute_media_production_action` has no search-path
-defect and requires no `ALTER FUNCTION` migration.
-
-## Verdict
-
-**NOT REPRODUCIBLE.** The documented defect does not exist. `channelwright.execute_media_production_action`
-calls pgcrypto **schema-qualified** as `extensions.digest(...)`, which resolves independently of the
-function's `search_path`. No forward migration was created (a Phase-1 STOP condition: the documented root
-cause is wrong). Two low-risk corrections were made instead: the false doc claim was fixed and the existing
-guard test was hardened.
-
-## Repository Truth
-
-- Worktree: `C:\DevProjects\channelwright`
-- Branch created: `fix/media-production-pgcrypto-search-path` (from `main`)
-- Pre-task HEAD: `ef486a8ce17ef53a6f36e562bad4e19b0b85569b`
-- Status before edits: clean
-- Ancestry confirmed: `ac7c409` (video-brief contracts) and `b5adf25` (resolver pgcrypto repair) are both
-  ancestors of HEAD (`git merge-base --is-ancestor` exit 0). The prior CHANNEL_VIDEO_BRIEF work is merged.
-- No unexpected user modifications were present.
-
-## Defect Verification
-
-- **Function signature:** `channelwright.execute_media_production_action(text, text, jsonb)`
-  (`p_idempotency_key text, p_input_fingerprint text, p_action jsonb`).
-- **Defined in:** `supabase/migrations/202608110001_media_production_pipeline.sql:322` — the only definition;
-  no later migration recreates or `ALTER`s it.
-- **Current search_path:** `channelwright, pg_temp` (narrow; `extensions` deliberately excluded).
-- **pgcrypto usage:** exactly one call, `extensions.digest((p_action->'renderInput')::text, 'sha256')` at
-  line 357 — **schema-qualified**. `grep` proves it is the only `digest(` in the file and it is
-  `extensions.digest(`.
-- **Root-cause evidence:** A schema-qualified reference bypasses `search_path` entirely, so the narrow
-  setting cannot break it. `git log -L 357,357` shows the call was born schema-qualified in the migration's
-  first commit (`602b14b`) and has never changed — it never had the resolver-style defect. The resolvers
-  repaired in `202608150002` used **unqualified** `digest()`; this function never did.
-- **Why the doc was wrong:** the media pipeline (authored in `602b14b`) qualifies pgcrypto calls, whereas
-  the later strategy/content/video-brief resolvers used unqualified calls. The prior handoff assumed "the
-  same" pattern without inspecting line 357.
-
-## Implementation
-
-- **Migration added:** NONE. Creating `ALTER FUNCTION ... SET search_path = channelwright, extensions,
-  pg_temp` would widen a hardened search_path for zero benefit (the call is already qualified) and is
-  explicitly discouraged by the task. Correctly not done.
-
-## Regression Coverage
-
-- `src/server/media/media-migration.test.ts` already asserted `extensions.digest` is present and that the
-  narrow `search_path = channelwright, pg_temp` is preserved. **Hardened** it so a future *unqualified*
-  `digest(` cannot silently reintroduce the resolver defect: it now asserts every `digest(` occurrence is an
-  `extensions.digest(` (count parity). This pins the exact invariant that keeps the function immune.
-- `execute_media_production_action` itself avoids any search-path dependency by calling
-  `extensions.digest(...)` explicitly. The repository/migration contract expects pgcrypto to live in the
-  `extensions` schema, and `202608150002_extension_search_path.sql` validates that expectation **at apply
-  time** — it raises `PGCRYPTO_SCHEMA_UNEXPECTED` if pgcrypto is not in `extensions` when that migration
-  runs. This is apply-time validation, not continuous monitoring, and a schema relocation is not the only
-  theoretical way digest resolution could break; for this function specifically, the explicit qualification
-  is what removes the risk.
+Every material claim maps to a claim in the approved brief's evidence plan and
+inherits that claim's status. `MUST_NOT_CLAIM` material is omitted; `RESEARCH_
+REQUIRED` / assumption material is never asserted as established fact. No external
+evidence retrieval is performed — the accounting ceilings for provider requests,
+quota, and searches are fixed at zero, exactly like `CHANNEL_STRATEGY` and
+`CHANNEL_VIDEO_BRIEF`.
 
 ## Files Changed
 
-- `docs/video-brief.md` — replaced the false "remaining defect" paragraph (line 138) with the corrected
-  finding (function is not defective; schema-qualified; no ALTER needed).
-- `src/server/media/media-migration.test.ts` — hardened the pgcrypto-qualification assertion (test only).
-- `docs/agent-handoffs/current.md` — this handoff.
-- `docs/agent-handoffs/archive/2026-08-24-claude-video-brief-coverage-closure.md` — prior handoff, archived.
+### Domain / contracts
+- `src/domain/production-workflows.ts` — added the `CHANNEL_VIDEO_SCRIPT` workflow
+  type; `approvedVideoBriefReferenceSchema`, `videoScriptRequestInputSchema`
+  (identifiers-only), `videoScriptInputSchema`, `selectedVideoBriefScopeSchema`,
+  `approvedVideoBriefArtifactSchema`, the script content/result/QA/draft/revision
+  schemas (opening hook, timed sections mapped to brief beats, claim usage,
+  timing, CTA, evidence discipline, Viewer Value), the workflow definition
+  (7 steps), registry entry, finalizer-map entry, start-request union + refine,
+  and the exported types.
 
-No production runtime code and no migration files were modified.
+### Workflow / executor / model / validation / provider routing
+- `src/server/workflows/video-script-config.ts` — zero-retrieval budget + bounded
+  model ceilings.
+- `src/server/workflows/approved-brief-resolver.ts` — trusted upstream resolver
+  (`resolve_approved_video_brief_artifact`) with canonical drift detection.
+- `src/server/workflows/video-script-model.ts` — provider-neutral model boundary
+  (`draftScript`/`critique`/`reviseScript`/`qa`), reserve-before-call accounting,
+  conservative settlement on failure, `VIDEO_SCRIPT` role namespace.
+- `src/server/workflows/video-script-validation.ts` — deterministic validation
+  (34 rules), QA merge, unrevisable classification, revision-regression guard.
+- `src/server/workflows/video-script-executor.ts` — 6 worker steps + finalization,
+  identity/provenance stamped server-side, bounded single revision.
+- `src/server/workflows/workflow-worker.ts` — registered the executor and added
+  the VIDEO_SCRIPT terminal error messages.
+- `src/server/workflows/research-usage.ts` — `VIDEO_SCRIPT_RESOURCE_BUDGET_EXHAUSTED`.
+- `src/server/ai/role-router.ts` — `VIDEO_SCRIPT` routing namespace (fails closed).
+- `src/server/workflows/production-workflow-repository.ts` — `VIDEO_SCRIPT_LIMIT_REACHED`
+  and `UPSTREAM_BRIEF_INVALID` typed error mapping.
+- `src/app/api/workflows/route.ts` — added VIDEO_SCRIPT to the idempotency-required
+  paid-workflow list.
+
+### Database / migrations
+- `supabase/migrations/202608160001_video_script.sql` — forward-only migration.
+
+### Studio
+- `src/features/studio/video-script-workspace.tsx` — new workspace.
+- `src/features/studio/studio-app.tsx` — mounted after the video-brief workspace.
+
+### Tests / gates
+- `src/server/workflows/video-script-fixtures.test-helper.ts`
+- `src/server/workflows/video-script-validation.test.ts` (30)
+- `src/server/workflows/video-script-executor.test.ts` (26)
+- `src/server/workflows/video-script-migration.test.ts` (24)
+- `src/domain/video-script-doctrine.test.ts` (9)
+- `src/features/studio/video-script-workspace.test.tsx` (9)
+- `src/domain/production-workflows.test.ts` — added VIDEO_SCRIPT registry/contract
+  coverage.
+- `src/server/workflows/video-brief-migration.test.ts` — updated the "last
+  migration file" assertion to point at the new forward migration (test-only).
+- `scripts/channel-video-script-persisted-live.ts` + `package.json`
+  (`gate:videoscript:persisted`).
+
+### Documentation / handoff
+- `.env.example` — VIDEO_SCRIPT routing + config block.
+- `docs/agent-handoffs/current.md` — this handoff.
+- `docs/agent-handoffs/archive/2026-08-25-claude-pgcrypto-search-path-investigation.md`
+  — prior handoff, archived.
+
+## Database Migration
+
+`202608160001_video_script.sql` is additive and forward-only; no previously
+applied migration is edited. It establishes:
+
+- Both `workflow_type` check constraints extended to include `CHANNEL_VIDEO_SCRIPT`.
+- `workflow_runs_active_video_script_uniq`: one active script run per owner per
+  approved brief run, excluding `BLOCKED` so a human-revision successor stays legal.
+- `resolve_approved_video_brief_artifact(uuid,uuid)`: security-definer resolver
+  that verifies ownership (cross-owner → NOT_FOUND, non-enumerable), terminal +
+  human-approved state, finalizer/output agreement, final-QA pass, provenance
+  (`validate-approved-content`) with a non-empty discovery bundle, agreement with
+  the brief's own upstream content reference, recomputed artifact/provenance
+  hashes, lineage, and Viewer-Value PASS eligibility; derives the inherited
+  Viewer-Value provenance with a canonical `channelwright.canonical_jsonb_text`
+  SHA-256 over the brief's viewer-value contract.
+- `start_workflow`, `complete_workflow_step`, `decide_workflow_approval`,
+  `ensure_research_run_budget` recreated with the VIDEO_SCRIPT branch/case added;
+  all earlier branches reproduced verbatim. `decide_workflow_approval` and the new
+  resolver keep `search_path = channelwright, extensions, pg_temp` (they call
+  `digest()`); the others keep the narrow `channelwright, pg_temp`. `public` is
+  excluded everywhere. This preserves the 202608150002 search-path repair without
+  a follow-up migration.
+- Owner-scoped grants; worker mutations remain service-role only.
+
+**Applied anywhere: NO.** No migration was applied to shared or production
+Supabase.
 
 ## Verification Results
 
-- Targeted: `npx vitest run src/server/media/media-migration.test.ts` -> PASS (2 files, 12 tests).
-- Typecheck: `npm run typecheck` -> PASS (clean).
-- Lint: `npm run lint` -> 0 errors (2 pre-existing warnings in an unrelated `.claude/worktrees/...` path,
-  not in changed files).
-- Full suite: `npm test` -> PASS (116 files, 834 tests).
-- Disposable Postgres / live gate: NOT run. Static + repository evidence is conclusive (schema-qualified
-  call), and the task defaults to local/static/disposable verification only. No shared Supabase mutation.
+- Targeted: `video-script-validation` (30), `video-script-executor` (26),
+  `video-script-migration` (24), `video-brief-migration` (still green),
+  `video-script-doctrine` (9), `video-script-workspace` (9),
+  `production-workflows` — all PASS.
+- Full suite: `npm test` → PASS, **121 files, 932 tests** (was 116/834).
+- Typecheck: `npm run typecheck` → clean (includes `scripts/**` via `**/*.ts`).
+- Lint: `npm run lint` → 0 errors (2 pre-existing warnings in an unrelated
+  `.claude/worktrees/...` path, not in changed files).
+- Build: `npm run build` → success.
+- Persisted DB gate (`gate:videoscript:persisted`): **NOT run.** It targets the
+  shared Supabase project and would create/delete records there; the task forbids
+  mutating shared/production infrastructure and no disposable Postgres is
+  configured locally. The script is written, typechecks, and is ready for an
+  operator to run against a disposable/branch database.
 
-## Database / External Actions
+## Invariants Verified
 
-None. No shared Supabase mutation, no migration applied, no paid-provider calls, nothing pushed or deployed.
+- **Approved-brief trust boundary**: public start contract is identifiers-only
+  (exactly `videoBriefWorkflowId` + `videoBriefRunId`); the reference, discovery
+  bundle, topic, and Viewer-Value provenance are resolved server-side and the
+  worker re-resolves + canonically compares at the first step.
+- **Provenance/hash integrity**: artifact and provenance hashes recomputed and
+  compared in SQL; canonical contract hash for inherited Viewer Value.
+- **Evidence/claim integrity**: inherited status enforced; MUST_NOT_CLAIM omitted;
+  RESEARCH_REQUIRED/assumptions never asserted as fact; citations bounded to the
+  inherited discovery bundle; fabrication regexes for views/revenue/search/retention.
+- **Viewer Value**: shared doctrine + deterministic floor gate re-run at this
+  stage; model cannot understate the gate.
+- **Bounded revision**: exactly one automated revision; integrity failures fail
+  closed; a revision that introduces new deterministic errors is discarded.
+- **Accounting**: reserve-before-call, conservative settlement on failure, zero
+  retrieval enforced in DB and config, typed exhaustion code.
+- **Zero retrieval**: provider/quota/search ceilings fixed at 0.
+- **RLS / owner isolation**: unchanged; cross-owner resolution is NOT_FOUND.
+- **Concurrency**: explicit guard + transactional unique index on the brief run.
+- **Provider fail-closed**: VIDEO_SCRIPT namespace has no default model; an
+  unconfigured role throws `AI_MODEL_NOT_CONFIGURED` before any reservation.
 
-## Commit
+## Remaining Verification (operator / live infrastructure)
 
-Committed on `fix/media-production-pgcrypto-search-path`. Resolve the exact SHA with
-`git rev-parse fix/media-production-pgcrypto-search-path`. Not merged, not pushed.
+1. `npm run gate:videoscript:persisted` against a disposable/branch Supabase.
+2. Apply `202608160001_video_script.sql` to shared Supabase (operator-gated).
+3. Live OpenAI+Anthropic end-to-end run once `VIDEO_SCRIPT_*` model env vars are
+   configured (same live-provider gap as VIDEO_BRIEF; out of scope here).
 
-## Exact Instructions for Independent Codex Verification
+## Scope Confirmation
 
-1. Repository truth:
-   - `git merge-base --is-ancestor ac7c409 HEAD` and `... b5adf25 HEAD` -> both exit 0.
-2. Prove the function is not defective:
-   - `grep -nE "digest\(" supabase/migrations/202608110001_media_production_pipeline.sql` -> the only match
-     is line 357 and it is `extensions.digest(` (schema-qualified).
-   - `git log -L 357,357:supabase/migrations/202608110001_media_production_pipeline.sql` -> the call was
-     introduced schema-qualified in `602b14b` and never altered.
-   - Confirm the function's header (`202608110001_...:326`) is
-     `security definer set search_path = channelwright, pg_temp` and that no later migration `ALTER`s or
-     recreates `execute_media_production_action` (`grep -rn execute_media_production_action supabase/migrations`).
-   - Reason: a schema-qualified identifier bypasses `search_path`, so the narrow setting cannot break it.
-3. Confirm no migration was added: `git diff --name-only main..HEAD -- supabase/migrations` -> empty.
-4. Confirm the regression guard: in `src/server/media/media-migration.test.ts`, the pgcrypto test asserts
-   `digest(` count equals `extensions.digest(` count.
-5. Re-run gates: `npx vitest run src/server/media/media-migration.test.ts`, `npm run typecheck`,
-   `npm run lint`, `npm test`. Report exact pass/fail counts.
+No packaging, storyboard, rendering, media/image/voice/video generation, upload,
+publishing, analytics, distribution, or Track-B media-pipeline bridging was added.
 
-## Remaining Media-Pipeline Findings
+## Independent Verification Handoff
 
-None newly discovered in scope. The media-production function chain (`claim_render_job`,
-`heartbeat_render_job`, etc.) uses `gen_random_uuid()` (a `pg_catalog` builtin, not pgcrypto) and
-schema-qualified `extensions.digest`, so none carry the resolver-style search-path risk. Live provider and
-browser execution for the VIDEO_BRIEF slice remain blocked on model routing config (documented in
-`docs/video-brief.md`), unchanged by this task.
+- Branch `feat/channel-video-script`; pre-task HEAD `0db4c81`. Resolve the
+  implementation commit SHA with `git rev-parse feat/channel-video-script`.
+- Re-run: `npm run typecheck`, `npm test`, `npm run lint`, `npm run build`.
+- Confirm forward-only discipline: `git diff --name-only main..HEAD -- supabase/migrations`
+  lists only `202608160001_video_script.sql`.
