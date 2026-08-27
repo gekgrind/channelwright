@@ -112,6 +112,25 @@ export class EnvironmentRoleRouter implements RoleRouter {
   }
 }
 
+/**
+ * Fails closed when two roles that must be served by independent providers
+ * resolve to the same one. The multi-model architecture requires the critic to
+ * be a different provider than the generator (docs/multi-model-architecture.md);
+ * without this, an unconfigured deployment silently defaults both to openai,
+ * collapsing the independent-critique signal. `describe` throws AI_MODEL_NOT_
+ * CONFIGURED first if a role has no model, preserving the existing fail-closed
+ * behaviour for missing configuration.
+ */
+export function assertDistinctRoleProviders(router: RoleRouter, roleA: ModelRole, roleB: ModelRole) {
+  const [a, b] = router.describe([roleA, roleB]);
+  if (a.provider === b.provider) {
+    throw new ModelRoutingError(
+      "AI_PROVIDER_INDEPENDENCE_REQUIRED",
+      `${roleA} and ${roleB} must resolve to different providers for independent cross-model review, but both resolved to ${a.provider}. Configure distinct providers (e.g. one openai, one anthropic).`,
+    );
+  }
+}
+
 /** Fixed router for tests and for the live verification scripts. */
 export class StaticRoleRouter implements RoleRouter {
   constructor(private readonly assignments: Partial<Record<ModelRole, StructuredModelProvider>>, private readonly fallback?: StructuredModelProvider) {}

@@ -263,14 +263,18 @@ async function main() {
     });
     const budgetRun = (await db.query<{ id: string }>(
       "select id from channelwright.workflow_runs where owner_id = $1 and workflow_type = 'CHANNEL_VIDEO_SCRIPT' limit 1", [ownerA])).rows[0].id;
+    // Budget ceiling validation runs BEFORE the lease check, so a nonzero-retrieval
+    // budget must be rejected specifically with VALIDATION_ERROR — never merely
+    // LEASE_NOT_ACTIVE, which would mean ceiling validation was skipped and the
+    // invariant was not actually proven.
     const nonZero = await expectFailure(db, null,
       "select channelwright.ensure_research_run_budget($1,$2,$3,$4,$5::jsonb)", [budgetRun, randomUUID(), randomUUID(), "gate", limits(4)]);
-    record("video script budget declaring external retrieval is rejected",
-      nonZero.includes("VALIDATION_ERROR") || nonZero.includes("LEASE_NOT_ACTIVE"), nonZero.split("\n")[0].slice(0, 120));
+    record("video script budget declaring external retrieval is rejected by ceiling validation",
+      nonZero.includes("VALIDATION_ERROR") && !nonZero.includes("LEASE_NOT_ACTIVE"), nonZero.split("\n")[0].slice(0, 160));
     const zero = await expectFailure(db, null,
       "select channelwright.ensure_research_run_budget($1,$2,$3,$4,$5::jsonb)", [budgetRun, randomUUID(), randomUUID(), "gate", limits(0)]);
-    record("zero-retrieval video script budget passes ceiling validation",
-      zero.includes("LEASE_NOT_ACTIVE") && !zero.includes("VALIDATION_ERROR"), zero.split("\n")[0].slice(0, 120));
+    record("zero-retrieval video script budget passes ceiling validation (fails only on lease)",
+      zero.includes("LEASE_NOT_ACTIVE") && !zero.includes("VALIDATION_ERROR"), zero.split("\n")[0].slice(0, 160));
 
     // --- All resolvers and finalizer promotion still hold -----------------
     const resolvers = await db.query<{ count: string }>(
@@ -285,18 +289,23 @@ async function main() {
     record("service-role guard preserved in complete_workflow_step", source.includes("service_role"));
     record("context_payload write preserved for priorOutputs", source.includes("context_payload"));
   } finally {
+    // Cleanup must be proven, not assumed. A failed delete is recorded (not
+    // swallowed), and every owner-scoped table the gate writes is verified empty.
+    const OWNED_TABLES = ["research_usage_operations", "research_run_budgets", "workflow_events", "workflow_approvals", "workflow_step_attempts", "workflow_steps", "workflow_runs", "workflows"];
+    const deleteErrors: string[] = [];
     for (const owner of [ownerA, ownerB]) {
-      for (const table of ["research_usage_operations", "research_run_budgets", "workflow_events", "workflow_approvals", "workflow_step_attempts", "workflow_steps", "workflow_runs", "workflows"]) {
-        await db.query(`delete from channelwright.${table} where owner_id = $1`, [owner]).catch(() => undefined);
+      for (const table of OWNED_TABLES) {
+        try { await db.query(`delete from channelwright.${table} where owner_id = $1`, [owner]); }
+        catch (error) { deleteErrors.push(`${table}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`); }
       }
     }
-    const remaining = await db.query<{ count: string }>(`select (
-      (select count(*) from channelwright.workflows where owner_id = any($1)) +
-      (select count(*) from channelwright.workflow_runs where owner_id = any($1)) +
-      (select count(*) from channelwright.workflow_steps where owner_id = any($1)) +
-      (select count(*) from channelwright.workflow_approvals where owner_id = any($1))
-    )::text as count`, [[ownerA, ownerB]]);
-    record("gate removed every record it created", remaining.rows[0].count === "0", `remaining=${remaining.rows[0].count}`);
+    record("cleanup deletes ran without error on every owned table", deleteErrors.length === 0, deleteErrors.join("; ").slice(0, 200));
+    const counts = await db.query<Record<string, string>>(
+      `select ${OWNED_TABLES.map((t) => `(select count(*) from channelwright.${t} where owner_id = any($1))::int as ${t}`).join(", ")}`,
+      [[ownerA, ownerB]]);
+    const leftovers = Object.entries(counts.rows[0]).filter(([, n]) => Number(n) !== 0);
+    record("gate removed every record it created across all owned tables", leftovers.length === 0,
+      leftovers.length ? leftovers.map(([t, n]) => `${t}=${n}`).join(", ") : "all owned tables empty");
     for (const owner of [ownerA, ownerB]) {
       const deleted = await admin.auth.admin.deleteUser(owner, false);
       if (deleted.error) record(`temporary owner ${owner.slice(0, 8)} deleted`, false, deleted.error.message);

@@ -1,12 +1,126 @@
 ---
 Agent: Claude Code (Opus 4.8)
-Task: Implement CHANNEL_VIDEO_SCRIPT as the next provider-backed workflow vertical
-Pre-task HEAD: `0db4c814d4a19a0da5740d2667fe6f15d7a6088f` (branch `main`)
-Verdict: `IMPLEMENTATION COMPLETE — READY FOR INDEPENDENT VERIFICATION`
+Task: Repair CHANNEL_VIDEO_SCRIPT after Codex verification, then hand back for re-verification
+Base: `0db4c814d4a19a0da5740d2667fe6f15d7a6088f` (branch `main`)
+Original implementation commit: `a7d88f2b08e1811bcecc4e2bb660726429657143`
+Repair commit: see `git rev-parse feat/channel-video-script` (added after this handoff)
+Verdict: `REPAIRS COMPLETE — READY FOR RE-VERIFICATION`
 Branch: `feat/channel-video-script`
 ---
 
-# CHANNEL_VIDEO_SCRIPT Vertical Slice
+# CHANNEL_VIDEO_SCRIPT Repair Pass (Codex NOT READY FOR MERGE → repaired)
+
+Codex verified `a7d88f2` as structurally sound but NOT READY FOR MERGE. All eight
+findings were independently reproduced against the repository and repaired.
+
+## Defects reproduced and repaired
+
+1. **BLOCKING — approved-artifact immutability incomplete.** Reproduced: the
+   shared triggers (`protect_final_research_artifact` / `_step_output`, current
+   definition in `202608140003`) allow-listed only RESEARCH/STRATEGY/
+   CONTENT_INTELLIGENCE, so approved VIDEO_BRIEF and VIDEO_SCRIPT run payloads and
+   finalized step outputs could be rewritten (and their hashes re-stamped) by a
+   privileged write. Fix: forward migration `202608160002_video_immutability.sql`
+   recreates both shared functions with the allow-list widened to include
+   `CHANNEL_VIDEO_BRIEF` and `CHANNEL_VIDEO_SCRIPT` (triggers bind by name, so no
+   trigger/behaviour change for the earlier verticals). Runtime-proven by the new
+   disposable-PostgreSQL gate (see below) — not only source-text.
+
+2. **BLOCKING — Viewer Value REVISE could finalize.** Reproduced: the deterministic
+   `VIEWER_VALUE_GATE_REVISION_REQUIRED` was a warning, so merged QA could still
+   report `passed=true`/`accept` and finalization succeeded. Fix: it is now an
+   `error` in `deterministicVideoScriptValidation`, so it forces the bounded
+   revision and, if still REVISE at final QA, the finalizer refuses to advance it
+   (`VIDEO_SCRIPT_QA_REJECTED`). It is deliberately NOT in the unrevisable set so
+   the one bounded revision still gets a chance. Regressions cover pre-revision and
+   post-revision/finalization.
+
+3. **MAJOR — claim integrity detached from narration.** Reproduced: forbidden
+   claim narrated with empty `claimIds` produced no finding. Fix keys off the
+   trusted brief evidence plan, not model metadata: (a) `CLAIM_USAGE_INCOMPLETE`
+   requires every brief evidence-plan claim to be accounted for in `claimUsage`
+   (a forbidden/unproven claim can no longer be silently omitted from metadata);
+   (b) existing `FORBIDDEN_CLAIM_NOT_OMITTED` therefore now always applies to
+   MUST_NOT_CLAIM claims; (c) a deterministic `UNSUPPORTED_OUTCOME_GUARANTEE`
+   backstop over the narration catches the absolute-guarantee language family
+   (marked unrevisable). SUPPORTED / RESEARCH_REQUIRED / MUST_NOT_CLAIM semantics
+   preserved. Residual paraphrase-in-prose detection remains the independent
+   semantic critic's job (a different provider — now enforced, see #5); this is
+   documented, not pretended to be solved by regex.
+
+4. **MAJOR — Studio showed the wrong run's QA.** Reproduced: final QA was found
+   across all returned steps. Fix: `video-script-workspace.tsx` scopes the QA step
+   lookup to `currentRun.id`, so a predecessor run's QA can never appear beside the
+   successor script. Regression covers predecessor + successor with different QA.
+
+5. **MAJOR — cross-provider critic independence not enforced.** Repository evidence
+   (`docs/multi-model-architecture.md` line 15) states cross-model critique must be
+   a different provider than the generator, but nothing enforced it and provider
+   resolution defaults both to openai when unset. Fix: new shared
+   `assertDistinctRoleProviders(router, "GENERATOR", "CRITIC")` (typed
+   `AI_PROVIDER_INDEPENDENCE_REQUIRED`), called in the VIDEO_SCRIPT executor before
+   any spend; missing-model config still fails closed first with
+   `AI_MODEL_NOT_CONFIGURED`. Scoped to VIDEO_SCRIPT to avoid changing the other
+   verticals' behaviour (see Remaining/Note).
+
+6. **MAJOR — no safe disposable PostgreSQL runtime gate.** Added
+   `scripts/channel-video-script-disposable-pg.ts`
+   (`npm run gate:videoscript:disposable-pg`): creates a throwaway database on a
+   disposable server, installs a minimal Supabase shim (roles, auth/extensions/
+   storage, pgcrypto, auth.uid/jwt), applies the full migration chain from scratch,
+   runtime-proves pgcrypto resolution, resolver trust boundary, RLS, immutability
+   (incl. the new VIDEO_BRIEF/VIDEO_SCRIPT coverage AND a RESEARCH no-regression
+   check), concurrency, canonical parity, and zero-retrieval accounting, then drops
+   the database. Never touches shared Supabase; no paid providers. Reports
+   `UNAVAILABLE` (exit 2) rather than passing when no server is reachable.
+
+7. **Persisted-gate false confidence.** In `channel-video-script-persisted-live.ts`:
+   cleanup no longer swallows delete errors and now verifies **every** owned table
+   is empty; the nonzero-retrieval assertion now requires `VALIDATION_ERROR` (and
+   rejects `LEASE_NOT_ACTIVE`), proving budget validation rejected it for the right
+   reason.
+
+8. **MINOR — content-architecture mapping consistency.** The contract states the
+   scripted promise "must match" the brief and `coveredBriefBeatIds` is the beats
+   covered. `SCRIPTED_PROMISE_DIVERGES` is now an error (was a warning), and a new
+   `SOURCE_COVERAGE_MISMATCH` requires the declared covered beats to equal the
+   beats the sections actually map to. Section-role-vs-beat-role divergence is left
+   permitted (multiple sections may map one beat with differing narrative roles;
+   no contract claims exact role equality).
+
+## Verification results (this repair)
+
+- Focused VIDEO_SCRIPT + role-router + workspace + migration + doctrine tests: PASS.
+- Full `npm test`: **121 files, 951 tests, 0 failures** (clean run).
+- `npm run typecheck`: clean. `npm run lint`: 0 errors (2 pre-existing warnings in
+  an unrelated `.claude/worktrees/...` path). `npm run build`: success.
+- `npm run gate:videoscript:disposable-pg`: **not executed in the repair session**
+  — no PostgreSQL/Docker/pg-mem available here; it reported `UNAVAILABLE` cleanly.
+  It is implemented and ready; the re-verifier must run it on a host with a
+  disposable PostgreSQL to obtain the runtime immutability/resolver/RLS/concurrency
+  evidence. This is the one merge-blocking item that could not be produced here.
+
+## New forward migrations
+
+- `202608160002_video_immutability.sql` — recreates the two shared
+  `protect_final_*` functions with VIDEO_BRIEF + VIDEO_SCRIPT added to the
+  allow-list. No trigger recreation, no unrelated schema touched, functions stay
+  privileged. **No migration was applied to shared or production Supabase.**
+
+## Remaining verification
+
+- **Merge-blocking:** run `gate:videoscript:disposable-pg` on a host with a
+  disposable PostgreSQL (unavailable in the repair session).
+- **Operator/live:** live OpenAI+Anthropic run once `VIDEO_SCRIPT_*` env is set;
+  applying migrations to shared Supabase; deployed-worker verification.
+- **Note (out of scope):** the same immutability allow-list gap and the same
+  Studio-QA/`REVISE`-warning/provider-independence patterns exist latently in the
+  earlier verticals (RESEARCH/STRATEGY/CONTENT/VIDEO_BRIEF). Only VIDEO_SCRIPT was
+  in scope; #1's migration fix already extends immutability to VIDEO_BRIEF too.
+
+---
+
+# CHANNEL_VIDEO_SCRIPT Vertical Slice (original implementation, `a7d88f2`)
 
 ## Summary
 

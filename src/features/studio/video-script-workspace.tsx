@@ -141,7 +141,9 @@ export function VideoScriptWorkspace({ initial }: { initial?: WorkflowList }) {
 
   const currentRun = detail?.runs.find((run) => run.id === detail.workflow.current_run_id) ?? detail?.runs[0];
   const script = safeScript(currentRun?.output_payload);
-  const finalQa = safeQa(detail?.steps.find((step) => step.step_key === "final-video-script-qa")?.output_payload);
+  // Scope QA to the current run: after a revision the step collection also holds
+  // the predecessor run's final QA, which must not appear beside the new script.
+  const finalQa = safeQa(detail?.steps.find((step) => step.workflow_run_id === currentRun?.id && step.step_key === "final-video-script-qa")?.output_payload);
   const pendingApproval = detail?.approvals.find((item) => item.status === "PENDING");
 
   return (

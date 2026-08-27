@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 const read = (name: string) => readFileSync(resolve(process.cwd(), "supabase/migrations", name), "utf8").toLowerCase();
 const brief = read("202608150001_video_brief.sql");
 const migration = read("202608160001_video_script.sql");
+const immutability = read("202608160002_video_immutability.sql");
 
 describe("CHANNEL_VIDEO_SCRIPT migration", () => {
   it("stays inside the isolated schema and touches no unrelated schema", () => {
@@ -179,6 +180,35 @@ describe("forward-only migration discipline", () => {
   it("orders after the video-brief search-path repair", () => {
     const files = readdirSync(resolve(process.cwd(), "supabase/migrations")).sort();
     expect(files.indexOf("202608160001_video_script.sql")).toBeGreaterThan(files.indexOf("202608150002_extension_search_path.sql"));
-    expect(files[files.length - 1]).toBe("202608160001_video_script.sql");
+    expect(files.indexOf("202608160002_video_immutability.sql")).toBeGreaterThan(files.indexOf("202608160001_video_script.sql"));
+    expect(files[files.length - 1]).toBe("202608160002_video_immutability.sql");
+  });
+});
+
+describe("CHANNEL_VIDEO immutability migration (defect #1)", () => {
+  it("extends both protect functions to VIDEO_BRIEF and VIDEO_SCRIPT", () => {
+    expect(immutability).toContain("create or replace function channelwright.protect_final_research_artifact");
+    expect(immutability).toContain("create or replace function channelwright.protect_final_research_step_output");
+    // Both functions must now allow-list all five paid workflow types.
+    const allowLists = immutability.match(/'channel_research','channel_strategy','channel_content_intelligence','channel_video_brief','channel_video_script'/g) ?? [];
+    expect(allowLists.length).toBe(2);
+  });
+
+  it("does not recreate the triggers (they bind by name) or touch unrelated schema", () => {
+    expect(immutability).not.toMatch(/create trigger/);
+    expect(immutability).not.toMatch(/(?:create|alter|drop) table public\./);
+    expect(immutability).not.toMatch(/create or replace function channelwright\.start_workflow/);
+  });
+
+  it("keeps the protect functions privileged (no direct grants to app roles)", () => {
+    expect(immutability).toContain("revoke all on function channelwright.protect_final_research_artifact() from public, anon, authenticated");
+    expect(immutability).toContain("revoke all on function channelwright.protect_final_research_step_output() from public, anon, authenticated");
+    expect(immutability).not.toMatch(/grant[^;]*to (?:anon|authenticated)/);
+  });
+
+  it("does not edit the previously applied content-intelligence definition", () => {
+    // 202608140003 remains the applied source that only covered three types.
+    const content = read("202608140003_content_intelligence.sql");
+    expect(content).not.toContain("channel_video_script");
   });
 });

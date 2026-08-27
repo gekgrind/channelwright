@@ -269,6 +269,31 @@ describe("video script executor", () => {
         .rejects.toThrow(/Final QA did not accept/);
     });
 
+    it("blocks finalization when the final-stage Viewer Value floor requires revision (defect #2)", async () => {
+      const reviseFloor = viewerValueFixture({
+        contract: { ...viewerValueFixture().contract, differentiation: { verdict: "weak", rationale: "Thin.", evidenceIds: [] } },
+        gate: "REVISE", gateReasons: ["Differentiation is weak."],
+      });
+      const stuck = videoScriptResultFixture({ viewerValue: reviseFloor });
+      const executor = new ChannelVideoScriptExecutor(resolver(), model(), meter());
+      // Final QA over a REVISE-floor result must not pass...
+      const finalQa = await executor.execute(step("final-video-script-qa", {
+        "validate-approved-brief": approvedVideoBriefArtifactFixture,
+        "draft-video-script": { result: stuck, modelUsage: usage },
+        "initial-video-script-qa": { qa: { passed: false, score: 60, findings: [], recommendation: "revise", deterministicChecksPassed: 36, deterministicChecksFailed: 1, modelUsage: usage }, crossModelReview: { generator: attribution("GENERATOR", "openai", "video_script_synthesis"), critic: null, outcome: "AGREED", findings: [], summary: "x" } },
+        "bounded-video-script-revision": { attempted: true, reason: "tried", result: stuck, modelUsage: usage },
+      })) as unknown as { qa: { passed: boolean; recommendation: string } };
+      expect(finalQa.qa.passed).toBe(false);
+      // ...and finalization must refuse to advance it to human review.
+      await expect(executor.execute(step("finalize-video-script", {
+        "validate-approved-brief": approvedVideoBriefArtifactFixture,
+        "draft-video-script": { result: stuck, modelUsage: usage },
+        "initial-video-script-qa": { qa: { passed: false, score: 60, findings: [], recommendation: "revise", deterministicChecksPassed: 36, deterministicChecksFailed: 1, modelUsage: usage }, crossModelReview: { generator: attribution("GENERATOR", "openai", "video_script_synthesis"), critic: null, outcome: "AGREED", findings: [], summary: "x" } },
+        "bounded-video-script-revision": { attempted: true, reason: "tried", result: stuck, modelUsage: usage },
+        "final-video-script-qa": finalQa,
+      }))).rejects.toThrow(/Final QA did not accept/);
+    });
+
     it("promotes a clean-but-improvable result to human review rather than looping", async () => {
       const executor = new ChannelVideoScriptExecutor(resolver(), model({
         qa: vi.fn(async () => ({ value: { score: 88, recommendation: "revise" as const, findings: [] }, usage, attribution: attribution("QA", "anthropic", "video_script_qa") })) as never,
@@ -288,6 +313,20 @@ describe("video script executor", () => {
     const executor = new ChannelVideoScriptExecutor(resolver(), model(), usageMeter);
     await executor.execute(step("validate-approved-brief"));
     expect(usageMeter.calls[0]).toBe("ensure");
+  });
+
+  it("fails closed before any work when generator and critic resolve to the same provider (defect #5)", async () => {
+    const keys = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_MODEL", "VIDEO_SCRIPT_GENERATOR_PROVIDER", "VIDEO_SCRIPT_CRITIC_PROVIDER"];
+    const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    try {
+      process.env.OPENAI_API_KEY = "o"; process.env.ANTHROPIC_API_KEY = "a"; process.env.OPENAI_MODEL = "one";
+      process.env.VIDEO_SCRIPT_GENERATOR_PROVIDER = "openai"; process.env.VIDEO_SCRIPT_CRITIC_PROVIDER = "openai";
+      // No injected model → the executor builds the env router and must reject the collapse.
+      const executor = new ChannelVideoScriptExecutor(resolver(), undefined, meter());
+      await expect(executor.execute(step("validate-approved-brief"))).rejects.toThrow(/different providers|independent/i);
+    } finally {
+      for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+    }
   });
 });
 

@@ -10,7 +10,7 @@ import {
   type CrossModelDisposition,
   type CrossModelReview,
 } from "@/domain/production-workflows";
-import { EnvironmentRoleRouter } from "@/server/ai/role-router";
+import { assertDistinctRoleProviders, EnvironmentRoleRouter } from "@/server/ai/role-router";
 import { SupabaseApprovedBriefResolver, type ApprovedBriefResolver } from "./approved-brief-resolver";
 import { SupabaseResearchUsageMeter, type ResearchUsageMeter } from "./research-usage";
 import { channelVideoScriptConfig } from "./video-script-config";
@@ -47,7 +47,14 @@ export class ChannelVideoScriptExecutor implements WorkflowStepExecutor {
     // Provider credentials are resolved lazily per role by the router, so a
     // misconfigured role fails loudly instead of routing elsewhere. This stage
     // performs no external evidence retrieval, so it needs no YouTube key.
-    const model = this.injectedModel ?? new RoutedVideoScriptModel(new EnvironmentRoleRouter("VIDEO_SCRIPT"), budget, usageMeter);
+    let model = this.injectedModel;
+    if (!model) {
+      const router = new EnvironmentRoleRouter("VIDEO_SCRIPT");
+      // Fail closed before any spend if the generator and independent critic
+      // would resolve to the same provider (or a role has no model configured).
+      assertDistinctRoleProviders(router, "GENERATOR", "CRITIC");
+      model = new RoutedVideoScriptModel(router, budget, usageMeter);
+    }
     return { resolver, model, usageMeter, budget };
   }
 

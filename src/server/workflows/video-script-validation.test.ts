@@ -53,10 +53,10 @@ describe("deterministic video script validation", () => {
       expect(codes(videoScriptResultFixture({ source: { ...base.source, pillarId: "pillar:unrelated" } }))).toContain("SOURCE_PILLAR_MISMATCH");
     });
 
-    it("warns when the scripted promise diverges from the brief promise", () => {
+    it("rejects a scripted promise that diverges from the brief promise", () => {
       const base = videoScriptResultFixture();
       const result = videoScriptResultFixture({ source: { ...base.source, scriptedPromise: "A quietly different promise that still reads as a sentence." } });
-      expect(warnings(result)).toContain("SCRIPTED_PROMISE_DIVERGES");
+      expect(codes(result)).toContain("SCRIPTED_PROMISE_DIVERGES");
     });
   });
 
@@ -261,5 +261,75 @@ describe("video script QA merge and revision gating", () => {
       findings: [{ severity: "info", code: "GOOD_EVIDENCE", message: "cited", evidenceIds: [CITABLE_QA_EVIDENCE_ID] }],
     }, usage, approvedVideoBriefArtifactFixture);
     expect(merged.findings.some((f) => f.code === "QA_EVIDENCE_REFERENCE_NOT_FOUND")).toBe(false);
+  });
+});
+
+// Regressions for the Codex-reported repairs.
+describe("Viewer Value REVISE cannot pass QA (defect #2)", () => {
+  const usage = { model: "qa", inputTokens: 10, outputTokens: 10, totalTokens: 20 };
+  const reviseFloor = viewerValueFixture({
+    // differentiation weak → deterministic floor resolves to REVISE, not REJECT.
+    contract: { ...viewerValueFixture().contract, differentiation: { verdict: "weak", rationale: "Thin.", evidenceIds: [] } },
+    gate: "REVISE",
+    gateReasons: ["Differentiation is weak."],
+  });
+
+  it("emits VIEWER_VALUE_GATE_REVISION_REQUIRED as an error", () => {
+    expect(codes(videoScriptResultFixture({ viewerValue: reviseFloor }))).toContain("VIEWER_VALUE_GATE_REVISION_REQUIRED");
+  });
+
+  it("cannot report passed=true even with an optimistic semantic accept", () => {
+    const deterministic = validate(videoScriptResultFixture({ viewerValue: reviseFloor }));
+    const merged = mergeVideoScriptQA(deterministic, { score: 100, recommendation: "accept", findings: [] }, usage, approvedVideoBriefArtifactFixture);
+    expect(merged.passed).toBe(false);
+    expect(merged.recommendation).toBe("revise");
+  });
+
+  it("keeps a REVISE floor revisable (bounded revision gets a chance)", () => {
+    const deterministic = validate(videoScriptResultFixture({ viewerValue: reviseFloor }));
+    expect(hasUnrevisableVideoScriptFailure(deterministic)).toBe(false);
+  });
+});
+
+describe("claim integrity cannot be detached from narration (defect #3)", () => {
+  const brief = approvedVideoBriefArtifactFixture.briefResult;
+  const cleanUsage = videoScriptResultFixture().claimUsage;
+
+  it("rejects omitting a brief claim from claim usage entirely", () => {
+    const claimUsage = cleanUsage.filter((u) => u.claimId !== "claim:no-gaps-guarantee");
+    // The forbidden claim is silently dropped from metadata; completeness catches it.
+    expect(codes(videoScriptResultFixture({ claimUsage }))).toContain("CLAIM_USAGE_INCOMPLETE");
+  });
+
+  it("rejects forbidden guarantee narration even when claimIds are empty", () => {
+    const base = videoScriptResultFixture();
+    const sections = base.sections.map((s) => s.sectionId === "scriptsec:payoff"
+      ? { ...s, narration: "And that is the whole method. This system guarantees there will be no scheduling gaps, ever.", claimIds: [] }
+      : s);
+    const found = codes(videoScriptResultFixture({ sections }));
+    expect(found).toContain("UNSUPPORTED_OUTCOME_GUARANTEE");
+  });
+
+  it("treats a narrated outcome guarantee as unrevisable", () => {
+    const base = videoScriptResultFixture();
+    const sections = base.sections.map((s) => s.sectionId === "scriptsec:payoff"
+      ? { ...s, narration: "This system guarantees there will be no scheduling gaps.", claimIds: [] }
+      : s);
+    expect(hasUnrevisableVideoScriptFailure(validate(videoScriptResultFixture({ sections })))).toBe(true);
+  });
+
+  it("still preserves SUPPORTED / RESEARCH_REQUIRED / MUST_NOT_CLAIM semantics", () => {
+    // Sanity: the brief carries all three statuses and the clean fixture is legal.
+    const statuses = new Set(brief.evidencePlan.items.map((i) => i.status));
+    expect(statuses.has("SUPPORTED") && statuses.has("RESEARCH_REQUIRED") && statuses.has("MUST_NOT_CLAIM")).toBe(true);
+    expect(codes(videoScriptResultFixture())).toEqual([]);
+  });
+});
+
+describe("content-architecture mapping consistency (defect #8)", () => {
+  it("rejects declared coverage that does not equal actual section coverage", () => {
+    const base = videoScriptResultFixture();
+    const result = videoScriptResultFixture({ source: { ...base.source, coveredBriefBeatIds: ["beat:opening", "beat:model", "beat:worked-example"] } });
+    expect(codes(result)).toContain("SOURCE_COVERAGE_MISMATCH");
   });
 });

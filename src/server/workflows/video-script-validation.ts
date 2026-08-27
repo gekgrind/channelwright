@@ -14,12 +14,18 @@ import type { VideoScriptSemanticQAOutput } from "./video-script-model";
 type Finding = VideoScriptQAResult["findings"][number];
 
 /** Deterministic rule count used to report a checks-passed figure. */
-export const DETERMINISTIC_VIDEO_SCRIPT_RULE_COUNT = 34;
+export const DETERMINISTIC_VIDEO_SCRIPT_RULE_COUNT = 36;
 
 const FABRICATED_VIEWS = /\b(?:will|should|expect(?:ed)?\s+to)\s+(?:get|reach|receive|hit)\b[^.]{0,40}\b(?:views?|subscribers?)\b|\b\d[\d,.]*\s*(?:k|m|million|thousand)?\+?\s*(?:views?|subscribers?)\s+(?:in|within|per|guaranteed|expected)\b/i;
 const FABRICATED_REVENUE = /\b(?:cpm|rpm)\b\s*(?:of|is|=|:)?\s*\$?\d|\b(?:earn|earning|earnings|make|makes|making|generate|generates|generating|revenue|profit|income|payout)\b[^.]{0,40}\$\s*\d|\$\s*\d[\d,.]*\s*(?:\/|per\s+|a\s+)?(?:month|mo|year|yr|day)\b[^.]{0,40}\b(?:revenue|income|profit|earnings|payout)\b/i;
 const FABRICATED_SEARCH_VOLUME = /\b(?:search(?:es)?\s+volume|monthly\s+searches|searched\s+\d[\d,.]*\s*times|\d[\d,.]*\s*(?:monthly\s+)?searches)\b/i;
 const MONETARY_GUARANTEE = /\bguarantee(?:d|s)?\b[^.]{0,60}\$\s*\d|\bmake\s+\$\s*\d[\d,.]*\s*(?:\/|per\s+|a\s+)?(?:month|week|day|year)\b|\brisk[-\s]free\s+(?:income|profit)\b/i;
+// Backstop for the one dangerous language family a paraphrased forbidden claim
+// most often uses: an absolute guarantee of a zero/none/never outcome. This is a
+// deterministic net for that family only, NOT a general semantic claim matcher —
+// paraphrase detection is the independent semantic critic's job.
+// ponytail: guarantee-language heuristic; the semantic (cross-provider) critic is the general layer.
+const OUTCOME_GUARANTEE = /\b(?:guarantee[sd]?|guaranteed|ensures?|will\s+(?:never|always)|100%|completely\s+eliminat)\b[^.]{0,60}\b(?:no|zero|never|any|every|all|without)\b/i;
 const FABRICATED_RETENTION = /\b\d{1,3}\s*%\s*(?:audience\s+)?retention\b|\bretention\b[^.]{0,40}\b\d{1,3}\s*%|\b(?:average\s+view\s+duration|watch\s+time)\b[^.]{0,40}\b\d+\s*(?:%|minutes?|seconds?)\b|\bviewers?\s+will\s+(?:stay|watch)\b[^.]{0,40}\b\d+\s*(?:%|minutes?)\b/i;
 
 /**
@@ -93,8 +99,10 @@ export function deterministicVideoScriptValidation(
   if (result.source.pillarId !== upstream.scope.pillarId) {
     add("error", "SOURCE_PILLAR_MISMATCH", `The script source cites pillar ${result.source.pillarId} but the resolved topic belongs to ${upstream.scope.pillarId}.`);
   }
+  // The contract states the scripted promise must match the approved brief's
+  // promise; drift here is a value-integrity failure, not a stylistic warning.
   if (result.source.scriptedPromise !== brief.viewerPromise.statement) {
-    add("warning", "SCRIPTED_PROMISE_DIVERGES", "The scripted promise does not match the approved brief's viewer promise verbatim.");
+    add("error", "SCRIPTED_PROMISE_DIVERGES", "The scripted promise does not match the approved brief's viewer promise verbatim.");
   }
 
   // --- Evidence integrity --------------------------------------------------
@@ -117,6 +125,16 @@ export function deterministicVideoScriptValidation(
   const briefStatus = new Map(brief.evidencePlan.items.map((item) => [item.claimId, item.status]));
   const forbidden = new Set(brief.evidencePlan.items.filter((item) => item.status === "MUST_NOT_CLAIM").map((item) => item.claimId));
   const usageByClaim = new Map(result.claimUsage.map((item) => [item.claimId, item]));
+
+  // The approved brief's evidence plan is the trusted source of truth, not the
+  // model's self-description. Every trusted claim must be accounted for, so a
+  // forbidden or unproven claim cannot evade enforcement by simply being left out
+  // of the model-authored claim metadata.
+  for (const item of brief.evidencePlan.items) {
+    if (!usageByClaim.has(item.claimId)) {
+      add("error", "CLAIM_USAGE_INCOMPLETE", `The approved brief claim ${item.claimId} (${item.status}) is not accounted for in the script's claim usage.`);
+    }
+  }
 
   for (const usage of result.claimUsage) {
     if (!briefStatus.has(usage.claimId)) {
@@ -165,6 +183,12 @@ export function deterministicVideoScriptValidation(
   for (const beatId of result.source.coveredBriefBeatIds) {
     if (!briefBeatIds.has(beatId)) add("error", "SOURCE_BEAT_UNKNOWN", `The script source lists covered beat ${beatId}, which is not in the approved brief.`);
   }
+  // The declared coverage must equal what the sections actually cover, so the
+  // source cannot claim a mapping the sections do not deliver (or omit one).
+  const declaredCoverage = new Set(result.source.coveredBriefBeatIds);
+  if (declaredCoverage.size !== coveredBeats.size || [...coveredBeats].some((beatId) => !declaredCoverage.has(beatId))) {
+    add("error", "SOURCE_COVERAGE_MISMATCH", "The script source's declared covered beats do not equal the beats the sections actually map to.");
+  }
 
   // --- Opening hook --------------------------------------------------------
   if (!knownSections.has(result.openingHook.sectionId)) {
@@ -205,7 +229,11 @@ export function deterministicVideoScriptValidation(
     add("error", "VIEWER_VALUE_GATE_UNDERSTATED", `The script claims gate ${result.viewerValue.gate} but deterministic rules require ${resolved}: ${deterministic.reasons.join(" ")}`);
   }
   if (resolved === "REJECT") add("error", "VIEWER_VALUE_GATE_REJECTED", `The script fails the Viewer Value Gate: ${deterministic.reasons.join(" ")}`);
-  else if (resolved === "REVISE") add("warning", "VIEWER_VALUE_GATE_REVISION_REQUIRED", `The script needs a stronger viewer-value case: ${deterministic.reasons.join(" ")}`);
+  // A REVISE floor is an error, not a warning: a warning cannot stop merged QA
+  // from reporting passed=true, which would let a script whose Viewer Value floor
+  // requires revision finalize and reach human approval. As an error it forces
+  // the bounded revision and, if still unresolved at final QA, blocks finalization.
+  else if (resolved === "REVISE") add("error", "VIEWER_VALUE_GATE_REVISION_REQUIRED", `The script needs a stronger viewer-value case before it can finalize: ${deterministic.reasons.join(" ")}`);
   if (result.viewerValue.integrityFindings.some((item) => item.severity === "blocking")) {
     add("error", "CONTENT_INTEGRITY_BLOCKING_RISK", "The script depends on a blocking content-integrity risk.");
   }
@@ -238,6 +266,7 @@ export function deterministicVideoScriptValidation(
   if (FABRICATED_SEARCH_VOLUME.test(text)) add("error", "FABRICATED_SEARCH_VOLUME", "The script asserts search-volume data no configured provider supplies.");
   if (FABRICATED_RETENTION.test(text)) add("error", "FABRICATED_RETENTION_PREDICTION", "The script predicts a specific retention percentage or watch time.");
   if (MONETARY_GUARANTEE.test(text)) add("error", "UNSUPPORTED_MONETARY_GUARANTEE", "The script contains an unsupported monetary guarantee.");
+  if (OUTCOME_GUARANTEE.test(text)) add("error", "UNSUPPORTED_OUTCOME_GUARANTEE", "The script narrates an absolute outcome guarantee, which no inherited evidence supports.");
   if (TITLE_LEAKAGE.test(text)) add("error", "TITLE_SCOPE_VIOLATION", "The script produced final title copy, which belongs to the downstream packaging stage.");
   if (THUMBNAIL_LEAKAGE.test(text)) add("error", "THUMBNAIL_SCOPE_VIOLATION", "The script produced thumbnail copy or imagery, which belongs to a downstream stage.");
   if (STORYBOARD_LEAKAGE.test(text)) add("error", "STORYBOARD_SCOPE_VIOLATION", "The script produced a storyboard or shot list, which belongs to a downstream stage.");
@@ -289,6 +318,7 @@ export const UNREVISABLE_VIDEO_SCRIPT_CODES = new Set([
   "VIEWER_VALUE_GATE_REJECTED",
   "CONTENT_INTEGRITY_BLOCKING_RISK",
   "UNSUPPORTED_MONETARY_GUARANTEE",
+  "UNSUPPORTED_OUTCOME_GUARANTEE",
   "FABRICATED_SEARCH_VOLUME",
   "EVIDENCE_REFERENCE_NOT_FOUND",
 ]);

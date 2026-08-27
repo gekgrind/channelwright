@@ -132,6 +132,28 @@ describe("VideoScriptWorkspace", () => {
     expect(screen.queryByRole("button", { name: /^approve$/i })).not.toBeInTheDocument();
   });
 
+  it("shows the successor run's QA after a revision, never the predecessor's (defect #4)", async () => {
+    const PRED_RUN = "dddddddd-dddd-4ddd-8ddd-ddddddddddd1";
+    const SUCC_RUN = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1";
+    const qaStep = (runId: string, score: number, id: string) => ({
+      id, workflow_run_id: runId, step_key: "final-video-script-qa", status: "COMPLETED", attempt_count: 1, max_attempts: 2, error_code: null,
+      output_payload: { qa: { passed: true, score, findings: [], recommendation: "accept", deterministicChecksPassed: 36, deterministicChecksFailed: 0, modelUsage: { model: "m", inputTokens: 1, outputTokens: 1, totalTokens: 2 } } },
+    });
+    const revisionDetail = {
+      workflow: { id: SCRIPT_WORKFLOW_ID, status: "WAITING_FOR_APPROVAL", created_at: "2026-08-16T10:00:00.000Z", current_run_id: SUCC_RUN },
+      runs: [
+        { id: SUCC_RUN, status: "COMPLETED", input_payload: {}, context_payload: {}, output_payload: SCRIPT, error_code: null, artifact_hash: null, provenance_hash: null },
+        { id: PRED_RUN, status: "BLOCKED", input_payload: {}, context_payload: {}, output_payload: SCRIPT, error_code: null, artifact_hash: null, provenance_hash: null },
+      ],
+      steps: [qaStep(PRED_RUN, 51, "pred-qa"), qaStep(SUCC_RUN, 93, "succ-qa")],
+      approvals: [{ id: "ap1", workflow_run_id: SUCC_RUN, status: "PENDING", decision_note: null, requested_at: "2026-08-16T10:00:00.000Z", decided_at: null }],
+    };
+    vi.stubGlobal("fetch", mockFetch({ script: revisionDetail }));
+    render(<VideoScriptWorkspace />);
+    await waitFor(() => expect(screen.getByText(/QA 93\/100/)).toBeInTheDocument());
+    expect(screen.queryByText(/QA 51\/100/)).not.toBeInTheDocument();
+  });
+
   it("surfaces a terminal run error code without exposing internals", async () => {
     const failed = scriptDetail();
     failed.runs = [{ ...failed.runs[0], status: "FAILED", output_payload: null, error_code: "VIDEO_SCRIPT_INTEGRITY_UNREVISABLE" }] as unknown as typeof failed.runs;
