@@ -30,9 +30,12 @@ const checks: Check[] = [];
 const record = (name: string, passed: boolean, detail = "") => { checks.push({ name, passed, detail }); };
 const sha256 = (value: string) => createHash("sha256").update(value, "utf8").digest("hex");
 
-const CONNECTION = process.env.CHANNELWRIGHT_DISPOSABLE_DATABASE_URL
-  ?? process.env.DATABASE_URL
-  ?? "postgres://postgres:postgres@127.0.0.1:5432/postgres";
+// ONLY a dedicated, explicit opt-in variable is honoured. There is deliberately
+// no fallback to the application's DATABASE_URL and no localhost default: this
+// gate creates and drops databases and manages cluster-global roles, so it must
+// never run against a server the operator did not explicitly earmark as
+// disposable. Point it at a throwaway PostgreSQL cluster.
+const CONNECTION = process.env.CHANNELWRIGHT_DISPOSABLE_DATABASE_URL;
 
 const migrationsDir = resolve(process.cwd(), "supabase", "migrations");
 const loadMigrations = () => readdirSync(migrationsDir)
@@ -201,20 +204,34 @@ async function runChecks(db: pg.Client) {
   record("zero-retrieval VIDEO_SCRIPT budget passes ceilings (fails only on lease)", zero.includes("LEASE_NOT_ACTIVE") && !zero.includes("VALIDATION_ERROR"), zero.split("\n")[0].slice(0, 160));
 }
 
+const APP_ROLES = ["authenticated", "service_role", "anon"] as const;
+
 async function main() {
-  const admin = new pg.Client({ connectionString: CONNECTION, application_name: "cw-disposable-pg-probe" });
+  if (!CONNECTION) {
+    console.log(JSON.stringify({ gate: "VIDEO_SCRIPT_DISPOSABLE_PG_UNAVAILABLE", reason: "CHANNELWRIGHT_DISPOSABLE_DATABASE_URL is not set", hint: "Set CHANNELWRIGHT_DISPOSABLE_DATABASE_URL to a throwaway PostgreSQL cluster (never the application database)." }, null, 2));
+    process.exitCode = 2;
+    return;
+  }
+  const connection = CONNECTION;
+  const admin = new pg.Client({ connectionString: connection, application_name: "cw-disposable-pg-probe" });
   try { await admin.connect(); }
   catch (error) {
-    console.log(JSON.stringify({ gate: "VIDEO_SCRIPT_DISPOSABLE_PG_UNAVAILABLE", reason: error instanceof Error ? error.message.split("\n")[0] : String(error), hint: "Set CHANNELWRIGHT_DISPOSABLE_DATABASE_URL to a disposable PostgreSQL server." }, null, 2));
+    console.log(JSON.stringify({ gate: "VIDEO_SCRIPT_DISPOSABLE_PG_UNAVAILABLE", reason: error instanceof Error ? error.message.split("\n")[0] : String(error), hint: "Set CHANNELWRIGHT_DISPOSABLE_DATABASE_URL to a reachable throwaway PostgreSQL cluster." }, null, 2));
     process.exitCode = 2;
     return;
   }
   const dbName = `cw_disposable_${randomUUID().replace(/-/g, "")}`;
   let created = false;
+  // Roles are cluster-global, so dropping the database does not remove them. We
+  // create only the roles that did not already exist and drop exactly those in
+  // cleanup, leaving any operator-provided roles untouched and leaking none.
+  let createdRoles: string[] = [];
   try {
+    const existing = (await admin.query<{ rolname: string }>("select rolname from pg_roles where rolname = any($1)", [[...APP_ROLES]])).rows.map((r) => r.rolname);
+    createdRoles = APP_ROLES.filter((role) => !existing.includes(role));
     await admin.query(`create database ${dbName}`);
     created = true;
-    const url = new URL(CONNECTION);
+    const url = new URL(connection);
     url.pathname = `/${dbName}`;
     const db = new pg.Client({ connectionString: url.toString(), application_name: "cw-disposable-pg-gate" });
     await db.connect();
@@ -234,17 +251,24 @@ async function main() {
   } catch (error) {
     record("gate completed without a fatal error", false, error instanceof Error ? error.message.split("\n")[0].slice(0, 200) : String(error));
   } finally {
+    // Non-force drop: if a foreign connection is attached, the drop fails loudly
+    // rather than force-killing a database that might not be exclusively ours.
     if (created) {
-      try { await admin.query(`drop database if exists ${dbName} with (force)`); record("disposable database dropped", true, dbName); }
+      try { await admin.query(`drop database if exists ${dbName}`); record("disposable database dropped", true, dbName); }
       catch (error) { record("disposable database dropped", false, error instanceof Error ? error.message.split("\n")[0] : String(error)); }
     }
+    for (const role of createdRoles) {
+      try { await admin.query(`drop role if exists ${role}`); }
+      catch (error) { record(`gate-created role ${role} dropped`, false, error instanceof Error ? error.message.split("\n")[0] : String(error)); }
+    }
+    if (createdRoles.length) record("gate-created cluster roles removed", checks.every((c) => !/^gate-created role/.test(c.name) || c.passed), createdRoles.join(", "));
     await admin.end();
   }
 
   const failed = checks.filter((c) => !c.passed);
   console.log(JSON.stringify({
     gate: failed.length === 0 ? "VIDEO_SCRIPT_DISPOSABLE_PG_PASSED" : "VIDEO_SCRIPT_DISPOSABLE_PG_FAILED",
-    database: CONNECTION.replace(/\/\/[^@]*@/, "//***@"),
+    database: connection.replace(/\/\/[^@]*@/, "//***@"),
     counts: { passed: checks.length - failed.length, failed: failed.length },
     checks,
   }, null, 2));

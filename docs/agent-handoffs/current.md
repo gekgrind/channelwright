@@ -3,9 +3,50 @@ Agent: Claude Code (Opus 4.8)
 Task: Repair CHANNEL_VIDEO_SCRIPT after Codex verification, then hand back for re-verification
 Base: `0db4c814d4a19a0da5740d2667fe6f15d7a6088f` (branch `main`)
 Original implementation commit: `a7d88f2b08e1811bcecc4e2bb660726429657143`
-Repair commit: see `git rev-parse feat/channel-video-script` (added after this handoff)
+First repair commit: `b4e33764ce1a73e5e15fb8dcef2bbdaf448475da`
+Second repair commit (this pass): see `git rev-parse feat/channel-video-script`
 Verdict: `REPAIRS COMPLETE — READY FOR RE-VERIFICATION`
 Branch: `feat/channel-video-script`
+---
+
+# Second Repair Pass — Codex round 2 (NOT READY FOR MERGE → repaired)
+
+Codex round 2 confirmed round-1 repairs held but found three P1 defects plus an
+over-broad heuristic. All reproduced and repaired.
+
+1. **[P1] Forbidden-claim narration bypassable after revision.** Reproduced:
+   `"This workflow removes scheduling gaps for every upload"` with empty `claimIds`
+   and the forbidden claim still `OMITTED` → 0 findings; and the critic reviewed
+   only the draft, not the revised artifact. Two-part fix:
+   - **Deterministic:** the outcome-guarantee check is now bound to the actual
+     narration (spoken opening, section narration, on-screen text, visual
+     direction, spoken CTA) instead of model-authored `claimIds`, and its pattern
+     targets absolute elimination-of-a-bad-outcome / guarantee / 100% language.
+     `video-script-validation.ts`.
+   - **Architectural:** the independent critic (different provider) now reviews the
+     **revised** artifact at `final-video-script-qa`; its error-severity findings
+     fail the merged QA and block finalization. `video-script-executor.ts`.
+2. **[P1] Disposable PostgreSQL gate not isolated.** Reproduced: fell back to
+   generic `DATABASE_URL`/localhost, force-dropped the database, and leaked
+   cluster-global roles. Fix: honours ONLY `CHANNELWRIGHT_DISPOSABLE_DATABASE_URL`
+   (no fallback, no default — UNAVAILABLE if unset); drops the database **without
+   force**; creates only the roles that were missing and drops exactly those in
+   cleanup. `channel-video-script-disposable-pg.ts`.
+3. **[P1] Persisted gate leaked temp state on failure.** Reproduced: connection
+   and both users created before the `try`, so a second-user failure leaked the
+   first; cleanup could abort before deleting users / closing the connection. Fix:
+   all resources acquired inside the `try`, tracked in an `owners` array; the
+   `finally` guards each phase independently and always closes the connection in an
+   inner `finally`. `channel-video-script-persisted-live.ts`.
+4. **Over-broad outcome-guarantee heuristic.** Reproduced: a defensive assumption
+   like `"Do not guarantee zero scheduling gaps"` failed because the whole artifact
+   was scanned. Fixed by the same narration-scoping in #1 (meta fields —
+   assumptions/risks/open questions — are no longer scanned for this heuristic).
+
+Round-2 verification: focused + full `npm test` (see below), typecheck/lint/build
+clean. Disposable-PG gate still requires the operator's PostgreSQL (UNAVAILABLE in
+this session). No migration added this pass; no shared/production mutation.
+
 ---
 
 # CHANNEL_VIDEO_SCRIPT Repair Pass (Codex NOT READY FOR MERGE → repaired)

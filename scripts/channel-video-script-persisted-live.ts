@@ -163,12 +163,19 @@ async function main() {
     ssl: { rejectUnauthorized: true, ca: readFileSync(config.databaseCa, "utf8") },
     application_name: "channelwright-video-script-persisted-gate",
   });
-  await db.connect();
-
-  const ownerA = await createTemporaryOwner(admin, "a");
-  const ownerB = await createTemporaryOwner(admin, "b");
+  // Every resource is acquired INSIDE the try so the finally cleans up exactly
+  // what was created: if the second owner fails to create, the first (and the
+  // connection) are still torn down. `owners` holds whatever exists.
+  const owners: string[] = [];
+  let connected = false;
 
   try {
+    await db.connect();
+    connected = true;
+    owners.push(await createTemporaryOwner(admin, "a"));
+    owners.push(await createTemporaryOwner(admin, "b"));
+    const [ownerA, ownerB] = owners;
+
     await verifyCanonicalParity(db);
 
     const { workflowId, runId } = await seedApprovedBrief(db, ownerA);
@@ -289,30 +296,45 @@ async function main() {
     record("service-role guard preserved in complete_workflow_step", source.includes("service_role"));
     record("context_payload write preserved for priorOutputs", source.includes("context_payload"));
   } finally {
-    // Cleanup must be proven, not assumed. A failed delete is recorded (not
-    // swallowed), and every owner-scoped table the gate writes is verified empty.
+    // Cleanup must be proven, not assumed, and each phase is guarded so one
+    // failure cannot skip the rest — the connection is always closed last, even
+    // if verification of leftovers or user deletion throws. `owners` reflects
+    // exactly what was created, so a partial setup is still fully torn down.
     const OWNED_TABLES = ["research_usage_operations", "research_run_budgets", "workflow_events", "workflow_approvals", "workflow_step_attempts", "workflow_steps", "workflow_runs", "workflows"];
-    const deleteErrors: string[] = [];
-    for (const owner of [ownerA, ownerB]) {
-      for (const table of OWNED_TABLES) {
-        try { await db.query(`delete from channelwright.${table} where owner_id = $1`, [owner]); }
-        catch (error) { deleteErrors.push(`${table}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`); }
+    try {
+      if (connected && owners.length) {
+        const deleteErrors: string[] = [];
+        for (const owner of owners) {
+          for (const table of OWNED_TABLES) {
+            try { await db.query(`delete from channelwright.${table} where owner_id = $1`, [owner]); }
+            catch (error) { deleteErrors.push(`${table}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`); }
+          }
+        }
+        record("cleanup deletes ran without error on every owned table", deleteErrors.length === 0, deleteErrors.join("; ").slice(0, 200));
+        try {
+          const counts = await db.query<Record<string, string>>(
+            `select ${OWNED_TABLES.map((t) => `(select count(*) from channelwright.${t} where owner_id = any($1))::int as ${t}`).join(", ")}`,
+            [owners]);
+          const leftovers = Object.entries(counts.rows[0]).filter(([, n]) => Number(n) !== 0);
+          record("gate removed every record it created across all owned tables", leftovers.length === 0,
+            leftovers.length ? leftovers.map(([t, n]) => `${t}=${n}`).join(", ") : "all owned tables empty");
+        } catch (error) { record("verified owned tables empty", false, error instanceof Error ? error.message.split("\n")[0] : String(error)); }
       }
+      for (const owner of owners) {
+        try {
+          const deleted = await admin.auth.admin.deleteUser(owner, false);
+          if (deleted.error) record(`temporary owner ${owner.slice(0, 8)} deleted`, false, deleted.error.message);
+        } catch (error) { record(`temporary owner ${owner.slice(0, 8)} deleted`, false, error instanceof Error ? error.message.split("\n")[0] : String(error)); }
+      }
+      if (connected && owners.length) {
+        try {
+          const usersGone = await db.query<{ count: string }>("select count(*)::text as count from auth.users where id = any($1)", [owners]);
+          record("temporary auth owners removed", usersGone.rows[0].count === "0", `remaining=${usersGone.rows[0].count}`);
+        } catch (error) { record("temporary auth owners removed", false, error instanceof Error ? error.message.split("\n")[0] : String(error)); }
+      }
+    } finally {
+      if (connected) { try { await db.end(); } catch { /* connection already gone */ } }
     }
-    record("cleanup deletes ran without error on every owned table", deleteErrors.length === 0, deleteErrors.join("; ").slice(0, 200));
-    const counts = await db.query<Record<string, string>>(
-      `select ${OWNED_TABLES.map((t) => `(select count(*) from channelwright.${t} where owner_id = any($1))::int as ${t}`).join(", ")}`,
-      [[ownerA, ownerB]]);
-    const leftovers = Object.entries(counts.rows[0]).filter(([, n]) => Number(n) !== 0);
-    record("gate removed every record it created across all owned tables", leftovers.length === 0,
-      leftovers.length ? leftovers.map(([t, n]) => `${t}=${n}`).join(", ") : "all owned tables empty");
-    for (const owner of [ownerA, ownerB]) {
-      const deleted = await admin.auth.admin.deleteUser(owner, false);
-      if (deleted.error) record(`temporary owner ${owner.slice(0, 8)} deleted`, false, deleted.error.message);
-    }
-    const usersGone = await db.query<{ count: string }>("select count(*)::text as count from auth.users where id = any($1)", [[ownerA, ownerB]]);
-    record("temporary auth owners removed", usersGone.rows[0].count === "0", `remaining=${usersGone.rows[0].count}`);
-    await db.end();
   }
 
   const failed = checks.filter((c) => !c.passed);

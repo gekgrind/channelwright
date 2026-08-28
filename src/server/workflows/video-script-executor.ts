@@ -204,17 +204,49 @@ export class ChannelVideoScriptExecutor implements WorkflowStepExecutor {
 
     if (step.stepKey === "final-video-script-qa") {
       const deterministic = deterministicVideoScriptValidation(revision.result, upstream, budget.maxResultPayloadBytes);
+      // The independent critic reviews the FINAL artifact after the bounded
+      // revision, not only the initial draft, so a forbidden or unsupported claim
+      // introduced during revision still faces cross-model review before it can
+      // finalize. Its error-severity findings can fail the merged QA.
+      const critique = await model.critique(input, upstream, revision.result);
       const semantic = await model.qa(input, upstream, revision.result, deterministic);
-      const merged = mergeVideoScriptQA(deterministic, semantic.value, semantic.usage, upstream);
-      this.log(step, { role: "QA", provider: semantic.attribution.provider, model: semantic.attribution.model, qaOutcome: merged.recommendation, qaScore: merged.score });
+      const known = new Set(upstream.discoveryBundle.evidence.map((item) => item.id));
+      const criticFindings = critique.value.findings.map((finding) => ({
+        ...finding,
+        evidenceIds: finding.evidenceIds.filter((id) => known.has(id)),
+        disposition: "CRITIC_RAISED_ISSUE" as CrossModelDisposition,
+      }));
+      const merged = mergeVideoScriptQA(
+        deterministic,
+        {
+          ...semantic.value,
+          findings: [
+            ...semantic.value.findings,
+            ...criticFindings.map((finding) => ({ severity: finding.severity, code: finding.code, message: `${finding.affectedField}: ${finding.rationale}`, evidenceIds: finding.evidenceIds })),
+          ].slice(0, 40),
+        },
+        semantic.usage,
+        upstream,
+      );
+      const generator = revision.result.modelProvenance.find((item) => item.operation === "video_script_synthesis")
+        ?? revision.result.modelProvenance[revision.result.modelProvenance.length - 1];
+      this.log(step, {
+        role: "QA", criticProvider: critique.attribution.provider, provider: semantic.attribution.provider, model: semantic.attribution.model,
+        criticFindingCount: criticFindings.length, qaOutcome: merged.recommendation, qaScore: merged.score,
+      });
       // The one bounded revision is spent: a clean-but-still-improvable result
       // goes to a human rather than looping.
       const resolved = merged.passed && merged.recommendation === "revise" ? { ...merged, recommendation: "human_review_required" as const } : merged;
       return videoScriptQAStepSchema.parse({
         qa: resolved,
         crossModelReview: {
-          ...revision.result.crossModelReview ?? { generator: semantic.attribution, critic: null, findings: [], summary: "No independent critique was recorded for this artifact." },
-          outcome: resolved.recommendation === "human_review_required" ? "HUMAN_REVIEW_REQUIRED" : (revision.result.crossModelReview?.outcome ?? "AGREED"),
+          generator: generator ?? critique.attribution,
+          critic: critique.attribution,
+          outcome: resolved.recommendation === "human_review_required" ? "HUMAN_REVIEW_REQUIRED"
+            : deterministic.some((finding) => finding.severity === "error") && criticFindings.length === 0 ? "OVERRIDDEN_BY_DETERMINISTIC_RULE"
+              : criticFindings.length === 0 ? "AGREED" : "CRITIC_RAISED_ISSUE",
+          findings: criticFindings.slice(0, 12),
+          summary: critique.value.overallAssessment,
         },
       });
     }

@@ -294,6 +294,37 @@ describe("video script executor", () => {
       }))).rejects.toThrow(/Final QA did not accept/);
     });
 
+    it("runs the independent critic on the REVISED artifact and lets it block finalization (defect #1)", async () => {
+      // The critic (a different provider) flags the final artifact; deterministic is clean.
+      const criticModel = model({
+        critique: vi.fn(async () => ({
+          value: {
+            overallAssessment: "The revision slipped in a forbidden absolute claim.",
+            keepsPromise: true, evidenceDisciplineHeld: false,
+            findings: [{ code: "FORBIDDEN_CLAIM_NARRATED", severity: "error" as const, affectedField: "sections[3].narration", rationale: "Narration now guarantees no gaps.", evidenceIds: [] }],
+          },
+          usage, attribution: attribution("CRITIC", "anthropic", "video_script_critique"),
+        })) as never,
+      });
+      const executor = new ChannelVideoScriptExecutor(resolver(), criticModel, meter());
+      const finalQa = await executor.execute(step("final-video-script-qa", {
+        "validate-approved-brief": approvedVideoBriefArtifactFixture,
+        "draft-video-script": { result: videoScriptResultFixture(), modelUsage: usage },
+        "initial-video-script-qa": { qa: { passed: true, score: 90, findings: [], recommendation: "accept", deterministicChecksPassed: 36, deterministicChecksFailed: 0, modelUsage: usage }, crossModelReview: { generator: attribution("GENERATOR", "openai", "video_script_synthesis"), critic: attribution("CRITIC", "anthropic", "video_script_critique"), outcome: "AGREED", findings: [], summary: "ok" } },
+        "bounded-video-script-revision": { attempted: true, reason: "revised", result: videoScriptResultFixture(), modelUsage: usage },
+      })) as unknown as { qa: { passed: boolean }; crossModelReview: { critic: { provider: string }; findings: unknown[] } };
+      expect(finalQa.qa.passed).toBe(false);
+      expect(finalQa.crossModelReview.critic.provider).toBe("anthropic");
+      expect(finalQa.crossModelReview.findings.length).toBeGreaterThan(0);
+      await expect(executor.execute(step("finalize-video-script", {
+        "validate-approved-brief": approvedVideoBriefArtifactFixture,
+        "draft-video-script": { result: videoScriptResultFixture(), modelUsage: usage },
+        "initial-video-script-qa": { qa: { passed: true, score: 90, findings: [], recommendation: "accept", deterministicChecksPassed: 36, deterministicChecksFailed: 0, modelUsage: usage }, crossModelReview: { generator: attribution("GENERATOR", "openai", "video_script_synthesis"), critic: null, outcome: "AGREED", findings: [], summary: "ok" } },
+        "bounded-video-script-revision": { attempted: true, reason: "revised", result: videoScriptResultFixture(), modelUsage: usage },
+        "final-video-script-qa": finalQa,
+      }))).rejects.toThrow(/Final QA did not accept/);
+    });
+
     it("promotes a clean-but-improvable result to human review rather than looping", async () => {
       const executor = new ChannelVideoScriptExecutor(resolver(), model({
         qa: vi.fn(async () => ({ value: { score: 88, recommendation: "revise" as const, findings: [] }, usage, attribution: attribution("QA", "anthropic", "video_script_qa") })) as never,

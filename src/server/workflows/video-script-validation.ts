@@ -20,12 +20,23 @@ const FABRICATED_VIEWS = /\b(?:will|should|expect(?:ed)?\s+to)\s+(?:get|reach|re
 const FABRICATED_REVENUE = /\b(?:cpm|rpm)\b\s*(?:of|is|=|:)?\s*\$?\d|\b(?:earn|earning|earnings|make|makes|making|generate|generates|generating|revenue|profit|income|payout)\b[^.]{0,40}\$\s*\d|\$\s*\d[\d,.]*\s*(?:\/|per\s+|a\s+)?(?:month|mo|year|yr|day)\b[^.]{0,40}\b(?:revenue|income|profit|earnings|payout)\b/i;
 const FABRICATED_SEARCH_VOLUME = /\b(?:search(?:es)?\s+volume|monthly\s+searches|searched\s+\d[\d,.]*\s*times|\d[\d,.]*\s*(?:monthly\s+)?searches)\b/i;
 const MONETARY_GUARANTEE = /\bguarantee(?:d|s)?\b[^.]{0,60}\$\s*\d|\bmake\s+\$\s*\d[\d,.]*\s*(?:\/|per\s+|a\s+)?(?:month|week|day|year)\b|\brisk[-\s]free\s+(?:income|profit)\b/i;
-// Backstop for the one dangerous language family a paraphrased forbidden claim
-// most often uses: an absolute guarantee of a zero/none/never outcome. This is a
-// deterministic net for that family only, NOT a general semantic claim matcher —
-// paraphrase detection is the independent semantic critic's job.
-// ponytail: guarantee-language heuristic; the semantic (cross-provider) critic is the general layer.
-const OUTCOME_GUARANTEE = /\b(?:guarantee[sd]?|guaranteed|ensures?|will\s+(?:never|always)|100%|completely\s+eliminat)\b[^.]{0,60}\b(?:no|zero|never|any|every|all|without)\b/i;
+// Backstop for the language family a paraphrased forbidden claim most often
+// uses: an absolute promise to eliminate/prevent an outcome for every/all cases,
+// or a zero/no-X-ever claim. This is a deterministic net for that family only,
+// NOT a general semantic claim matcher, and it is scanned over the NARRATION the
+// viewer actually receives — never over defensive meta fields (assumptions,
+// risks, open questions), so "Do not guarantee zero gaps" is not a violation.
+// ponytail: guarantee-language heuristic over narration; the semantic (cross-provider) critic is the general layer.
+const OUTCOME_GUARANTEE = new RegExp([
+  // Eliminating a bad outcome absolutely: "removes scheduling gaps", "eliminates
+  // errors", "no more mistakes". The negative-outcome noun near the verb is what
+  // distinguishes this from a benign "remove one person without rebuilding".
+  /\b(?:eliminat\w+|remove[sd]?|prevent[sd]?|avoids?|no\s+more|zero)\b[^.]{0,25}\b(?:gaps?|errors?|mistakes?|failures?|problems?|defects?|downtime)\b/i.source,
+  // Guaranteeing an absolute: "guarantees no gaps", "ensures every ... always".
+  /\b(?:guarantee[sd]?|guaranteed|ensures?)\b[^.]{0,40}\b(?:no|zero|every|all|any|never|always|without)\b/i.source,
+  // A "100%" absolute claim.
+  /\b100%\b[^.]{0,20}\b(?:guarantee\w*|coverage|success|effective|no|zero)\b/i.source,
+].join("|"), "i");
 const FABRICATED_RETENTION = /\b\d{1,3}\s*%\s*(?:audience\s+)?retention\b|\bretention\b[^.]{0,40}\b\d{1,3}\s*%|\b(?:average\s+view\s+duration|watch\s+time)\b[^.]{0,40}\b\d+\s*(?:%|minutes?|seconds?)\b|\bviewers?\s+will\s+(?:stay|watch)\b[^.]{0,40}\b\d+\s*(?:%|minutes?)\b/i;
 
 /**
@@ -261,12 +272,21 @@ export function deterministicVideoScriptValidation(
 
   // --- Fabrication and downstream scope ------------------------------------
   const text = allText(result).join("\n");
+  // The narration the viewer actually receives: spoken lines, on-screen text, and
+  // inherited visual direction — but not defensive meta fields. Forbidden-outcome
+  // narration is bound to this text (not to model-authored claimIds), so a
+  // forbidden claim cannot escape by leaving claimIds empty.
+  const narration = [
+    result.openingHook.spokenOpening, result.openingHook.onScreenText,
+    ...result.sections.flatMap((section) => [section.narration, section.onScreenText, section.visualDirection]),
+    result.callToAction.spokenCta,
+  ].filter((value): value is string => Boolean(value)).join("\n");
   if (FABRICATED_VIEWS.test(text)) add("error", "FABRICATED_PERFORMANCE_PREDICTION", "The script predicts future views or subscribers.");
   if (FABRICATED_REVENUE.test(text)) add("error", "FABRICATED_REVENUE_PREDICTION", "The script asserts revenue, CPM, or RPM figures.");
   if (FABRICATED_SEARCH_VOLUME.test(text)) add("error", "FABRICATED_SEARCH_VOLUME", "The script asserts search-volume data no configured provider supplies.");
   if (FABRICATED_RETENTION.test(text)) add("error", "FABRICATED_RETENTION_PREDICTION", "The script predicts a specific retention percentage or watch time.");
   if (MONETARY_GUARANTEE.test(text)) add("error", "UNSUPPORTED_MONETARY_GUARANTEE", "The script contains an unsupported monetary guarantee.");
-  if (OUTCOME_GUARANTEE.test(text)) add("error", "UNSUPPORTED_OUTCOME_GUARANTEE", "The script narrates an absolute outcome guarantee, which no inherited evidence supports.");
+  if (OUTCOME_GUARANTEE.test(narration)) add("error", "UNSUPPORTED_OUTCOME_GUARANTEE", "The narration makes an absolute outcome guarantee, which no inherited evidence supports.");
   if (TITLE_LEAKAGE.test(text)) add("error", "TITLE_SCOPE_VIOLATION", "The script produced final title copy, which belongs to the downstream packaging stage.");
   if (THUMBNAIL_LEAKAGE.test(text)) add("error", "THUMBNAIL_SCOPE_VIOLATION", "The script produced thumbnail copy or imagery, which belongs to a downstream stage.");
   if (STORYBOARD_LEAKAGE.test(text)) add("error", "STORYBOARD_SCOPE_VIOLATION", "The script produced a storyboard or shot list, which belongs to a downstream stage.");

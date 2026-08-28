@@ -310,6 +310,26 @@ describe("claim integrity cannot be detached from narration (defect #3)", () => 
     expect(found).toContain("UNSUPPORTED_OUTCOME_GUARANTEE");
   });
 
+  it("rejects the exact reproduced bypass: elimination-of-outcome narration with empty claimIds", () => {
+    const base = videoScriptResultFixture();
+    const sections = base.sections.map((s) => s.sectionId === "scriptsec:payoff"
+      ? { ...s, narration: "And here is the best part. This workflow removes scheduling gaps for every upload, guaranteed.", claimIds: [] }
+      : s);
+    // Forbidden claim stays declared OMITTED in claimUsage; the narration is what is caught.
+    expect(codes(videoScriptResultFixture({ sections }))).toContain("UNSUPPORTED_OUTCOME_GUARANTEE");
+  });
+
+  it("does NOT flag a defensive guarantee statement in a meta field (over-broad fix)", () => {
+    const base = videoScriptResultFixture();
+    const result = videoScriptResultFixture({
+      assumptions: [base.assumptions[0], "Do not guarantee zero scheduling gaps and do not claim this removes all errors."],
+      risks: [{ risk: "Writers may overclaim: never promise no gaps at all.", severity: "low", mitigation: "Keep language honest." }],
+    });
+    // The guarantee language lives in assumptions/risks (not narration), so it must not trip the narration heuristic.
+    expect(codes(result)).not.toContain("UNSUPPORTED_OUTCOME_GUARANTEE");
+    expect(codes(result)).toEqual([]);
+  });
+
   it("treats a narrated outcome guarantee as unrevisable", () => {
     const base = videoScriptResultFixture();
     const sections = base.sections.map((s) => s.sectionId === "scriptsec:payoff"
