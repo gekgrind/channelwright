@@ -359,6 +359,129 @@ describe("video script executor", () => {
       for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
     }
   });
+
+  it("fails closed when the REVISION author and the critic resolve to the same provider (defect #2)", async () => {
+    const keys = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_MODEL", "ANTHROPIC_MODEL",
+      "VIDEO_SCRIPT_GENERATOR_PROVIDER", "VIDEO_SCRIPT_CRITIC_PROVIDER", "VIDEO_SCRIPT_REVISION_PROVIDER"];
+    const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    try {
+      process.env.OPENAI_API_KEY = "o"; process.env.ANTHROPIC_API_KEY = "a";
+      process.env.OPENAI_MODEL = "o1"; process.env.ANTHROPIC_MODEL = "a1";
+      // Generator differs from critic (valid), but the reviser — which authors the
+      // accepted final artifact — resolves to the same provider as the critic.
+      process.env.VIDEO_SCRIPT_GENERATOR_PROVIDER = "openai";
+      process.env.VIDEO_SCRIPT_CRITIC_PROVIDER = "anthropic";
+      process.env.VIDEO_SCRIPT_REVISION_PROVIDER = "anthropic";
+      const executor = new ChannelVideoScriptExecutor(resolver(), undefined, meter());
+      await expect(executor.execute(step("validate-approved-brief"))).rejects.toThrow(/different providers|independent/i);
+    } finally {
+      for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+    }
+  });
+});
+
+describe("critic findings are decision-critical and cannot be truncated (defect #1 / #6)", () => {
+  const maxSemantic = { score: 98, recommendation: "accept" as const, findings: Array.from({ length: 40 }, (_u, i) => ({ severity: "warning" as const, code: `SOFT_${i}`, message: `soft ${i}`, evidenceIds: [] })) };
+  const criticError = (op: string) => ({
+    value: { overallAssessment: "Blocking issue in the artifact.", keepsPromise: false, evidenceDisciplineHeld: false,
+      findings: [{ code: "UNSUPPORTED_ABSOLUTE_CLAIM", severity: "error" as const, affectedField: "sections[3].narration", rationale: "Narration claims 100% effectiveness.", evidenceIds: [] }] },
+    usage, attribution: attribution("CRITIC", "anthropic", op),
+  });
+
+  it("Case A: semantic at cap (40) + critic error → critic error survives and initial QA fails", async () => {
+    const executor = new ChannelVideoScriptExecutor(resolver(), model({
+      qa: vi.fn(async () => ({ value: maxSemantic, usage, attribution: attribution("QA", "anthropic", "video_script_qa") })) as never,
+      critique: vi.fn(async () => criticError("video_script_critique")) as never,
+    }), meter());
+    const out = await executor.execute(step("initial-video-script-qa", {
+      "validate-approved-brief": approvedVideoBriefArtifactFixture,
+      "draft-video-script": { result: videoScriptResultFixture(), modelUsage: usage },
+    })) as unknown as { qa: { passed: boolean; recommendation: string; findings: Array<{ code: string }> } };
+    expect(out.qa.passed).toBe(false);
+    expect(out.qa.recommendation).toBe("revise");
+    expect(out.qa.findings.some((f) => f.code === "UNSUPPORTED_ABSOLUTE_CLAIM")).toBe(true);
+  });
+
+  it("Case B: semantic at cap (40) + critic error at FINAL QA → cannot finalize", async () => {
+    const executor = new ChannelVideoScriptExecutor(resolver(), model({
+      qa: vi.fn(async () => ({ value: maxSemantic, usage, attribution: attribution("QA", "anthropic", "video_script_qa") })) as never,
+      critique: vi.fn(async () => criticError("video_script_critique")) as never,
+    }), meter());
+    const priors = {
+      "validate-approved-brief": approvedVideoBriefArtifactFixture,
+      "draft-video-script": { result: videoScriptResultFixture(), modelUsage: usage },
+      "initial-video-script-qa": { qa: { passed: false, score: 40, findings: [], recommendation: "revise", deterministicChecksPassed: 35, deterministicChecksFailed: 0, modelUsage: usage }, crossModelReview: { generator: attribution("GENERATOR", "openai", "video_script_synthesis"), critic: attribution("CRITIC", "anthropic", "video_script_critique"), outcome: "CRITIC_RAISED_ISSUE", findings: [], summary: "x" } },
+      "bounded-video-script-revision": { attempted: true, reason: "revised", result: videoScriptResultFixture(), modelUsage: usage },
+    };
+    const finalQa = await executor.execute(step("final-video-script-qa", priors)) as unknown as { qa: { passed: boolean } };
+    expect(finalQa.qa.passed).toBe(false);
+    await expect(executor.execute(step("finalize-video-script", { ...priors, "final-video-script-qa": finalQa }))).rejects.toThrow(/Final QA did not accept/);
+  });
+
+  it("critic error is not overridden by an optimistic semantic accept + high score (#6)", async () => {
+    const executor = new ChannelVideoScriptExecutor(resolver(), model({
+      qa: vi.fn(async () => ({ value: { score: 100, recommendation: "accept" as const, findings: [] }, usage, attribution: attribution("QA", "anthropic", "video_script_qa") })) as never,
+      critique: vi.fn(async () => criticError("video_script_critique")) as never,
+    }), meter());
+    const out = await executor.execute(step("initial-video-script-qa", {
+      "validate-approved-brief": approvedVideoBriefArtifactFixture,
+      "draft-video-script": { result: videoScriptResultFixture(), modelUsage: usage },
+    })) as unknown as { qa: { passed: boolean } };
+    expect(out.qa.passed).toBe(false);
+  });
+
+  it("critic WARNING with a semantic accept remains non-blocking (canonical warning policy)", async () => {
+    const executor = new ChannelVideoScriptExecutor(resolver(), model({
+      critique: vi.fn(async () => ({
+        value: { overallAssessment: "Minor note.", keepsPromise: true, evidenceDisciplineHeld: true,
+          findings: [{ code: "STYLE_NOTE", severity: "warning" as const, affectedField: "sections[1].narration", rationale: "Could be tighter.", evidenceIds: [] }] },
+        usage, attribution: attribution("CRITIC", "anthropic", "video_script_critique"),
+      })) as never,
+    }), meter());
+    const out = await executor.execute(step("initial-video-script-qa", {
+      "validate-approved-brief": approvedVideoBriefArtifactFixture,
+      "draft-video-script": { result: videoScriptResultFixture(), modelUsage: usage },
+    })) as unknown as { qa: { passed: boolean } };
+    expect(out.qa.passed).toBe(true);
+  });
+});
+
+describe("accepted-artifact provenance (defect #3)", () => {
+  const reviewPrior = { generator: attribution("GENERATOR", "openai", "video_script_synthesis"), critic: null, outcome: "AGREED", findings: [], summary: "ok" };
+
+  it("names the GENERATOR as author when no revision changed the artifact", async () => {
+    const executor = new ChannelVideoScriptExecutor(resolver(), model(), meter());
+    const out = await executor.execute(step("final-video-script-qa", {
+      "validate-approved-brief": approvedVideoBriefArtifactFixture,
+      "draft-video-script": { result: videoScriptResultFixture(), modelUsage: usage },
+      "initial-video-script-qa": { qa: { passed: true, score: 92, findings: [], recommendation: "accept", deterministicChecksPassed: 35, deterministicChecksFailed: 0, modelUsage: usage }, crossModelReview: reviewPrior },
+      // Not attempted → accepted artifact is the draft, authored by the generator.
+      "bounded-video-script-revision": { attempted: false, reason: "nothing material", result: videoScriptResultFixture(), modelUsage: { model: "none", inputTokens: 0, outputTokens: 0, totalTokens: 0 } },
+    })) as unknown as { crossModelReview: { generator: { role: string; operation: string }; critic: { role: string } } };
+    expect(out.crossModelReview.generator.role).toBe("GENERATOR");
+    expect(out.crossModelReview.generator.operation).toBe("video_script_synthesis");
+    // Critic provenance remains separate and is not mistaken for authorship.
+    expect(out.crossModelReview.critic.role).toBe("CRITIC");
+  });
+
+  it("names the REVISION writer as author when a revision authored the accepted artifact", async () => {
+    const base = videoScriptResultFixture();
+    const revised = videoScriptResultFixture({
+      modelProvenance: [
+        { provider: "openai", model: "gen", role: "GENERATOR", operation: "video_script_synthesis", invokedAt: "2026-08-16T10:01:00.000Z" },
+        { provider: "openai", model: "rev", role: "REVISION", operation: "video_script_revision", invokedAt: "2026-08-16T10:03:00.000Z" },
+      ],
+    });
+    const executor = new ChannelVideoScriptExecutor(resolver(), model(), meter());
+    const out = await executor.execute(step("final-video-script-qa", {
+      "validate-approved-brief": approvedVideoBriefArtifactFixture,
+      "draft-video-script": { result: base, modelUsage: usage },
+      "initial-video-script-qa": { qa: { passed: false, score: 60, findings: [], recommendation: "revise", deterministicChecksPassed: 35, deterministicChecksFailed: 0, modelUsage: usage }, crossModelReview: reviewPrior },
+      "bounded-video-script-revision": { attempted: true, reason: "revised", result: revised, modelUsage: usage },
+    })) as unknown as { crossModelReview: { generator: { role: string; operation: string } } };
+    expect(out.crossModelReview.generator.role).toBe("REVISION");
+    expect(out.crossModelReview.generator.operation).toBe("video_script_revision");
+  });
 });
 
 describe("viewer value inheritance", () => {

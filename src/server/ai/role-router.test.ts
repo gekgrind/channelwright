@@ -174,6 +174,14 @@ describe("cross-provider independence enforcement", () => {
     catch (error) { expect((error as ModelRoutingError).code).toBe("AI_PROVIDER_INDEPENDENCE_REQUIRED"); }
   });
 
+  it("enforces the revision-vs-critic relationship (the reviser authors the final artifact)", () => {
+    const valid = new StaticRoleRouter({ REVISION: stub("openai", "r"), CRITIC: stub("anthropic", "c") });
+    expect(() => assertDistinctRoleProviders(valid, "REVISION", "CRITIC")).not.toThrow();
+    const invalid = new StaticRoleRouter({ REVISION: stub("anthropic", "r"), CRITIC: stub("anthropic", "c") });
+    try { assertDistinctRoleProviders(invalid, "REVISION", "CRITIC"); expect.unreachable("expected AI_PROVIDER_INDEPENDENCE_REQUIRED"); }
+    catch (error) { expect((error as ModelRoutingError).code).toBe("AI_PROVIDER_INDEPENDENCE_REQUIRED"); }
+  });
+
   it("reproduces the default-both-to-openai collapse and rejects it", () => {
     clear();
     credentials();

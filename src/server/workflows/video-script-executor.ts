@@ -33,6 +33,11 @@ function requirePrior<T>(step: ClaimedWorkflowStep, key: string, parse: (value: 
   return parse(value);
 }
 
+/** Projects independent-critic findings onto the QA finding shape for the merge. */
+function criticToQaFindings(criticFindings: Array<{ severity: "error" | "warning" | "info"; code: string; affectedField: string; rationale: string; evidenceIds: string[] }>) {
+  return criticFindings.map((finding) => ({ severity: finding.severity, code: finding.code, message: `${finding.affectedField}: ${finding.rationale}`, evidenceIds: finding.evidenceIds }));
+}
+
 export class ChannelVideoScriptExecutor implements WorkflowStepExecutor {
   constructor(
     private readonly injectedResolver?: ApprovedBriefResolver,
@@ -50,9 +55,14 @@ export class ChannelVideoScriptExecutor implements WorkflowStepExecutor {
     let model = this.injectedModel;
     if (!model) {
       const router = new EnvironmentRoleRouter("VIDEO_SCRIPT");
-      // Fail closed before any spend if the generator and independent critic
-      // would resolve to the same provider (or a role has no model configured).
+      // Fail closed before any spend if the artifact author and the independent
+      // critic would resolve to the same provider (or a role has no model
+      // configured). The GENERATOR authors the initial draft and the REVISION
+      // authors the accepted final artifact, so BOTH must differ from the CRITIC
+      // — otherwise a revised final artifact could be reviewed by its own author's
+      // provider.
       assertDistinctRoleProviders(router, "GENERATOR", "CRITIC");
+      assertDistinctRoleProviders(router, "REVISION", "CRITIC");
       model = new RoutedVideoScriptModel(router, budget, usageMeter);
     }
     return { resolver, model, usageMeter, budget };
@@ -115,18 +125,10 @@ export class ChannelVideoScriptExecutor implements WorkflowStepExecutor {
         evidenceIds: finding.evidenceIds.filter((id) => known.has(id)),
         disposition: "CRITIC_RAISED_ISSUE" as CrossModelDisposition,
       }));
-      const merged = mergeVideoScriptQA(
-        deterministic,
-        {
-          ...semantic.value,
-          findings: [
-            ...semantic.value.findings,
-            ...criticFindings.map((finding) => ({ severity: finding.severity, code: finding.code, message: `${finding.affectedField}: ${finding.rationale}`, evidenceIds: finding.evidenceIds })),
-          ].slice(0, 40),
-        },
-        semantic.usage,
-        upstream,
-      );
+      // Critic findings enter the merge in full and are never truncated before
+      // pass/fail, so a blocking critic error survives no matter how many
+      // semantic-QA findings exist.
+      const merged = mergeVideoScriptQA(deterministic, semantic.value, semantic.usage, upstream, criticToQaFindings(criticFindings));
       const generator = draft.result.modelProvenance.find((item) => item.operation === "video_script_synthesis")
         ?? draft.result.modelProvenance[draft.result.modelProvenance.length - 1];
       const review: CrossModelReview = {
@@ -216,22 +218,17 @@ export class ChannelVideoScriptExecutor implements WorkflowStepExecutor {
         evidenceIds: finding.evidenceIds.filter((id) => known.has(id)),
         disposition: "CRITIC_RAISED_ISSUE" as CrossModelDisposition,
       }));
-      const merged = mergeVideoScriptQA(
-        deterministic,
-        {
-          ...semantic.value,
-          findings: [
-            ...semantic.value.findings,
-            ...criticFindings.map((finding) => ({ severity: finding.severity, code: finding.code, message: `${finding.affectedField}: ${finding.rationale}`, evidenceIds: finding.evidenceIds })),
-          ].slice(0, 40),
-        },
-        semantic.usage,
-        upstream,
-      );
-      const generator = revision.result.modelProvenance.find((item) => item.operation === "video_script_synthesis")
+      const merged = mergeVideoScriptQA(deterministic, semantic.value, semantic.usage, upstream, criticToQaFindings(criticFindings));
+      // Final provenance must name the author of the ACCEPTED artifact: the
+      // reviser when a revision was accepted (its attribution is in the
+      // provenance trail), otherwise the original generator. The full trail is
+      // preserved in modelProvenance; the critic remains separately represented.
+      const author = revision.result.modelProvenance.find((item) => item.role === "REVISION")
+        ?? revision.result.modelProvenance.find((item) => item.operation === "video_script_synthesis")
         ?? revision.result.modelProvenance[revision.result.modelProvenance.length - 1];
       this.log(step, {
         role: "QA", criticProvider: critique.attribution.provider, provider: semantic.attribution.provider, model: semantic.attribution.model,
+        acceptedAuthorRole: author?.role, acceptedAuthorProvider: author?.provider,
         criticFindingCount: criticFindings.length, qaOutcome: merged.recommendation, qaScore: merged.score,
       });
       // The one bounded revision is spent: a clean-but-still-improvable result
@@ -240,7 +237,7 @@ export class ChannelVideoScriptExecutor implements WorkflowStepExecutor {
       return videoScriptQAStepSchema.parse({
         qa: resolved,
         crossModelReview: {
-          generator: generator ?? critique.attribution,
+          generator: author ?? critique.attribution,
           critic: critique.attribution,
           outcome: resolved.recommendation === "human_review_required" ? "HUMAN_REVIEW_REQUIRED"
             : deterministic.some((finding) => finding.severity === "error") && criticFindings.length === 0 ? "OVERRIDDEN_BY_DETERMINISTIC_RULE"

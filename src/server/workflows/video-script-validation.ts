@@ -14,30 +14,24 @@ import type { VideoScriptSemanticQAOutput } from "./video-script-model";
 type Finding = VideoScriptQAResult["findings"][number];
 
 /** Deterministic rule count used to report a checks-passed figure. */
-export const DETERMINISTIC_VIDEO_SCRIPT_RULE_COUNT = 36;
+export const DETERMINISTIC_VIDEO_SCRIPT_RULE_COUNT = 35;
 
 const FABRICATED_VIEWS = /\b(?:will|should|expect(?:ed)?\s+to)\s+(?:get|reach|receive|hit)\b[^.]{0,40}\b(?:views?|subscribers?)\b|\b\d[\d,.]*\s*(?:k|m|million|thousand)?\+?\s*(?:views?|subscribers?)\s+(?:in|within|per|guaranteed|expected)\b/i;
 const FABRICATED_REVENUE = /\b(?:cpm|rpm)\b\s*(?:of|is|=|:)?\s*\$?\d|\b(?:earn|earning|earnings|make|makes|making|generate|generates|generating|revenue|profit|income|payout)\b[^.]{0,40}\$\s*\d|\$\s*\d[\d,.]*\s*(?:\/|per\s+|a\s+)?(?:month|mo|year|yr|day)\b[^.]{0,40}\b(?:revenue|income|profit|earnings|payout)\b/i;
 const FABRICATED_SEARCH_VOLUME = /\b(?:search(?:es)?\s+volume|monthly\s+searches|searched\s+\d[\d,.]*\s*times|\d[\d,.]*\s*(?:monthly\s+)?searches)\b/i;
 const MONETARY_GUARANTEE = /\bguarantee(?:d|s)?\b[^.]{0,60}\$\s*\d|\bmake\s+\$\s*\d[\d,.]*\s*(?:\/|per\s+|a\s+)?(?:month|week|day|year)\b|\brisk[-\s]free\s+(?:income|profit)\b/i;
-// Backstop for the language family a paraphrased forbidden claim most often
-// uses: an absolute promise to eliminate/prevent an outcome for every/all cases,
-// or a zero/no-X-ever claim. This is a deterministic net for that family only,
-// NOT a general semantic claim matcher, and it is scanned over the NARRATION the
-// viewer actually receives — never over defensive meta fields (assumptions,
-// risks, open questions), so "Do not guarantee zero gaps" is not a violation.
-// ponytail: guarantee-language heuristic over narration; the semantic (cross-provider) critic is the general layer.
-const OUTCOME_GUARANTEE = new RegExp([
-  // Eliminating a bad outcome absolutely: "removes scheduling gaps", "eliminates
-  // errors", "no more mistakes". The negative-outcome noun near the verb is what
-  // distinguishes this from a benign "remove one person without rebuilding".
-  /\b(?:eliminat\w+|remove[sd]?|prevent[sd]?|avoids?|no\s+more|zero)\b[^.]{0,25}\b(?:gaps?|errors?|mistakes?|failures?|problems?|defects?|downtime)\b/i.source,
-  // Guaranteeing an absolute: "guarantees no gaps", "ensures every ... always".
-  /\b(?:guarantee[sd]?|guaranteed|ensures?)\b[^.]{0,40}\b(?:no|zero|every|all|any|never|always|without)\b/i.source,
-  // A "100%" absolute claim.
-  /\b100%\b[^.]{0,20}\b(?:guarantee\w*|coverage|success|effective|no|zero)\b/i.source,
-].join("|"), "i");
-const FABRICATED_RETENTION = /\b\d{1,3}\s*%\s*(?:audience\s+)?retention\b|\bretention\b[^.]{0,40}\b\d{1,3}\s*%|\b(?:average\s+view\s+duration|watch\s+time)\b[^.]{0,40}\b\d+\s*(?:%|minutes?|seconds?)\b|\bviewers?\s+will\s+(?:stay|watch)\b[^.]{0,40}\b\d+\s*(?:%|minutes?)\b/i;
+// There is deliberately NO lexical "outcome guarantee" heuristic here. A word-
+// based rule cannot reliably tell an absolute claim ("makes scheduling gaps
+// impossible", "100% effective") from a qualified or negated one ("prevent
+// common mistakes", "does not remove scheduling gaps"): it produces both false
+// positives and false negatives, so it must not be an approval authority.
+// Absolute / unsupported-certainty language is judged by the independent semantic
+// critic (a different provider, which now reviews the FINAL revised artifact) and
+// its error findings are first-class, non-overridable approval blockers. The
+// deterministic layer keeps only what it can reliably prove: the structural
+// evidence-plan and MUST_NOT_CLAIM enforcement above, plus the digit-anchored
+// fabrication rules below (revenue, retention, search volume, monetary guarantee).
+const FABRICATED_RETENTION =/\b\d{1,3}\s*%\s*(?:audience\s+)?retention\b|\bretention\b[^.]{0,40}\b\d{1,3}\s*%|\b(?:average\s+view\s+duration|watch\s+time)\b[^.]{0,40}\b\d+\s*(?:%|minutes?|seconds?)\b|\bviewers?\s+will\s+(?:stay|watch)\b[^.]{0,40}\b\d+\s*(?:%|minutes?)\b/i;
 
 /**
  * Downstream artifacts this stage must not produce. Scoped to Channelwright
@@ -271,22 +265,14 @@ export function deterministicVideoScriptValidation(
   }
 
   // --- Fabrication and downstream scope ------------------------------------
+  // Digit-anchored, low-ambiguity rules only. Absolute-claim / guarantee language
+  // is left to the independent semantic critic (see the note near the regexes).
   const text = allText(result).join("\n");
-  // The narration the viewer actually receives: spoken lines, on-screen text, and
-  // inherited visual direction — but not defensive meta fields. Forbidden-outcome
-  // narration is bound to this text (not to model-authored claimIds), so a
-  // forbidden claim cannot escape by leaving claimIds empty.
-  const narration = [
-    result.openingHook.spokenOpening, result.openingHook.onScreenText,
-    ...result.sections.flatMap((section) => [section.narration, section.onScreenText, section.visualDirection]),
-    result.callToAction.spokenCta,
-  ].filter((value): value is string => Boolean(value)).join("\n");
   if (FABRICATED_VIEWS.test(text)) add("error", "FABRICATED_PERFORMANCE_PREDICTION", "The script predicts future views or subscribers.");
   if (FABRICATED_REVENUE.test(text)) add("error", "FABRICATED_REVENUE_PREDICTION", "The script asserts revenue, CPM, or RPM figures.");
   if (FABRICATED_SEARCH_VOLUME.test(text)) add("error", "FABRICATED_SEARCH_VOLUME", "The script asserts search-volume data no configured provider supplies.");
   if (FABRICATED_RETENTION.test(text)) add("error", "FABRICATED_RETENTION_PREDICTION", "The script predicts a specific retention percentage or watch time.");
   if (MONETARY_GUARANTEE.test(text)) add("error", "UNSUPPORTED_MONETARY_GUARANTEE", "The script contains an unsupported monetary guarantee.");
-  if (OUTCOME_GUARANTEE.test(narration)) add("error", "UNSUPPORTED_OUTCOME_GUARANTEE", "The narration makes an absolute outcome guarantee, which no inherited evidence supports.");
   if (TITLE_LEAKAGE.test(text)) add("error", "TITLE_SCOPE_VIOLATION", "The script produced final title copy, which belongs to the downstream packaging stage.");
   if (THUMBNAIL_LEAKAGE.test(text)) add("error", "THUMBNAIL_SCOPE_VIOLATION", "The script produced thumbnail copy or imagery, which belongs to a downstream stage.");
   if (STORYBOARD_LEAKAGE.test(text)) add("error", "STORYBOARD_SCOPE_VIOLATION", "The script produced a storyboard or shot list, which belongs to a downstream stage.");
@@ -300,24 +286,38 @@ export function deterministicVideoScriptValidation(
   return findings;
 }
 
-/** Semantic findings are filtered against known evidence exactly as the earlier stages do. */
+const SEVERITY_RANK: Record<Finding["severity"], number> = { error: 0, warning: 1, info: 2 };
+
+/**
+ * Merges deterministic, semantic-QA, and independent-critic findings into one QA
+ * verdict. `criticFindings` are decision-critical: they enter the pass/fail
+ * evaluation in FULL and are never truncated before it, so a blocking critic
+ * error always survives regardless of how many semantic-QA findings exist. Only
+ * the persisted `findings` array is capped for storage/display — and errors are
+ * ranked first so the cap can never drop a blocking finding.
+ */
 export function mergeVideoScriptQA(
   deterministic: Finding[],
   semantic: VideoScriptSemanticQAOutput,
   modelUsage: ModelUsage,
   upstream: ApprovedVideoBriefArtifact,
+  criticFindings: Finding[] = [],
 ): VideoScriptQAResult {
   const { findings, errors, score, recommendation } = mergeSemanticQAFindings(
     deterministic,
-    semantic,
+    // The critic findings join the semantic set BEFORE evaluation; the shared
+    // helper counts errors over the whole set, so nothing decision-critical is
+    // lost to a cap.
+    { ...semantic, findings: [...semantic.findings, ...criticFindings] },
     new Set(upstream.discoveryBundle.evidence.map((item) => item.id)),
     "The video script QA model cited an unknown evidence ID.",
   );
   const failingRules = new Set(deterministic.map((item) => item.code)).size;
+  const ranked = [...findings].sort((left, right) => SEVERITY_RANK[left.severity] - SEVERITY_RANK[right.severity]);
   return videoScriptQAResultSchema.parse({
     passed: errors === 0 && score >= 75,
     score,
-    findings: findings.slice(0, 50),
+    findings: ranked.slice(0, 50),
     recommendation,
     deterministicChecksPassed: Math.max(0, DETERMINISTIC_VIDEO_SCRIPT_RULE_COUNT - failingRules),
     deterministicChecksFailed: failingRules,
@@ -338,7 +338,6 @@ export const UNREVISABLE_VIDEO_SCRIPT_CODES = new Set([
   "VIEWER_VALUE_GATE_REJECTED",
   "CONTENT_INTEGRITY_BLOCKING_RISK",
   "UNSUPPORTED_MONETARY_GUARANTEE",
-  "UNSUPPORTED_OUTCOME_GUARANTEE",
   "FABRICATED_SEARCH_VOLUME",
   "EVIDENCE_REFERENCE_NOT_FOUND",
 ]);

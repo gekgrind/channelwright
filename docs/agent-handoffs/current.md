@@ -4,9 +4,66 @@ Task: Repair CHANNEL_VIDEO_SCRIPT after Codex verification, then hand back for r
 Base: `0db4c814d4a19a0da5740d2667fe6f15d7a6088f` (branch `main`)
 Original implementation commit: `a7d88f2b08e1811bcecc4e2bb660726429657143`
 First repair commit: `b4e33764ce1a73e5e15fb8dcef2bbdaf448475da`
-Second repair commit (this pass): see `git rev-parse feat/channel-video-script`
-Verdict: `REPAIRS COMPLETE — READY FOR RE-VERIFICATION`
+Second repair commit: `d059a53549488489a1b6e4f6ea0a96ecc4556f48`
+Third repair commit (this pass): see `git rev-parse feat/channel-video-script`
+Verdict: `REPAIRS COMPLETE — READY FOR INDEPENDENT RE-VERIFICATION`
 Branch: `feat/channel-video-script`
+---
+
+# Third Repair Pass — Codex round 3 (NOT READY FOR MERGE → repaired)
+
+Prior HEAD reviewed by Codex: `d059a53`. Six findings + doc fix, all reproduced
+and repaired; no shared-Supabase / paid-provider / production action taken.
+
+1. **[P1] Critic findings could be truncated before pass/fail.** Reproduced: the
+   executor appended critic findings to semantic findings and `.slice(0, 40)`
+   *before* `mergeVideoScriptQA`; since semantic QA alone can carry 40 findings, a
+   blocking critic error could be dropped. Fix: `mergeVideoScriptQA` now takes
+   critic findings as a **separate decision-critical argument** and evaluates
+   pass/fail over the complete deterministic+semantic+critic set; the executor no
+   longer pre-truncates. The persisted `findings` array is still capped (50) for
+   storage, but ranked errors-first so a blocking finding can never be dropped by
+   the cap. (`video-script-validation.ts`, `video-script-executor.ts`.)
+2. **[P1] Revised artifact could be reviewed by its own author's provider.**
+   Reproduced: only `GENERATOR != CRITIC` was enforced; the `REVISION` role
+   authors the accepted final artifact. Fix: the executor also asserts
+   `REVISION != CRITIC` (typed `AI_PROVIDER_INDEPENDENCE_REQUIRED`) before any
+   spend, using resolved provider identity. (`video-script-executor.ts`.)
+3. **[P1] Final provenance named the wrong writer.** Reproduced: `crossModelReview.
+   generator` always pointed at the original synthesis even when a revision
+   authored the accepted artifact. Fix: final QA sets the author to the REVISION
+   attribution when a revision was accepted (from the provenance trail), else the
+   GENERATOR; the full trail stays in `modelProvenance` and the critic stays
+   separately represented. (`video-script-executor.ts`.)
+4. **[P1] QA budget could not complete the authorized path.** Documented the real
+   call graph (normal path = 4 QA calls; full-retry = 8). Fixed
+   `maxAggregateQaCalls` min `3 -> 4` (normal path) and default `6 -> 8`
+   (full retry, <= DB ceiling 12); raised input/output/total-token defaults for the
+   larger call graph; `boundedInteger` rejects a below-minimum config.
+   (`video-script-config.ts`, `.env.example`.)
+5. **[P2] Removed the unreliable guarantee lexical heuristic as an approval
+   authority.** Reproduced Codex's false positives ("prevent common mistakes",
+   "does not remove scheduling gaps") and false negatives ("100% effective",
+   "makes scheduling gaps impossible"). Fix: deleted the `OUTCOME_GUARANTEE` rule
+   and `UNSUPPORTED_OUTCOME_GUARANTEE`. Deterministic validation keeps only what it
+   can reliably prove (structural evidence-plan / MUST_NOT_CLAIM enforcement +
+   digit-anchored fabrication rules). Absolute / unsupported-certainty language is
+   judged by the independent semantic critic, whose error findings are now
+   first-class non-overridable blockers (finding #1/#6). (`video-script-validation.ts`.)
+6. **Critic errors are first-class blockers.** A critic `error` forces `passed=false`
+   / `recommendation=revise` and cannot be overridden by a semantic `accept` or a
+   high score, at both initial and final QA (a consequence of the #1 structure;
+   covered by explicit tests).
+7. **Disposable-gate documentation** corrected to describe the explicit-opt-in-only
+   connection contract (no `DATABASE_URL`/localhost fallback).
+
+## Verification (this pass)
+- Full `npm test`: **122 files, 968 tests, 0 failures.** Typecheck clean; lint 0
+  errors (2 pre-existing unrelated worktree warnings); build success.
+- Disposable-PG gate: **UNAVAILABLE** — no PostgreSQL/Docker/WSL-Postgres in this
+  environment and `CHANNELWRIGHT_DISPOSABLE_DATABASE_URL` unset. Not run. This is
+  the sole external merge prerequisite (see Remaining Gaps below).
+
 ---
 
 # Second Repair Pass — Codex round 2 (NOT READY FOR MERGE → repaired)

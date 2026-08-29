@@ -301,48 +301,47 @@ describe("claim integrity cannot be detached from narration (defect #3)", () => 
     expect(codes(videoScriptResultFixture({ claimUsage }))).toContain("CLAIM_USAGE_INCOMPLETE");
   });
 
-  it("rejects forbidden guarantee narration even when claimIds are empty", () => {
-    const base = videoScriptResultFixture();
-    const sections = base.sections.map((s) => s.sectionId === "scriptsec:payoff"
-      ? { ...s, narration: "And that is the whole method. This system guarantees there will be no scheduling gaps, ever.", claimIds: [] }
-      : s);
-    const found = codes(videoScriptResultFixture({ sections }));
-    expect(found).toContain("UNSUPPORTED_OUTCOME_GUARANTEE");
-  });
-
-  it("rejects the exact reproduced bypass: elimination-of-outcome narration with empty claimIds", () => {
-    const base = videoScriptResultFixture();
-    const sections = base.sections.map((s) => s.sectionId === "scriptsec:payoff"
-      ? { ...s, narration: "And here is the best part. This workflow removes scheduling gaps for every upload, guaranteed.", claimIds: [] }
-      : s);
-    // Forbidden claim stays declared OMITTED in claimUsage; the narration is what is caught.
-    expect(codes(videoScriptResultFixture({ sections }))).toContain("UNSUPPORTED_OUTCOME_GUARANTEE");
-  });
-
-  it("does NOT flag a defensive guarantee statement in a meta field (over-broad fix)", () => {
-    const base = videoScriptResultFixture();
-    const result = videoScriptResultFixture({
-      assumptions: [base.assumptions[0], "Do not guarantee zero scheduling gaps and do not claim this removes all errors."],
-      risks: [{ risk: "Writers may overclaim: never promise no gaps at all.", severity: "low", mitigation: "Keep language honest." }],
-    });
-    // The guarantee language lives in assumptions/risks (not narration), so it must not trip the narration heuristic.
-    expect(codes(result)).not.toContain("UNSUPPORTED_OUTCOME_GUARANTEE");
-    expect(codes(result)).toEqual([]);
-  });
-
-  it("treats a narrated outcome guarantee as unrevisable", () => {
-    const base = videoScriptResultFixture();
-    const sections = base.sections.map((s) => s.sectionId === "scriptsec:payoff"
-      ? { ...s, narration: "This system guarantees there will be no scheduling gaps.", claimIds: [] }
-      : s);
-    expect(hasUnrevisableVideoScriptFailure(validate(videoScriptResultFixture({ sections })))).toBe(true);
-  });
-
   it("still preserves SUPPORTED / RESEARCH_REQUIRED / MUST_NOT_CLAIM semantics", () => {
     // Sanity: the brief carries all three statuses and the clean fixture is legal.
     const statuses = new Set(brief.evidencePlan.items.map((i) => i.status));
     expect(statuses.has("SUPPORTED") && statuses.has("RESEARCH_REQUIRED") && statuses.has("MUST_NOT_CLAIM")).toBe(true);
     expect(codes(videoScriptResultFixture())).toEqual([]);
+  });
+});
+
+describe("guarantee language is not a deterministic approval boundary (defect #5)", () => {
+  // The deterministic layer no longer judges absolute/qualified/negated claim
+  // language (it produced both false positives and false negatives). It must not
+  // reject any of the Codex probe strings; the independent semantic critic is the
+  // boundary for these (see the executor tests).
+  const withPayoffNarration = (narration: string) => {
+    const base = videoScriptResultFixture();
+    return videoScriptResultFixture({ sections: base.sections.map((s) => s.sectionId === "scriptsec:payoff" ? { ...s, narration } : s) });
+  };
+
+  it("does not reject qualified prevention language", () => {
+    expect(codes(withPayoffNarration("So on Monday, run the gap sweep to prevent common mistakes before you publish, and you will catch most of them early."))).toEqual([]);
+  });
+
+  it("does not reject explicit negation of the prohibited result", () => {
+    expect(codes(withPayoffNarration("To be clear, this workflow does not remove scheduling gaps on its own; it just surfaces them while you can still fix them."))).toEqual([]);
+  });
+
+  it("does not (falsely) treat an absolute percentage claim as a deterministic failure", () => {
+    // "100% effective" is an unsupported absolute — but that judgement belongs to
+    // the semantic critic, not a lexical rule. Deterministic stays silent here.
+    expect(codes(withPayoffNarration("Run this and it is 100% effective at surfacing every gap before you publish."))).toEqual([]);
+  });
+
+  it("does not (falsely) treat an 'impossible' absolute claim as a deterministic failure", () => {
+    expect(codes(withPayoffNarration("Follow the five steps and this makes scheduling gaps impossible."))).toEqual([]);
+  });
+
+  it("no longer defines the removed UNSUPPORTED_OUTCOME_GUARANTEE rule", () => {
+    // Guard against a future re-introduction of the unreliable lexical rule.
+    for (const probe of ["100% effective", "makes scheduling gaps impossible", "does not remove scheduling gaps", "prevent common mistakes"]) {
+      expect(codes(withPayoffNarration(probe))).not.toContain("UNSUPPORTED_OUTCOME_GUARANTEE");
+    }
   });
 });
 

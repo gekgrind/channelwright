@@ -12,9 +12,12 @@
  *
  * It never touches shared/production Supabase and requires no paid providers.
  *
- * Connection: CHANNELWRIGHT_DISPOSABLE_DATABASE_URL, else DATABASE_URL, else a
- * local default. If no server is reachable it reports UNAVAILABLE (exit 2) rather
- * than silently passing.
+ * Connection: ONLY the dedicated CHANNELWRIGHT_DISPOSABLE_DATABASE_URL is used.
+ * There is deliberately no fallback to the application's DATABASE_URL and no
+ * localhost default — this gate creates/drops databases and manages cluster-global
+ * roles, so it must run only against a server the operator explicitly earmarked as
+ * disposable. When that variable is unset (or the server is unreachable) it reports
+ * UNAVAILABLE (exit 2) rather than silently passing or touching anything else.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
