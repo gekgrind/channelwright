@@ -13,9 +13,17 @@ alter table channelwright.workflow_runs
   add column artifact_hash text check (artifact_hash is null or artifact_hash ~ '^[a-f0-9]{64}$'),
   add column provenance_hash text check (provenance_hash is null or provenance_hash ~ '^[a-f0-9]{64}$');
 
+-- pgcrypto lives in the `extensions` schema on Supabase. This top-level backfill
+-- runs at migration apply time (not inside a plpgsql body), so its digest() calls
+-- are resolved when the statement is planned, using the migration session's
+-- search_path. On a clean cluster where `extensions` is not on that path, bare
+-- digest() fails with "function digest(text, unknown) does not exist" and aborts
+-- the whole chain. A later forward migration cannot repair an apply-time failure
+-- here, so — matching every other DML digest() call in the chain — it is
+-- schema-qualified. This changes only name resolution, not the hashes produced.
 update channelwright.workflow_runs r set
-  artifact_hash = encode(digest(r.output_payload::text, 'sha256'), 'hex'),
-  provenance_hash = encode(digest(e.output_payload::text, 'sha256'), 'hex')
+  artifact_hash = encode(extensions.digest(r.output_payload::text, 'sha256'), 'hex'),
+  provenance_hash = encode(extensions.digest(e.output_payload::text, 'sha256'), 'hex')
 from channelwright.workflow_steps e
 where r.workflow_type = 'CHANNEL_RESEARCH'
   and e.workflow_run_id = r.id and e.step_key = 'retrieve-youtube-evidence'

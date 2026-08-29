@@ -11,6 +11,16 @@ describe("CHANNEL_STRATEGY migration", () => {
     expect(migration).toContain("jsonb_object_length(p_input) <> 2");
   });
 
+  it("schema-qualifies digest() in the apply-time backfill so a clean cluster can apply it", () => {
+    // Regression: the top-level backfill runs at migration apply time, so bare
+    // digest() is resolved via the session search_path. On a cluster where
+    // pgcrypto's `extensions` schema is not on that path it raises
+    // "function digest(text, unknown) does not exist" and aborts the whole chain
+    // (caught by the disposable-PostgreSQL gate). It must stay schema-qualified.
+    expect(migration).toContain("encode(extensions.digest(r.output_payload::text, 'sha256'), 'hex')");
+    expect(migration).toContain("encode(extensions.digest(e.output_payload::text, 'sha256'), 'hex')");
+  });
+
   it("reuses durable accounting, successor lineage, and immutable final artifacts", () => {
     expect(migration).toContain("ensure_research_run_budget");
     expect(migration).toContain("'human-revision:'||v_old_run.id::text");
