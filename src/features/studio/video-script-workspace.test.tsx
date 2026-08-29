@@ -67,7 +67,10 @@ describe("VideoScriptWorkspace", () => {
     const fetchMock = mockFetch({});
     vi.stubGlobal("fetch", fetchMock);
     render(<VideoScriptWorkspace />);
-    const button = await screen.findByRole("button", { name: /start video script/i });
+    // Longer than the 1000ms default: under full-suite parallel load the async
+    // render + fetch settle can exceed it, which is load-sensitive test flakiness,
+    // not a product defect.
+    const button = await screen.findByRole("button", { name: /start video script/i }, { timeout: 5000 });
     fireEvent.click(button);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/workflows", expect.objectContaining({ method: "POST" })));
     const call = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");

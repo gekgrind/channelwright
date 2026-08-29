@@ -65,7 +65,7 @@ function provider(id: "openai" | "anthropic", role: string, outcomes: Array<"ok"
 }
 
 describe("VIDEO_SCRIPT output-token budget survives the full retry graph (P1)", () => {
-  it("aggregate output ceilings fit the 12-call worst case under conservative charging", async () => {
+  it("the production retry sequence fits the budget under conservative charging", async () => {
     const budget = channelVideoScriptConfig();
     const meter = new FakeBudgetMeter({
       synthesisCalls: budget.maxAggregateSynthesisCalls,
@@ -75,13 +75,16 @@ describe("VIDEO_SCRIPT output-token budget survives the full retry graph (P1)", 
       outputTokens: budget.maxAggregateOutputTokens,
       totalTokens: budget.maxAggregateTotalTokens,
     });
-    // The first call of every role fails (exercising conservative failed-call
-    // charging), the rest succeed at their full role ceiling.
+    // Production semantics rerun the WHOLE step on failure. Each QA step runs
+    // critique first (success) then the semantic QA (which fails), so the retry
+    // reruns critique (success) + QA (success). The critic therefore succeeds on
+    // every call while the QA call fails once per QA step; the draft and revision
+    // steps each fail once then succeed.
     const router = new StaticRoleRouter({
       GENERATOR: provider("openai", "GENERATOR", ["fail", "ok"]),
       REVISION: provider("openai", "REVISION", ["fail", "ok"]),
-      CRITIC: provider("anthropic", "CRITIC", ["fail", "ok", "ok", "ok"]),
-      QA: provider("anthropic", "QA", ["fail", "ok", "ok", "ok"]),
+      CRITIC: provider("anthropic", "CRITIC", ["ok", "ok", "ok", "ok"]),
+      QA: provider("anthropic", "QA", ["fail", "ok", "fail", "ok"]),
     } as Partial<Record<ModelRole, StructuredModelProvider>>);
     const model = new RoutedVideoScriptModel(router, budget, meter);
 
@@ -94,29 +97,38 @@ describe("VIDEO_SCRIPT output-token budget survives the full retry graph (P1)", 
     const script = videoScriptResultFixture();
     const qaResult = { findings: [] } as never;
 
-    // The exact worst-case multiset: 2 GENERATOR, 2 REVISION, 4 CRITIC, 4 QA.
-    const call = async (fn: () => Promise<unknown>) => { try { await fn(); } catch { /* conservative charge already settled */ } };
-    await call(() => model.draftScript(input, upstream)); // fail
-    await call(() => model.draftScript(input, upstream)); // ok
-    await call(() => model.critique(input, upstream, script)); // initial critic fail
-    await call(() => model.critique(input, upstream, script)); // initial critic ok
-    await call(() => model.qa(input, upstream, script, [])); // initial qa fail
-    await call(() => model.qa(input, upstream, script, [])); // initial qa ok
-    await call(() => model.reviseScript(input, upstream, script, qaResult)); // fail
-    await call(() => model.reviseScript(input, upstream, script, qaResult)); // ok
-    await call(() => model.critique(input, upstream, script)); // final critic ok
-    await call(() => model.critique(input, upstream, script)); // final critic ok
-    await call(() => model.qa(input, upstream, script, [])); // final qa ok
-    await call(() => model.qa(input, upstream, script, [])); // final qa ok
+    // Only the intended transient provider failures may throw. A budget rejection
+    // is thrown from reserve() before the provider call with a different message,
+    // so it fails these assertions immediately instead of being swallowed.
+    const TRANSIENT = /provider transient failure/;
+    const ok = (fn: () => Promise<unknown>) => fn();
+    const fails = (fn: () => Promise<unknown>) => expect(fn()).rejects.toThrow(TRANSIENT);
 
-    // Every reservation was accepted (no budget-exhausted throw) and the summed
-    // conservative output stays inside both ceilings.
+    // Draft step: attempt 1 fails, attempt 2 succeeds.
+    await fails(() => model.draftScript(input, upstream));
+    await ok(() => model.draftScript(input, upstream));
+    // Initial QA step: critic ok + QA fail (attempt 1), then critic ok + QA ok (attempt 2).
+    await ok(() => model.critique(input, upstream, script));
+    await fails(() => model.qa(input, upstream, script, []));
+    await ok(() => model.critique(input, upstream, script));
+    await ok(() => model.qa(input, upstream, script, []));
+    // Revision step: attempt 1 fails, attempt 2 succeeds.
+    await fails(() => model.reviseScript(input, upstream, script, qaResult));
+    await ok(() => model.reviseScript(input, upstream, script, qaResult));
+    // Final QA step: critic ok + QA fail (attempt 1), then critic ok + QA ok (attempt 2).
+    await ok(() => model.critique(input, upstream, script));
+    await fails(() => model.qa(input, upstream, script, []));
+    await ok(() => model.critique(input, upstream, script));
+    await ok(() => model.qa(input, upstream, script, []));
+
+    // No reservation was rejected, and the summed conservative output — every call
+    // charged its full role ceiling, failed or not — stays inside both ceilings.
     const worstCaseOutput = 4 * budget.modelScriptOutputTokens + 8 * budget.modelReviewOutputTokens;
     expect(meter.used.outputTokens).toBe(worstCaseOutput);
     expect(meter.used.outputTokens).toBeLessThanOrEqual(budget.maxAggregateOutputTokens);
     expect(meter.used.outputTokens).toBeLessThanOrEqual(DB_OUTPUT_CEILING);
     expect(budget.maxAggregateOutputTokens).toBeLessThanOrEqual(DB_OUTPUT_CEILING);
-    // Call counts also fit exactly.
+    // Call counts: 2 GENERATOR synthesis, 2 REVISION, 8 QA-kind (4 critic + 4 qa).
     expect(meter.used.synthesisCalls).toBe(2);
     expect(meter.used.qaCalls).toBe(8);
     expect(meter.used.revisionCalls).toBe(2);
