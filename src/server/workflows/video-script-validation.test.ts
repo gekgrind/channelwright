@@ -105,6 +105,32 @@ describe("deterministic video script validation", () => {
     });
   });
 
+  // Codex reproduced this without editing files: a claim narrated in the opening
+  // whose ledger points at a different section returned zero deterministic errors.
+  describe("claim-usage section provenance must match the narrated sections (P2)", () => {
+    it("rejects a ledger that omits a section the claim is actually narrated in", () => {
+      const base = videoScriptResultFixture();
+      // claim:principle-level-coverage is narrated in scriptsec:opening AND scriptsec:model,
+      // but here the ledger points only at scriptsec:model — the reproduction case.
+      const claimUsage = base.claimUsage.map((usage) => usage.claimId === "claim:principle-level-coverage"
+        ? { ...usage, scriptSectionIds: ["scriptsec:model"] }
+        : usage);
+      expect(codes(videoScriptResultFixture({ claimUsage }))).toContain("CLAIM_USAGE_SECTION_MISMATCH");
+    });
+
+    it("rejects a ledger that lists a section the claim is not narrated in", () => {
+      const base = videoScriptResultFixture();
+      const claimUsage = base.claimUsage.map((usage) => usage.claimId === "claim:hours-lost-weekly"
+        ? { ...usage, scriptSectionIds: ["scriptsec:model", "scriptsec:worked-example"] }
+        : usage);
+      expect(codes(videoScriptResultFixture({ claimUsage }))).toContain("CLAIM_USAGE_SECTION_MISMATCH");
+    });
+
+    it("accepts a ledger whose sections exactly equal the narrated sections", () => {
+      expect(codes(videoScriptResultFixture())).not.toContain("CLAIM_USAGE_SECTION_MISMATCH");
+    });
+  });
+
   describe("content architecture mapping", () => {
     it("rejects a section mapped to an unknown brief beat", () => {
       const base = videoScriptResultFixture();

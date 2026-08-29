@@ -14,7 +14,7 @@ import type { VideoScriptSemanticQAOutput } from "./video-script-model";
 type Finding = VideoScriptQAResult["findings"][number];
 
 /** Deterministic rule count used to report a checks-passed figure. */
-export const DETERMINISTIC_VIDEO_SCRIPT_RULE_COUNT = 35;
+export const DETERMINISTIC_VIDEO_SCRIPT_RULE_COUNT = 36;
 
 const FABRICATED_VIEWS = /\b(?:will|should|expect(?:ed)?\s+to)\s+(?:get|reach|receive|hit)\b[^.]{0,40}\b(?:views?|subscribers?)\b|\b\d[\d,.]*\s*(?:k|m|million|thousand)?\+?\s*(?:views?|subscribers?)\s+(?:in|within|per|guaranteed|expected)\b/i;
 const FABRICATED_REVENUE = /\b(?:cpm|rpm)\b\s*(?:of|is|=|:)?\s*\$?\d|\b(?:earn|earning|earnings|make|makes|making|generate|generates|generating|revenue|profit|income|payout)\b[^.]{0,40}\$\s*\d|\$\s*\d[\d,.]*\s*(?:\/|per\s+|a\s+)?(?:month|mo|year|yr|day)\b[^.]{0,40}\b(?:revenue|income|profit|earnings|payout)\b/i;
@@ -171,6 +171,32 @@ export function deterministicVideoScriptValidation(
   for (const usage of result.claimUsage) {
     for (const sectionId of usage.scriptSectionIds) {
       if (!knownSections.has(sectionId)) add("error", "CLAIM_USAGE_SECTION_UNKNOWN", `Claim usage for ${usage.claimId} references unknown section ${sectionId}.`);
+    }
+  }
+
+  // The declared claim→section ledger must equal the sections that actually
+  // narrate the claim (opening hook included). Checking only that each declared
+  // section exists and that each narrated claim is tracked still lets the ledger
+  // point a claim at a section that never speaks it, or omit one that does — so
+  // provenance can silently disagree with the script. This compares the two sets
+  // bidirectionally and flags any omitted or extra section.
+  const narratingSectionsByClaim = new Map<string, Set<string>>();
+  const noteNarratedClaim = (claimId: string, sectionId: string) => {
+    const sections = narratingSectionsByClaim.get(claimId) ?? new Set<string>();
+    sections.add(sectionId);
+    narratingSectionsByClaim.set(claimId, sections);
+  };
+  for (const section of result.sections) {
+    for (const claimId of section.claimIds) noteNarratedClaim(claimId, section.sectionId);
+  }
+  for (const claimId of result.openingHook.claimIds) noteNarratedClaim(claimId, result.openingHook.sectionId);
+  for (const usage of result.claimUsage) {
+    const declared = new Set(usage.scriptSectionIds);
+    const actual = narratingSectionsByClaim.get(usage.claimId) ?? new Set<string>();
+    const omitted = [...actual].filter((sectionId) => !declared.has(sectionId));
+    const extra = [...declared].filter((sectionId) => !actual.has(sectionId));
+    if (omitted.length || extra.length) {
+      add("error", "CLAIM_USAGE_SECTION_MISMATCH", `Claim ${usage.claimId} usage declares sections [${[...declared].sort().join(", ")}] but is narrated in [${[...actual].sort().join(", ")}].`);
     }
   }
 

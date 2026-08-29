@@ -123,7 +123,7 @@ No raw JSON is dumped, and no chain-of-thought is exposed. The UI states that ap
 
 ## Downstream boundaries
 
-These remain separate, unimplemented stages, and the brief is shaped to give them structured input rather than to pre-empt them: title and packaging, thumbnail concepting, script, storyboard, asset generation, voice, video generation, editing, rendering, short-form recuts, upload, publishing, analytics, and the learning loop.
+The script stage is now implemented as `CHANNEL_VIDEO_SCRIPT`, which consumes one exact approved brief. The remaining stages stay separate and unimplemented, and the brief is shaped to give them structured input rather than to pre-empt them: title and packaging, thumbnail concepting, storyboard, asset generation, voice, video generation, editing, rendering, short-form recuts, upload, publishing, analytics, and the learning loop.
 
 ## Verification status
 

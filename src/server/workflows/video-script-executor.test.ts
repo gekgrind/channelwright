@@ -446,6 +446,55 @@ describe("critic findings are decision-critical and cannot be truncated (defect 
   });
 });
 
+describe("critic verdict booleans are non-overridable blockers even with zero findings (P1)", () => {
+  const optimisticQa = () => ({ value: { score: 100, recommendation: "accept" as const, findings: [] }, usage, attribution: attribution("QA", "anthropic", "video_script_qa") });
+  const verdictCritic = (keepsPromise: boolean, evidenceDisciplineHeld: boolean, op = "video_script_critique") => ({
+    // The critic emits NO itemized finding — only its top-level verdict rejects.
+    value: { overallAssessment: "Verdict recorded without an itemized finding.", keepsPromise, evidenceDisciplineHeld, findings: [] },
+    usage, attribution: attribution("CRITIC", "anthropic", op),
+  });
+  const initial = (critique: unknown) => new ChannelVideoScriptExecutor(resolver(), model({
+    qa: vi.fn(async () => optimisticQa()) as never,
+    critique: vi.fn(async () => critique) as never,
+  }), meter()).execute(step("initial-video-script-qa", {
+    "validate-approved-brief": approvedVideoBriefArtifactFixture,
+    "draft-video-script": { result: videoScriptResultFixture(), modelUsage: usage },
+  }));
+
+  it("keepsPromise=false with no findings fails initial QA and surfaces a promise-broken error", async () => {
+    const out = await initial(verdictCritic(false, true)) as unknown as { qa: { passed: boolean; findings: Array<{ code: string }> } };
+    expect(out.qa.passed).toBe(false);
+    expect(out.qa.findings.some((f) => f.code === "CRITIC_PROMISE_BROKEN")).toBe(true);
+  });
+
+  it("evidenceDisciplineHeld=false with no findings fails initial QA and surfaces an evidence-discipline error", async () => {
+    const out = await initial(verdictCritic(true, false)) as unknown as { qa: { passed: boolean; findings: Array<{ code: string }> } };
+    expect(out.qa.passed).toBe(false);
+    expect(out.qa.findings.some((f) => f.code === "CRITIC_EVIDENCE_DISCIPLINE_FAILED")).toBe(true);
+  });
+
+  it("both verdicts true with no findings still passes (does not over-block)", async () => {
+    const out = await initial(verdictCritic(true, true)) as unknown as { qa: { passed: boolean } };
+    expect(out.qa.passed).toBe(true);
+  });
+
+  it("a false verdict with no findings at FINAL QA blocks finalization", async () => {
+    const executor = new ChannelVideoScriptExecutor(resolver(), model({
+      qa: vi.fn(async () => optimisticQa()) as never,
+      critique: vi.fn(async () => verdictCritic(false, true)) as never,
+    }), meter());
+    const priors = {
+      "validate-approved-brief": approvedVideoBriefArtifactFixture,
+      "draft-video-script": { result: videoScriptResultFixture(), modelUsage: usage },
+      "initial-video-script-qa": { qa: { passed: false, score: 40, findings: [], recommendation: "revise", deterministicChecksPassed: 36, deterministicChecksFailed: 0, modelUsage: usage }, crossModelReview: { generator: attribution("GENERATOR", "openai", "video_script_synthesis"), critic: attribution("CRITIC", "anthropic", "video_script_critique"), outcome: "CRITIC_RAISED_ISSUE", findings: [], summary: "x" } },
+      "bounded-video-script-revision": { attempted: true, reason: "revised", result: videoScriptResultFixture(), modelUsage: usage },
+    };
+    const finalQa = await executor.execute(step("final-video-script-qa", priors)) as unknown as { qa: { passed: boolean } };
+    expect(finalQa.qa.passed).toBe(false);
+    await expect(executor.execute(step("finalize-video-script", { ...priors, "final-video-script-qa": finalQa }))).rejects.toThrow(/Final QA did not accept/);
+  });
+});
+
 describe("accepted-artifact provenance (defect #3)", () => {
   const reviewPrior = { generator: attribution("GENERATOR", "openai", "video_script_synthesis"), critic: null, outcome: "AGREED", findings: [], summary: "ok" };
 

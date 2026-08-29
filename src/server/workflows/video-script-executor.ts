@@ -38,6 +38,22 @@ function criticToQaFindings(criticFindings: Array<{ severity: "error" | "warning
   return criticFindings.map((finding) => ({ severity: finding.severity, code: finding.code, message: `${finding.affectedField}: ${finding.rationale}`, evidenceIds: finding.evidenceIds }));
 }
 
+/**
+ * The critic's top-level verdict booleans are approval authority, not just a log
+ * line: a critic can declare the promise broken or evidence discipline failed
+ * without itemizing a matching error finding. Each false verdict becomes a
+ * deterministic error finding so the merged QA can never pass over the
+ * independent critic's explicit rejection, no matter how optimistic semantic QA
+ * is. They are ordinary (revisable) errors: one bounded revision may address
+ * them, and the final-stage critic re-runs on the revised artifact.
+ */
+function criticVerdictFindings(critique: { keepsPromise: boolean; evidenceDisciplineHeld: boolean }): Array<{ severity: "error"; code: string; affectedField: string; rationale: string; evidenceIds: string[] }> {
+  const findings: Array<{ severity: "error"; code: string; affectedField: string; rationale: string; evidenceIds: string[] }> = [];
+  if (!critique.keepsPromise) findings.push({ severity: "error", code: "CRITIC_PROMISE_BROKEN", affectedField: "viewerPromise", rationale: "The independent critic determined the script does not keep the approved brief's promise.", evidenceIds: [] });
+  if (!critique.evidenceDisciplineHeld) findings.push({ severity: "error", code: "CRITIC_EVIDENCE_DISCIPLINE_FAILED", affectedField: "evidenceDiscipline", rationale: "The independent critic determined the script breaks the brief's evidence discipline.", evidenceIds: [] });
+  return findings;
+}
+
 export class ChannelVideoScriptExecutor implements WorkflowStepExecutor {
   constructor(
     private readonly injectedResolver?: ApprovedBriefResolver,
@@ -120,7 +136,7 @@ export class ChannelVideoScriptExecutor implements WorkflowStepExecutor {
       const critique = await model.critique(input, upstream, draft.result);
       const semantic = await model.qa(input, upstream, draft.result, deterministic);
       const known = new Set(upstream.discoveryBundle.evidence.map((item) => item.id));
-      const criticFindings = critique.value.findings.map((finding) => ({
+      const criticFindings = [...criticVerdictFindings(critique.value), ...critique.value.findings].map((finding) => ({
         ...finding,
         evidenceIds: finding.evidenceIds.filter((id) => known.has(id)),
         disposition: "CRITIC_RAISED_ISSUE" as CrossModelDisposition,
@@ -213,7 +229,7 @@ export class ChannelVideoScriptExecutor implements WorkflowStepExecutor {
       const critique = await model.critique(input, upstream, revision.result);
       const semantic = await model.qa(input, upstream, revision.result, deterministic);
       const known = new Set(upstream.discoveryBundle.evidence.map((item) => item.id));
-      const criticFindings = critique.value.findings.map((finding) => ({
+      const criticFindings = [...criticVerdictFindings(critique.value), ...critique.value.findings].map((finding) => ({
         ...finding,
         evidenceIds: finding.evidenceIds.filter((id) => known.has(id)),
         disposition: "CRITIC_RAISED_ISSUE" as CrossModelDisposition,

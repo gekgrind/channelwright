@@ -150,11 +150,19 @@ export class RoutedVideoScriptModel implements VideoScriptModel {
     const inputCeiling = Buffer.byteLength(system, "utf8")
       + Buffer.byteLength(serialized, "utf8")
       + Buffer.byteLength(JSON.stringify(toProviderJsonSchema(schema)), "utf8");
+    // The output ceiling is role-specific: only the roles that emit a whole script
+    // reserve the large allowance, so the full retry path fits the aggregate
+    // budget under conservative reserve-before-call accounting (see
+    // video-script-config.ts). The same ceiling caps the provider call below, so a
+    // successful call's actual output can never exceed what was reserved.
+    const outputCeiling = role === "GENERATOR" || role === "REVISION"
+      ? this.budget.modelScriptOutputTokens
+      : this.budget.modelReviewOutputTokens;
     const reservationUsage: ResearchUsageCounters = {
       ...callCounter,
       inputTokens: inputCeiling,
-      outputTokens: this.budget.modelMaxOutputTokens,
-      totalTokens: inputCeiling + this.budget.modelMaxOutputTokens,
+      outputTokens: outputCeiling,
+      totalTokens: inputCeiling + outputCeiling,
     };
     const reservation = await this.usageMeter?.reserve({
       key: `video-script:${role.toLowerCase()}:${operation}`,
@@ -166,7 +174,7 @@ export class RoutedVideoScriptModel implements VideoScriptModel {
     try {
       const result = await provider.invoke(schema, {
         operation, role, system, payload,
-        maxOutputTokens: this.budget.modelMaxOutputTokens,
+        maxOutputTokens: outputCeiling,
         timeoutMs: this.budget.modelTimeoutMs,
       });
       await (reservation && this.usageMeter?.finalize(reservation, "SUCCEEDED", {
