@@ -120,8 +120,8 @@ async function seedApprovedRun(db: pg.Client, ownerId: string, type: string, out
   if (provStep) {
     await db.query(corruptHash
       ? `update channelwright.workflow_runs set artifact_hash=$2, provenance_hash=encode(extensions.digest((select output_payload from channelwright.workflow_steps where workflow_run_id=$1 and step_key=$3)::text,'sha256'),'hex') where id=$1`
-      : `update channelwright.workflow_runs set artifact_hash=encode(extensions.digest(output_payload::text,'sha256'),'hex'), provenance_hash=encode(extensions.digest((select output_payload from channelwright.workflow_steps where workflow_run_id=$1 and step_key=$3)::text,'sha256'),'hex') where id=$1`,
-      corruptHash ? [runId, "f".repeat(64), provStep] : [runId, null, provStep]);
+      : `update channelwright.workflow_runs set artifact_hash=encode(extensions.digest(output_payload::text,'sha256'),'hex'), provenance_hash=encode(extensions.digest((select output_payload from channelwright.workflow_steps where workflow_run_id=$1 and step_key=$2)::text,'sha256'),'hex') where id=$1`,
+      corruptHash ? [runId, "f".repeat(64), provStep] : [runId, provStep]);
   }
   const approvalStepId = randomUUID();
   await db.query(`insert into channelwright.workflow_steps(id,owner_id,workflow_id,workflow_run_id,step_key,position,kind,capability,depends_on,status,max_attempts,retry_base_seconds,completed_at)
