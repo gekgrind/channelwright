@@ -29,7 +29,8 @@
     "research:provider:live": "tsx scripts/channel-research-live.ts",
     "gate:videobrief:persisted": "tsx scripts/channel-video-brief-persisted-live.ts",
     "gate:videoscript:persisted": "tsx scripts/channel-video-script-persisted-live.ts",
-    "gate:videoscript:disposable-pg": "tsx scripts/channel-video-script-disposable-pg.ts"
+    "gate:videoscript:disposable-pg": "tsx scripts/channel-video-script-disposable-pg.ts",
+    "gate:videopackaging:disposable-pg": "tsx scripts/channel-video-packaging-disposable-pg.ts"
   },
   "dependencies": {
     "@remotion/bundler": "4.0.500",
