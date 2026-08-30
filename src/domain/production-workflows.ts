@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { originalContributionKindSchema, viewerNeedKindSchema, viewerValueAssessmentSchema, viewerValueProvenanceSchema } from "./viewer-value";
 
-export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT"]);
+export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING"]);
 export type ProductionWorkflowType = z.infer<typeof workflowTypeSchema>;
 
 export const workflowStatusSchema = z.enum(["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL", "BLOCKED", "COMPLETED", "FAILED", "CANCELED"]);
@@ -1168,6 +1168,238 @@ export const videoScriptRevisionSchema = z.object({
   modelUsage: researchDraftSchema.shape.modelUsage,
 }).strict();
 
+// ---------------------------------------------------------------------------
+// CHANNEL_VIDEO_PACKAGING
+//
+// The distribution-packaging artifact: it turns one exact approved
+// CHANNEL_VIDEO_SCRIPT into PROVIDER-NEUTRAL packaging direction for a single
+// video — title candidates (candidates only, never a selection), thumbnail
+// concepts (copy + visual intent, never a generated image or media asset), a
+// description, chapters/timestamps DERIVED FROM the approved script's own
+// timing, tags, and an end-screen/CTA placement plan — plus its own
+// viewer-value assessment under the shared doctrine.
+//
+// It deliberately produces no generated thumbnail image or media, no chosen
+// title, no upload/publish/OAuth action, no render-worker instruction, and no
+// live-media-provider call. Deterministic QA rejects those as scope violations.
+// The MISLEADING_PACKAGING viewer-value guard is enforced here: a title or
+// thumbnail whose curiosity the video never pays off fails closed.
+//
+// It reasons only over evidence already inherited through the approved script
+// and its upstream chain (zero external retrieval). Chapter timestamps must be
+// derived from the approved script's section timing, never invented.
+//
+// Size discipline: this result becomes a durable step output and the run's
+// `output_payload`, both bounded at 64 KiB by the workflow engine. Collection
+// sizes are capped so a realistic packaging artifact fits with margin, and
+// deterministic QA additionally rejects an oversized payload before persistence
+// so the failure is a typed QA error rather than PAYLOAD_TOO_LARGE.
+// ---------------------------------------------------------------------------
+
+/** Immutable reference to the exact approved video-script artifact. */
+export const approvedVideoScriptReferenceSchema = z.object({
+  scriptWorkflowId: z.string().uuid(),
+  scriptRunId: z.string().uuid(),
+  workflowDefinitionVersion: z.number().int().positive(),
+  outputSchemaVersion: z.literal(1),
+  approvalId: z.string().uuid(),
+  approvedBy: z.string().uuid(),
+  approvedAt: z.string().datetime(),
+  finalQaState: z.enum(["accept", "human_review_required"]),
+  finalQaScore: z.number().int().min(0).max(100),
+  scriptArtifactHash: sha256Schema,
+  scriptProvenanceHash: sha256Schema,
+  parentRunId: z.string().uuid().nullable(),
+  rootRunId: z.string().uuid(),
+  // Transitive provenance: the video script already proved its own upstream
+  // video brief, which anchors the whole
+  // RESEARCH -> STRATEGY -> CONTENT -> VIDEO_BRIEF -> VIDEO_SCRIPT chain. One
+  // reference therefore carries the entire lineage.
+  upstreamVideoBrief: approvedVideoBriefReferenceSchema,
+}).strict();
+
+export const videoPackagingRequestInputSchema = z.object({
+  videoScriptWorkflowId: z.string().uuid(),
+  videoScriptRunId: z.string().uuid(),
+}).strict();
+
+export const videoPackagingInputSchema = videoPackagingRequestInputSchema.extend({
+  approvedVideoScriptReference: approvedVideoScriptReferenceSchema,
+  humanRevisionNote: z.string().trim().min(1).max(2_000).optional(),
+}).strict();
+
+/**
+ * The approved script's timing this packaging stage is entitled to derive
+ * chapters from. One entry per script section, carrying only the identity and
+ * timing needed to validate that chapter timestamps are derived rather than
+ * invented.
+ */
+export const scriptSectionTimingSchema = z.object({
+  sectionId: scriptSectionIdSchema,
+  title: z.string().min(1).max(200),
+  startSeconds: z.number().int().min(0).max(36_000),
+  durationSeconds: z.number().int().min(1).max(3_600),
+}).strict();
+
+/**
+ * Which script this packaging is for, carried from authoritative resolver state.
+ * The inherited Viewer Value provenance is lifted from the approved script's own
+ * assessment, so packaging that silently changes the promise no longer matches
+ * its source contract hash. `scriptTiming` is the authoritative timeline chapters
+ * must derive from.
+ */
+export const selectedVideoScriptScopeSchema = z.object({
+  scriptTopicId: topicIdSchema,
+  pillarId: pillarIdSchema,
+  scriptDurationSeconds: z.number().int().min(1).max(36_000),
+  scriptTiming: z.array(scriptSectionTimingSchema).min(1).max(14),
+  inheritedViewerValueProvenance: viewerValueProvenanceSchema,
+}).strict();
+
+/** Resolver output: the authoritative approved script and its inherited evidence. */
+export const approvedVideoScriptArtifactSchema = z.object({
+  reference: approvedVideoScriptReferenceSchema,
+  scriptResult: channelVideoScriptResultSchema,
+  discoveryBundle: topicDiscoveryBundleSchema,
+  scope: selectedVideoScriptScopeSchema,
+}).strict();
+
+const titleCandidateIdSchema = z.string().regex(/^title:[a-z0-9][a-z0-9-]{0,58}$/);
+const thumbnailConceptIdSchema = z.string().regex(/^thumb:[a-z0-9][a-z0-9-]{0,58}$/);
+const chapterIdSchema = z.string().regex(/^chapter:[a-z0-9][a-z0-9-]{0,58}$/);
+
+/**
+ * A title CANDIDATE, never a selection. There is deliberately no `selected`,
+ * `chosen`, or `final` field: choosing a title is a human decision downstream.
+ * `deceptionRisk` is judged so a curiosity-gap title the video never pays off
+ * can be rejected by the MISLEADING_PACKAGING guard.
+ */
+export const titleCandidateSchema = z.object({
+  candidateId: titleCandidateIdSchema,
+  text: z.string().min(1).max(100),
+  angle: z.string().min(1).max(300),
+  rationale: z.string().min(1).max(500),
+  /** How this title keeps the script's promise rather than overstating it. */
+  promiseAlignment: z.string().min(1).max(500),
+  curiosityMechanism: z.string().min(1).max(400),
+  deceptionRisk: z.enum(["none", "low", "material"]),
+  evidenceIds: contentEvidenceIdsSchema,
+}).strict();
+
+/**
+ * A thumbnail CONCEPT: on-thumbnail copy plus prose visual intent. There is
+ * deliberately no field for a generated image, an asset URL, or media of any
+ * kind — producing the thumbnail image belongs to a downstream stage, and
+ * deterministic QA rejects any attempt to generate one here.
+ */
+export const thumbnailConceptSchema = z.object({
+  conceptId: thumbnailConceptIdSchema,
+  copyText: z.string().min(1).max(120).nullable(),
+  visualIntent: z.string().min(1).max(600),
+  rationale: z.string().min(1).max(500),
+  promiseAlignment: z.string().min(1).max(500),
+  deceptionRisk: z.enum(["none", "low", "material"]),
+  evidenceIds: contentEvidenceIdsSchema,
+}).strict();
+
+/**
+ * One chapter/timestamp, DERIVED FROM the approved script's timing. `startSeconds`
+ * must equal the start time of the referenced script section; deterministic QA
+ * rejects a timestamp that is not derived from the approved script timeline.
+ */
+export const packagingChapterSchema = z.object({
+  chapterId: chapterIdSchema,
+  sourceScriptSectionId: scriptSectionIdSchema,
+  startSeconds: z.number().int().min(0).max(36_000),
+  title: z.string().min(1).max(100),
+}).strict();
+
+export const packagingDescriptionSchema = z.object({
+  /** The opening lines that appear above the fold; must keep the promise. */
+  summary: z.string().min(1).max(600),
+  body: z.string().min(1).max(3_000),
+  /** Keywords woven in naturally; never a keyword-stuffed block. */
+  keywords: z.array(z.string().min(1).max(60)).max(20),
+  resourceMentions: z.array(z.string().min(1).max(300)).max(8),
+}).strict();
+
+/** End-screen / CTA placement PLAN, not a rendered end screen. */
+export const endScreenPlanSchema = z.object({
+  ctaObjective: z.enum(["SUBSCRIBE", "COMMENT", "NEXT_VIDEO", "FREE_RESOURCE", "TOOL", "EMAIL_LIST", "PRODUCT", "NONE"]),
+  rationale: z.string().min(1).max(500),
+  elements: z.array(z.object({
+    kind: z.enum(["SUBSCRIBE_ELEMENT", "NEXT_VIDEO", "PLAYLIST", "FREE_RESOURCE_LINK", "EXTERNAL_LINK", "OTHER"]),
+    label: z.string().min(1).max(200).nullable(),
+    placement: z.string().min(1).max(300),
+    viewerBenefit: z.string().min(1).max(400),
+    trustRisk: z.string().min(1).max(400).nullable(),
+  }).strict()).max(6),
+}).strict();
+
+export const channelVideoPackagingContentSchema = z.object({
+  schemaVersion: z.literal(1),
+  workflowType: z.literal("CHANNEL_VIDEO_PACKAGING"),
+  source: z.object({
+    scriptTopicId: topicIdSchema,
+    pillarId: pillarIdSchema,
+    pillarName: z.string().min(1).max(300),
+    workingConcept: z.string().min(1).max(400),
+    /** The promise this packaging keeps; must match the approved script's promise. */
+    packagedPromise: z.string().min(20).max(600),
+  }).strict(),
+  titleCandidates: z.array(titleCandidateSchema).min(3).max(8),
+  thumbnailConcepts: z.array(thumbnailConceptSchema).min(2).max(6),
+  description: packagingDescriptionSchema,
+  chapters: z.array(packagingChapterSchema).min(3).max(14),
+  tags: z.array(z.string().min(1).max(60)).min(1).max(30),
+  endScreenPlan: endScreenPlanSchema,
+  /** This stage's own Viewer Value judgement, under the same shared doctrine. */
+  viewerValue: viewerValueAssessmentSchema,
+  packagingIntegrity: z.object({
+    /** Title/thumbnail concepts deliberately withheld as too deceptive to offer. */
+    rejectedForDeception: z.array(z.string().min(1).max(200)).max(12),
+    summary: z.string().min(1).max(600),
+  }).strict(),
+  risks: z.array(z.object({
+    risk: z.string().min(1).max(500),
+    severity: z.enum(["high", "medium", "low"]),
+    mitigation: z.string().min(1).max(500).nullable(),
+  }).strict()).min(1).max(10),
+  assumptions: z.array(z.string().min(1).max(400)).min(1).max(12),
+  openQuestions: z.array(z.string().min(1).max(400)).min(1).max(12),
+  recommendedNextAction: z.string().min(1).max(500),
+}).strict();
+
+export const channelVideoPackagingResultSchema = channelVideoPackagingContentSchema.extend({
+  upstreamVideoScript: approvedVideoScriptReferenceSchema,
+  packagingScope: selectedVideoScriptScopeSchema,
+  crossModelReview: crossModelReviewSchema.nullable(),
+  // A finalized packaging is always model-generated: the synthesis step stamps
+  // at least the generator's attribution. An empty trail would mean an artifact
+  // with no accountable author, which must never persist.
+  modelProvenance: z.array(modelAttributionSchema).min(1).max(8),
+}).strict();
+
+export const videoPackagingQAFindingSchema = researchQAFindingSchema;
+export const videoPackagingQAResultSchema = researchQAResultSchema;
+
+export const videoPackagingDraftSchema = z.object({
+  result: channelVideoPackagingResultSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+}).strict();
+
+export const videoPackagingQAStepSchema = z.object({
+  qa: videoPackagingQAResultSchema,
+  crossModelReview: crossModelReviewSchema,
+}).strict();
+
+export const videoPackagingRevisionSchema = z.object({
+  attempted: z.boolean(),
+  reason: z.string().min(1).max(1_000),
+  result: channelVideoPackagingResultSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+}).strict();
+
 export const channelConceptValidationInputSchema = z.object({
   proposedConcept: z.string().trim().min(20).max(2_000),
   audienceContext: z.string().trim().min(3).max(2_000).optional(),
@@ -1186,7 +1418,8 @@ export const workflowStartRequestSchema = z.object({
       : request.workflowType === "CHANNEL_CONTENT_INTELLIGENCE" ? contentIntelligenceRequestInputSchema
         : request.workflowType === "CHANNEL_VIDEO_BRIEF" ? videoBriefRequestInputSchema
           : request.workflowType === "CHANNEL_VIDEO_SCRIPT" ? videoScriptRequestInputSchema
-            : channelConceptValidationInputSchema;
+            : request.workflowType === "CHANNEL_VIDEO_PACKAGING" ? videoPackagingRequestInputSchema
+              : channelConceptValidationInputSchema;
   const parsed = schema.safeParse(request.input);
   if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue, path: ["input", ...issue.path] });
 }).transform((request) => request as
@@ -1195,7 +1428,8 @@ export const workflowStartRequestSchema = z.object({
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_STRATEGY"; definitionVersion: 1; input: ChannelStrategyRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_CONTENT_INTELLIGENCE"; definitionVersion: 1; input: ContentIntelligenceRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_BRIEF"; definitionVersion: 1; input: VideoBriefRequestInput }
-  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_SCRIPT"; definitionVersion: 1; input: VideoScriptRequestInput });
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_SCRIPT"; definitionVersion: 1; input: VideoScriptRequestInput }
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_PACKAGING"; definitionVersion: 1; input: VideoPackagingRequestInput });
 
 export const workflowApprovalDecisionSchema = z.object({
   decision: z.enum(["APPROVE", "REJECT", "REQUEST_REVISION"]),
@@ -1272,6 +1506,17 @@ export type ChannelVideoScriptResult = z.infer<typeof channelVideoScriptResultSc
 export type VideoScriptQAResult = z.infer<typeof videoScriptQAResultSchema>;
 export type ScriptSection = z.infer<typeof scriptSectionSchema>;
 export type ScriptClaimUsage = z.infer<typeof scriptClaimUsageSchema>;
+export type ApprovedVideoScriptReference = z.infer<typeof approvedVideoScriptReferenceSchema>;
+export type ApprovedVideoScriptArtifact = z.infer<typeof approvedVideoScriptArtifactSchema>;
+export type SelectedVideoScriptScope = z.infer<typeof selectedVideoScriptScopeSchema>;
+export type VideoPackagingRequestInput = z.infer<typeof videoPackagingRequestInputSchema>;
+export type VideoPackagingInput = z.infer<typeof videoPackagingInputSchema>;
+export type ChannelVideoPackagingContent = z.infer<typeof channelVideoPackagingContentSchema>;
+export type ChannelVideoPackagingResult = z.infer<typeof channelVideoPackagingResultSchema>;
+export type VideoPackagingQAResult = z.infer<typeof videoPackagingQAResultSchema>;
+export type TitleCandidate = z.infer<typeof titleCandidateSchema>;
+export type ThumbnailConcept = z.infer<typeof thumbnailConceptSchema>;
+export type PackagingChapter = z.infer<typeof packagingChapterSchema>;
 export type WorkflowStartRequest = z.infer<typeof workflowStartRequestSchema>;
 export type WorkflowApprovalDecision = z.infer<typeof workflowApprovalDecisionSchema>;
 
@@ -1397,6 +1642,23 @@ const channelVideoScriptDefinition: WorkflowDefinition<VideoScriptRequestInput, 
   ],
 };
 
+const channelVideoPackagingDefinition: WorkflowDefinition<VideoPackagingRequestInput, ChannelVideoPackagingResult> = {
+  type: "CHANNEL_VIDEO_PACKAGING",
+  version: 1,
+  objective: "Turn one exact approved CHANNEL_VIDEO_SCRIPT into viewer-value-gated, evidence-disciplined, independently critiqued, provider-neutral packaging direction for a single video",
+  inputSchema: videoPackagingRequestInputSchema,
+  outputSchema: channelVideoPackagingResultSchema,
+  steps: [
+    { key: "validate-approved-script", kind: "WORKER", capability: "approved-script-validation", dependsOn: [], maxAttempts: 2, retryBaseSeconds: 5 },
+    { key: "draft-video-packaging", kind: "WORKER", capability: "video-packaging-synthesis", dependsOn: ["validate-approved-script"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "initial-video-packaging-qa", kind: "WORKER", capability: "independent-video-packaging-qa", dependsOn: ["draft-video-packaging"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "bounded-video-packaging-revision", kind: "WORKER", capability: "video-packaging-revision", dependsOn: ["initial-video-packaging-qa"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "final-video-packaging-qa", kind: "WORKER", capability: "independent-video-packaging-qa", dependsOn: ["bounded-video-packaging-revision"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "finalize-video-packaging", kind: "WORKER", capability: "video-packaging-finalizer", dependsOn: ["final-video-packaging-qa"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "review-video-packaging", kind: "APPROVAL", capability: "human", dependsOn: ["finalize-video-packaging"], maxAttempts: 1, retryBaseSeconds: 0 },
+  ],
+};
+
 const registry = new Map<string, WorkflowDefinition>([
   [`${channelConceptValidationDefinition.type}:${channelConceptValidationDefinition.version}`, channelConceptValidationDefinition],
   [`${channelResearchDefinition.type}:${channelResearchDefinition.version}`, channelResearchDefinition],
@@ -1404,6 +1666,7 @@ const registry = new Map<string, WorkflowDefinition>([
   [`${channelContentIntelligenceDefinition.type}:${channelContentIntelligenceDefinition.version}`, channelContentIntelligenceDefinition],
   [`${channelVideoBriefDefinition.type}:${channelVideoBriefDefinition.version}`, channelVideoBriefDefinition],
   [`${channelVideoScriptDefinition.type}:${channelVideoScriptDefinition.version}`, channelVideoScriptDefinition],
+  [`${channelVideoPackagingDefinition.type}:${channelVideoPackagingDefinition.version}`, channelVideoPackagingDefinition],
 ]);
 
 /** Canonical finalizer per workflow type; its output becomes the run's durable `output_payload`. */
@@ -1414,6 +1677,7 @@ export const WORKFLOW_FINALIZER_STEP: Record<ProductionWorkflowType, string> = {
   CHANNEL_CONTENT_INTELLIGENCE: "finalize-content-intelligence",
   CHANNEL_VIDEO_BRIEF: "finalize-video-brief",
   CHANNEL_VIDEO_SCRIPT: "finalize-video-script",
+  CHANNEL_VIDEO_PACKAGING: "finalize-video-packaging",
 };
 
 export function getWorkflowDefinition(type: ProductionWorkflowType, version: number) {

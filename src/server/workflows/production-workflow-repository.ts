@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { getWorkflowDefinition, serializeWorkflowSteps, type WorkflowApprovalDecision, type WorkflowStartRequest } from "@/domain/production-workflows";
 import { createSupabaseServerClient } from "@/server/supabase";
 
-export type ProductionWorkflowErrorCode = "UNAUTHORIZED" | "VALIDATION_ERROR" | "PAYLOAD_TOO_LARGE" | "WORKFLOW_TYPE_INVALID" | "IDEMPOTENCY_CONFLICT" | "RESEARCH_LIMIT_REACHED" | "STRATEGY_LIMIT_REACHED" | "CONTENT_LIMIT_REACHED" | "VIDEO_BRIEF_LIMIT_REACHED" | "VIDEO_SCRIPT_LIMIT_REACHED" | "UPSTREAM_RESEARCH_INVALID" | "UPSTREAM_STRATEGY_INVALID" | "UPSTREAM_CONTENT_INVALID" | "UPSTREAM_BRIEF_INVALID" | "TOPIC_INVALID" | "NOT_FOUND" | "INVALID_TRANSITION" | "LEASE_NOT_ACTIVE" | "DATABASE_ERROR";
+export type ProductionWorkflowErrorCode = "UNAUTHORIZED" | "VALIDATION_ERROR" | "PAYLOAD_TOO_LARGE" | "WORKFLOW_TYPE_INVALID" | "IDEMPOTENCY_CONFLICT" | "RESEARCH_LIMIT_REACHED" | "STRATEGY_LIMIT_REACHED" | "CONTENT_LIMIT_REACHED" | "VIDEO_BRIEF_LIMIT_REACHED" | "VIDEO_SCRIPT_LIMIT_REACHED" | "VIDEO_PACKAGING_LIMIT_REACHED" | "UPSTREAM_RESEARCH_INVALID" | "UPSTREAM_STRATEGY_INVALID" | "UPSTREAM_CONTENT_INVALID" | "UPSTREAM_BRIEF_INVALID" | "UPSTREAM_SCRIPT_INVALID" | "TOPIC_INVALID" | "NOT_FOUND" | "INVALID_TRANSITION" | "LEASE_NOT_ACTIVE" | "DATABASE_ERROR";
 
 export class ProductionWorkflowError extends Error {
   constructor(public readonly code: ProductionWorkflowErrorCode, public readonly status: number, message: string) { super(message); }
@@ -21,10 +21,12 @@ export function databaseError(error: { message: string }) {
     ["CONTENT_LIMIT_REACHED", "CONTENT_LIMIT_REACHED", 429, "Finish, cancel, or decide the active content-intelligence run for this approved strategy before starting another paid run."],
     ["VIDEO_BRIEF_LIMIT_REACHED", "VIDEO_BRIEF_LIMIT_REACHED", 429, "Finish, cancel, or decide the active video brief for this approved topic before starting another paid run."],
     ["VIDEO_SCRIPT_LIMIT_REACHED", "VIDEO_SCRIPT_LIMIT_REACHED", 429, "Finish, cancel, or decide the active video script for this approved brief before starting another paid run."],
+    ["VIDEO_PACKAGING_LIMIT_REACHED", "VIDEO_PACKAGING_LIMIT_REACHED", 429, "Finish, cancel, or decide the active video packaging for this approved script before starting another paid run."],
     ["UPSTREAM_RESEARCH_", "UPSTREAM_RESEARCH_INVALID", 409, "The exact research run is not completed, approved, immutable, and integrity-valid for strategy."],
     ["UPSTREAM_STRATEGY_", "UPSTREAM_STRATEGY_INVALID", 409, "The exact strategy run is not completed, approved, immutable, and integrity-valid for content intelligence."],
     ["UPSTREAM_CONTENT_", "UPSTREAM_CONTENT_INVALID", 409, "The exact content-intelligence run is not completed, approved, immutable, and integrity-valid for a video brief."],
     ["UPSTREAM_BRIEF_", "UPSTREAM_BRIEF_INVALID", 409, "The exact video-brief run is not completed, approved, immutable, and integrity-valid for a video script."],
+    ["UPSTREAM_SCRIPT_", "UPSTREAM_SCRIPT_INVALID", 409, "The exact video-script run is not completed, approved, immutable, and integrity-valid for video packaging."],
     ["TOPIC_", "TOPIC_INVALID", 422, "The selected topic is not eligible in the exact approved content-intelligence artifact."],
     ["WORKFLOW_TYPE_INVALID", "WORKFLOW_TYPE_INVALID", 422, "The workflow type or version is not supported."],
     ["PAYLOAD_TOO_LARGE", "PAYLOAD_TOO_LARGE", 413, "The workflow payload exceeds the allowed size."],

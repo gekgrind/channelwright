@@ -46,7 +46,7 @@ export async function POST(request: Request) {
   const workflowStart = workflowStartRequestSchema.safeParse(body);
   if (workflowStart.success) {
     if (isMockMode()) return productionRequiredResponse();
-    if (["CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT"].includes(workflowStart.data.workflowType) && !requestedKey) {
+    if (["CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING"].includes(workflowStart.data.workflowType) && !requestedKey) {
       return NextResponse.json({ error: { code: "IDEMPOTENCY_KEY_REQUIRED", message: "Paid workflow starts require an Idempotency-Key header." } }, { status: 400 });
     }
     try {
