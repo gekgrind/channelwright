@@ -45,7 +45,9 @@ Only infrastructure faults (`TIMEOUT`, `RATE_LIMITED`, `PROVIDER_UNAVAILABLE`, `
 Provider: `<NS>_<ROLE>_PROVIDER` → `<NS>_DEFAULT_PROVIDER` → `CHANNELWRIGHT_DEFAULT_PROVIDER` → `openai`.
 Model: `<NS>_<ROLE>_MODEL` → `<PROVIDER>_<NS>_MODEL` → `<PROVIDER>_MODEL` → **fail closed** with `AI_MODEL_NOT_CONFIGURED`.
 
-Namespaces (`CONTENT`, `RESEARCH`, `STRATEGY`, `VIDEO_BRIEF`) are independent, so content routing cannot change research, strategy, or video-brief behaviour.
+Namespaces (`CONTENT`, `RESEARCH`, `STRATEGY`, `VIDEO_BRIEF`, `VIDEO_SCRIPT`) are independent, so content routing cannot change research, strategy, video-brief, or video-script behaviour.
+
+`VIDEO_SCRIPT` routes four roles — `GENERATOR` (draft), `CRITIC` (independent critique), `QA` (semantic QA), and `REVISION` (bounded revision). Because both the draft author and the reviser can produce the accepted artifact, the executor fails closed before any spend unless `CRITIC` resolves to a different provider than **both** `GENERATOR` and `REVISION`, so an artifact is never reviewed by its own author's provider.
 
 ## Verified starting split for CONTENT_INTELLIGENCE
 

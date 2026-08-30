@@ -19,7 +19,7 @@ export class ModelRoutingError extends Error {
 }
 
 /** Env prefix per workflow family, so roles are configurable independently per workflow. */
-export type RoutingNamespace = "CONTENT" | "RESEARCH" | "STRATEGY" | "VIDEO_BRIEF";
+export type RoutingNamespace = "CONTENT" | "RESEARCH" | "STRATEGY" | "VIDEO_BRIEF" | "VIDEO_SCRIPT";
 
 const ROLE_ENV: Record<ModelRole, string> = {
   GENERATOR: "GENERATOR",
@@ -109,6 +109,25 @@ export class EnvironmentRoleRouter implements RoleRouter {
       const provider = resolveRoleProvider(this.namespace, role);
       return { role, provider, model: resolveRoleModel(this.namespace, role, provider) };
     });
+  }
+}
+
+/**
+ * Fails closed when two roles that must be served by independent providers
+ * resolve to the same one. The multi-model architecture requires the critic to
+ * be a different provider than the generator (docs/multi-model-architecture.md);
+ * without this, an unconfigured deployment silently defaults both to openai,
+ * collapsing the independent-critique signal. `describe` throws AI_MODEL_NOT_
+ * CONFIGURED first if a role has no model, preserving the existing fail-closed
+ * behaviour for missing configuration.
+ */
+export function assertDistinctRoleProviders(router: RoleRouter, roleA: ModelRole, roleB: ModelRole) {
+  const [a, b] = router.describe([roleA, roleB]);
+  if (a.provider === b.provider) {
+    throw new ModelRoutingError(
+      "AI_PROVIDER_INDEPENDENCE_REQUIRED",
+      `${roleA} and ${roleB} must resolve to different providers for independent cross-model review, but both resolved to ${a.provider}. Configure distinct providers (e.g. one openai, one anthropic).`,
+    );
   }
 }
 

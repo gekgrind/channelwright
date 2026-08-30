@@ -45,15 +45,15 @@ CHANNEL_RESEARCH      is this channel opportunity real?
 CHANNEL_STRATEGY      how should this channel compete?
 CONTENT_INTELLIGENCE  what should it make next, and why?          <- first Viewer Value assessment
 CHANNEL_VIDEO_BRIEF   what should this specific video accomplish?  <- second Viewer Value assessment
-SCRIPT                create the content                           (future)
+CHANNEL_VIDEO_SCRIPT  write the timed script for that video        <- third Viewer Value assessment
 PACKAGING             title, thumbnail, description                (future)
 PRODUCTION            create the media                             (future)
 PUBLISHING            release it                                   (future)
 ```
 
-`CONTENT_INTELLIGENCE` produces the first `viewerValueAssessment` per topic, and `CHANNEL_VIDEO_BRIEF` produces the second against the selected topic. Each later stage is expected to carry `viewerValueProvenance` referencing the originating `contractHash` and to re-run the same standard against its own artifact. Because the hash is canonical and key-order independent, a downstream stage that quietly changes the promise no longer matches its source, which is what makes value drift detectable rather than assumed away.
+`CONTENT_INTELLIGENCE` produces the first `viewerValueAssessment` per topic, `CHANNEL_VIDEO_BRIEF` produces the second against the selected topic, and `CHANNEL_VIDEO_SCRIPT` produces the third against the timed script. Each later stage is expected to carry `viewerValueProvenance` referencing the originating `contractHash` and to re-run the same standard against its own artifact. Because the hash is canonical and key-order independent, a downstream stage that quietly changes the promise no longer matches its source, which is what makes value drift detectable rather than assumed away.
 
-`CHANNEL_VIDEO_BRIEF` is implemented and inherits the contract unchanged: it carries the originating `contractHash` as immutable `inheritedViewerValueProvenance` and re-runs the same standard against its own artifact. Nothing downstream of it is implemented yet. The contract is deliberately shaped so those stages can inherit it without replacing today's schema.
+`CHANNEL_VIDEO_BRIEF` and `CHANNEL_VIDEO_SCRIPT` are implemented and inherit the contract unchanged: each carries the originating `contractHash` as immutable `inheritedViewerValueProvenance` and re-runs the same standard against its own artifact, with the script's deterministic Viewer Value floor overruling an optimistic model gate. Nothing downstream of the script (packaging, production, publishing) is implemented yet. The contract is deliberately shaped so those stages can inherit it without replacing today's schema.
 
 ## Content integrity and policy signals
 

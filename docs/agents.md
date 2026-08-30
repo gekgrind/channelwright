@@ -10,8 +10,8 @@ Current agents are invoked only by the orchestrator:
 | Channel Strategy | Positioning, pillars, formats, series, risks | Deterministic fixture |
 | Content Strategist | Viewer, angle, thesis, hook, sections | Deterministic fixture |
 | Video Research | Claims, source links, contradictions, unknowns | Deterministic fixture |
-| Scriptwriter | Versioned hook, sections, timings, claim refs | Deterministic fixture |
-| Script QA | PASS/REVISE, scores, structured findings | Deterministic fixture |
+| Scriptwriter | Versioned hook, sections, timings, claim refs | Provider-backed (`CHANNEL_VIDEO_SCRIPT`) |
+| Script QA | PASS/REVISE, scores, structured findings | Provider-backed (`CHANNEL_VIDEO_SCRIPT`) |
 | TikTok Optimizer | Versioned TikTok adaptation plan with hook, pacing, captions, copy, claims, and blockers | Deterministic fixture |
 | Reels Optimizer | Shared Reels media plan with separate Instagram/Facebook copy, safe-zone guidance, claims, and blockers | Deterministic fixture |
 | Platform Package QA | PASS/REVISE, claim resolution, duration/config checks, fixture and master blockers | Deterministic fixture |

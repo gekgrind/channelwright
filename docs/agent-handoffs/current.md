@@ -1,142 +1,136 @@
 ---
-Agent: Claude Code (Opus 4.8)
-Task: Investigate and, if present, repair the documented pgcrypto search-path defect in `channelwright.execute_media_production_action`
-Pre-task HEAD: `ef486a8ce17ef53a6f36e562bad4e19b0b85569b` (branch `main`)
-Verdict: `NOT REPRODUCIBLE — DOCUMENTED ROOT CAUSE IS WRONG; NO MIGRATION WARRANTED`
-Codex re-verification of `3d17237`: `PASS WITH MINOR GAPS` -> `MINOR GAPS CLOSED — READY FOR FINAL CODEX VERIFICATION`
+Agent: Codex
+Task: Round-9 independent verification — disposable-PostgreSQL repair and merge readiness
+Verified: 2026-08-29
+Repository: `C:\DevProjects\channelwright`
+Branch: `feat/channel-video-script`
+Verified HEAD: `d6922865e6eb370c69e86a2bedeebe7d1359dd73`
+Repaired source commit: `5f2426ed8ec3e46922548d80e04832edf9803f17`
+Base: `0db4c814d4a19a0da5740d2667fe6f15d7a6088f` (`main`)
+Verdict: `INDEPENDENT VERIFICATION PASSED — READY TO MERGE`
 ---
 
-# Media-Production pgcrypto Search-Path Investigation
+# CHANNEL_VIDEO_SCRIPT Round-9 Independent Verification (Codex)
 
-## Codex Verification & Gap Closure (2026-08-25)
+## Decision
 
-Codex independently verified commit `3d17237b252a6d5a0609ba326d4891c1afa21e8d` with verdict
-**PASS WITH MINOR GAPS**, confirming the central conclusion `NOT REPRODUCIBLE — NO MIGRATION WARRANTED`.
-Two minor precision gaps were identified and are now closed (the central conclusion is unchanged):
+The branch is ready to merge. The reported disposable-PostgreSQL gate defect
+is real, the repair is the narrow correct fix, and a fresh independent run
+against the operator's local PostgreSQL 17 disposable cluster passed all 22
+checks with exit code 0. Focused tests, the full suite, typecheck, lint, and the
+production build also passed.
 
-1. **Regression assertion precision** (`src/server/media/media-migration.test.ts`) — the `digest(` vs
-   `extensions.digest(` comparison was case-sensitive and assumed no whitespace before `(`. It is now
-   case-insensitive and whitespace-tolerant (`/\bdigest\s*\(/gi` vs `/\bextensions\s*\.\s*digest\s*\(/gi`),
-   so `DIGEST(...)`, `digest (...)`, and capitalization/whitespace variants of an unqualified call are also
-   caught. Not broadened into SQL parsing.
-2. **Documentation precision** (`docs/video-brief.md`) — the corrected paragraph no longer implies
-   `PGCRYPTO_SCHEMA_UNEXPECTED` continuously monitors the database, and no longer claims pgcrypto relocation
-   is the "only" condition that could affect resolution. It now states the guard validates pgcrypto's
-   expected schema **at apply time** of `202608150002`, that the repository/migration contract expects
-   pgcrypto in `extensions`, and that the function avoids search-path dependency by using
-   `extensions.digest(...)` explicitly.
-
-Central conclusion after gap closure: **unchanged** — `execute_media_production_action` has no search-path
-defect and requires no `ALTER FUNCTION` migration.
-
-## Verdict
-
-**NOT REPRODUCIBLE.** The documented defect does not exist. `channelwright.execute_media_production_action`
-calls pgcrypto **schema-qualified** as `extensions.digest(...)`, which resolves independently of the
-function's `search_path`. No forward migration was created (a Phase-1 STOP condition: the documented root
-cause is wrong). Two low-risk corrections were made instead: the false doc claim was fixed and the existing
-guard test was hardened.
+No further source repair is justified by the reproduced evidence.
 
 ## Repository Truth
 
 - Worktree: `C:\DevProjects\channelwright`
-- Branch created: `fix/media-production-pgcrypto-search-path` (from `main`)
-- Pre-task HEAD: `ef486a8ce17ef53a6f36e562bad4e19b0b85569b`
-- Status before edits: clean
-- Ancestry confirmed: `ac7c409` (video-brief contracts) and `b5adf25` (resolver pgcrypto repair) are both
-  ancestors of HEAD (`git merge-base --is-ancestor` exit 0). The prior CHANNEL_VIDEO_BRIEF work is merged.
-- No unexpected user modifications were present.
+- Branch: `feat/channel-video-script`
+- Verified pre-handoff HEAD: `d6922865e6eb370c69e86a2bedeebe7d1359dd73`
+- Source repair: `5f2426ed8ec3e46922548d80e04832edf9803f17`
+- Prior source HEAD: `db9b6f652d52f53fc40b08f3884d373fd42fbced`
+- Local `main`, `origin/main`, and merge base: `0db4c814d4a19a0da5740d2667fe6f15d7a6088f`
+- Ahead/behind `main`: 10 ahead / 0 behind
+- Upstream: none
+- `5f2426e` is an ancestor of verified HEAD.
+- `d692286` is documentation-only; it changes the current handoff and pending
+  handoff mirrors, not runtime source or migrations.
+- Working tree was clean before this authorized handoff update.
 
-## Defect Verification
+The exact remote branch lookup returned no `origin/feat/channel-video-script`
+ref, and no remote branch contains verified HEAD. Verified HEAD is not an
+ancestor of local `main`. This establishes that the current commits are neither
+pushed to that branch nor merged into local `main`.
 
-- **Function signature:** `channelwright.execute_media_production_action(text, text, jsonb)`
-  (`p_idempotency_key text, p_input_fingerprint text, p_action jsonb`).
-- **Defined in:** `supabase/migrations/202608110001_media_production_pipeline.sql:322` — the only definition;
-  no later migration recreates or `ALTER`s it.
-- **Current search_path:** `channelwright, pg_temp` (narrow; `extensions` deliberately excluded).
-- **pgcrypto usage:** exactly one call, `extensions.digest((p_action->'renderInput')::text, 'sha256')` at
-  line 357 — **schema-qualified**. `grep` proves it is the only `digest(` in the file and it is
-  `extensions.digest(`.
-- **Root-cause evidence:** A schema-qualified reference bypasses `search_path` entirely, so the narrow
-  setting cannot break it. `git log -L 357,357` shows the call was born schema-qualified in the migration's
-  first commit (`602b14b`) and has never changed — it never had the resolver-style defect. The resolvers
-  repaired in `202608150002` used **unqualified** `digest()`; this function never did.
-- **Why the doc was wrong:** the media pipeline (authored in `602b14b`) qualifies pgcrypto calls, whereas
-  the later strategy/content/video-brief resolvers used unqualified calls. The prior handoff assumed "the
-  same" pattern without inspecting line 357.
+## Repair Verification
 
-## Implementation
+Commit `5f2426e` changes only
+`scripts/channel-video-script-disposable-pg.ts` (2 insertions, 2 deletions).
+No migration, resolver, or assertion changed.
 
-- **Migration added:** NONE. Creating `ALTER FUNCTION ... SET search_path = channelwright, extensions,
-  pg_temp` would widen a hardened search_path for zero benefit (the call is already qualified) and is
-  explicitly discouraged by the task. Correctly not done.
+The parent revision's non-corrupt provenance backfill SQL referenced `$1` and
+`$3` while binding `[runId, null, provStep]`. Because `$2` appeared nowhere in
+the SQL text and its bound value was `null`, PostgreSQL could not infer a type
+for `$2` and raised `could not determine data type of parameter $2`.
 
-## Regression Coverage
+The repaired non-corrupt path references `step_key=$2` and binds
+`[runId, provStep]`. The corrupt path still uses `$1`, `$2`, and `$3` with its
+three required values. This removes only the unused/untyped placeholder and
+does not weaken the gate.
 
-- `src/server/media/media-migration.test.ts` already asserted `extensions.digest` is present and that the
-  narrow `search_path = channelwright, pg_temp` is preserved. **Hardened** it so a future *unqualified*
-  `digest(` cannot silently reintroduce the resolver defect: it now asserts every `digest(` occurrence is an
-  `extensions.digest(` (count parity). This pins the exact invariant that keeps the function immune.
-- `execute_media_production_action` itself avoids any search-path dependency by calling
-  `extensions.digest(...)` explicitly. The repository/migration contract expects pgcrypto to live in the
-  `extensions` schema, and `202608150002_extension_search_path.sql` validates that expectation **at apply
-  time** — it raises `PGCRYPTO_SCHEMA_UNEXPECTED` if pgcrypto is not in `extensions` when that migration
-  runs. This is apply-time validation, not continuous monitoring, and a schema relocation is not the only
-  theoretical way digest resolution could break; for this function specifically, the explicit qualification
-  is what removes the risk.
+## Fresh Disposable PostgreSQL 17 Evidence
 
-## Files Changed
+Container observed: `channelwright-pg17`, image `postgres:17`, published at
+`localhost:55432`. The container credential was read process-locally and was
+not printed or persisted.
 
-- `docs/video-brief.md` — replaced the false "remaining defect" paragraph (line 138) with the corrected
-  finding (function is not defective; schema-qualified; no ALTER needed).
-- `src/server/media/media-migration.test.ts` — hardened the pgcrypto-qualification assertion (test only).
-- `docs/agent-handoffs/current.md` — this handoff.
-- `docs/agent-handoffs/archive/2026-08-24-claude-video-brief-coverage-closure.md` — prior handoff, archived.
+Command:
 
-No production runtime code and no migration files were modified.
+`npm.cmd run gate:videoscript:disposable-pg`
 
-## Verification Results
+Result: exit 0, `VIDEO_SCRIPT_DISPOSABLE_PG_PASSED`, 22 passed / 0 failed.
 
-- Targeted: `npx vitest run src/server/media/media-migration.test.ts` -> PASS (2 files, 12 tests).
-- Typecheck: `npm run typecheck` -> PASS (clean).
-- Lint: `npm run lint` -> 0 errors (2 pre-existing warnings in an unrelated `.claude/worktrees/...` path,
-  not in changed files).
-- Full suite: `npm test` -> PASS (116 files, 834 tests).
-- Disposable Postgres / live gate: NOT run. Static + repository evidence is conclusive (schema-qualified
-  call), and the task defaults to local/static/disposable verification only. No shared Supabase mutation.
+The run independently proved:
 
-## Database / External Actions
+- Supabase shim installation and all 18 migrations applied from scratch
+- runtime resolution of `extensions.digest`
+- compilation of all four approved-artifact resolvers
+- application/SQL canonical JSON parity
+- owner-scoped approved-brief resolution, Viewer Value contract hash, and
+  inherited VIDEO_BRIEF provenance/PASS gate
+- opaque cross-owner rejection, approval enforcement, and integrity mismatch
+- RLS enabled on all six workflow tables
+- VIDEO_BRIEF, VIDEO_SCRIPT, and CHANNEL_RESEARCH immutability behavior
+- active-run concurrency enforcement
+- nonzero-retrieval budget rejection and zero-retrieval ceiling acceptance
+- disposable database and gate-created role cleanup
 
-None. No shared Supabase mutation, no migration applied, no paid-provider calls, nothing pushed or deployed.
+A separate post-gate read-only audit found:
 
-## Commit
+- `leftover_disposable_databases=0`
+- `leftover_gate_roles=0`
 
-Committed on `fix/media-production-pgcrypto-search-path`. Resolve the exact SHA with
-`git rev-parse fix/media-production-pgcrypto-search-path`. Not merged, not pushed.
+Only the local disposable PostgreSQL 17 cluster was touched. No shared or
+production database was queried or mutated.
 
-## Exact Instructions for Independent Codex Verification
+## Fresh Local Verification
 
-1. Repository truth:
-   - `git merge-base --is-ancestor ac7c409 HEAD` and `... b5adf25 HEAD` -> both exit 0.
-2. Prove the function is not defective:
-   - `grep -nE "digest\(" supabase/migrations/202608110001_media_production_pipeline.sql` -> the only match
-     is line 357 and it is `extensions.digest(` (schema-qualified).
-   - `git log -L 357,357:supabase/migrations/202608110001_media_production_pipeline.sql` -> the call was
-     introduced schema-qualified in `602b14b` and never altered.
-   - Confirm the function's header (`202608110001_...:326`) is
-     `security definer set search_path = channelwright, pg_temp` and that no later migration `ALTER`s or
-     recreates `execute_media_production_action` (`grep -rn execute_media_production_action supabase/migrations`).
-   - Reason: a schema-qualified identifier bypasses `search_path`, so the narrow setting cannot break it.
-3. Confirm no migration was added: `git diff --name-only main..HEAD -- supabase/migrations` -> empty.
-4. Confirm the regression guard: in `src/server/media/media-migration.test.ts`, the pgcrypto test asserts
-   `digest(` count equals `extensions.digest(` count.
-5. Re-run gates: `npx vitest run src/server/media/media-migration.test.ts`, `npm run typecheck`,
-   `npm run lint`, `npm test`. Report exact pass/fail counts.
+- Focused migration tests: PASS, exit 0, 6 files / 88 tests
+- Typecheck: PASS, exit 0
+- Lint: PASS, exit 0, 0 errors / 2 warnings
+- Full suite: PASS, exit 0, 123 files / 984 tests
+- Production build: PASS, exit 0; compile, TypeScript, page-data collection,
+  8 static pages, and route generation completed
 
-## Remaining Media-Pipeline Findings
+Both lint warnings are confined to the pre-existing nested checkout
+`.claude/worktrees/amazing-mestorf-08eaf8`:
 
-None newly discovered in scope. The media-production function chain (`claim_render_job`,
-`heartbeat_render_job`, etc.) uses `gen_random_uuid()` (a `pg_catalog` builtin, not pgcrypto) and
-schema-qualified `extensions.digest`, so none carry the resolver-style search-path risk. Live provider and
-browser execution for the VIDEO_BRIEF slice remain blocked on model routing config (documented in
-`docs/video-brief.md`), unchanged by this task.
+- unused `_upstream` in `channel-strategy-executor.test.ts`
+- unused `ApprovedResearchArtifact` in `channel-strategy-executor.ts`
+
+Neither warning is in the repaired source or active feature checkout.
+
+## Evidence Boundary
+
+Repository and remote-ref checks can establish the current unpushed/unmerged
+state described above. They cannot prove the historical negative that no actor
+ever invoked a deployment or external database outside this repository. No
+commit in the two-commit repair/handoff slice contains deployment or shared-
+database changes, and this Codex verification performed no push, merge, deploy,
+browser action, paid-provider call, shared gate, or shared/production database
+access.
+
+Provider, browser, persisted-shared-project, deployment, and production proof
+remain outside this merge-readiness verdict by design; they are not blockers
+for this locally proven slice.
+
+## Exact Merge Recommendation
+
+No more repair cycle is required. Review and commit this docs-only handoff, then
+with explicit authorization push `feat/channel-video-script`, open a PR into
+`main`, require the normal remote CI checks, and merge if CI matches this local
+evidence. Do not apply migrations or run shared/production gates as part of
+that action unless separately authorized.
+
+The two nested-worktree lint warnings are a non-blocking cleanup follow-up and
+should not be folded into this feature branch merely to make lint output quiet.

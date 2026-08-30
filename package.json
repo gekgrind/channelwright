@@ -27,7 +27,9 @@
     "gate:strategy:persisted": "tsx scripts/channel-strategy-persisted-live.ts",
     "gate:multimodel:live": "tsx scripts/multi-model-content-live.ts",
     "research:provider:live": "tsx scripts/channel-research-live.ts",
-    "gate:videobrief:persisted": "tsx scripts/channel-video-brief-persisted-live.ts"
+    "gate:videobrief:persisted": "tsx scripts/channel-video-brief-persisted-live.ts",
+    "gate:videoscript:persisted": "tsx scripts/channel-video-script-persisted-live.ts",
+    "gate:videoscript:disposable-pg": "tsx scripts/channel-video-script-disposable-pg.ts"
   },
   "dependencies": {
     "@remotion/bundler": "4.0.500",

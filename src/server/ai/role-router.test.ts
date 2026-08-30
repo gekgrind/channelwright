@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { EnvironmentRoleRouter, ModelRoutingError, StaticRoleRouter, resolveRoleModel, resolveRoleProvider } from "./role-router";
+import { assertDistinctRoleProviders, EnvironmentRoleRouter, ModelRoutingError, StaticRoleRouter, resolveRoleModel, resolveRoleProvider } from "./role-router";
 import type { ModelInvocationContext, ModelInvocationResult, StructuredModelProvider } from "./provider";
 
 const KEYS = [
@@ -154,6 +154,50 @@ describe("StaticRoleRouter", () => {
     const provider = router.forRole("QA");
     const result = await provider.invoke(z.unknown(), { operation: "x", role: "QA", system: "s", payload: {}, maxOutputTokens: 10, timeoutMs: 10 } satisfies ModelInvocationContext);
     expect(result.provider).toBe("openai");
+  });
+});
+
+describe("cross-provider independence enforcement", () => {
+  const stub = (id: "openai" | "anthropic", model: string): StructuredModelProvider => ({
+    id, model,
+    invoke: <T>() => Promise.resolve({ value: undefined as T, usage: { model, inputTokens: 0, outputTokens: 0, totalTokens: 0 }, provider: id, model, rawUsage: {} } as ModelInvocationResult<T>),
+  });
+
+  it("accepts a valid generator/critic split across providers", () => {
+    const router = new StaticRoleRouter({ GENERATOR: stub("openai", "g"), CRITIC: stub("anthropic", "c") });
+    expect(() => assertDistinctRoleProviders(router, "GENERATOR", "CRITIC")).not.toThrow();
+  });
+
+  it("fails closed when both roles resolve to the same provider", () => {
+    const router = new StaticRoleRouter({ GENERATOR: stub("openai", "g"), CRITIC: stub("openai", "c") });
+    try { assertDistinctRoleProviders(router, "GENERATOR", "CRITIC"); expect.unreachable("expected AI_PROVIDER_INDEPENDENCE_REQUIRED"); }
+    catch (error) { expect((error as ModelRoutingError).code).toBe("AI_PROVIDER_INDEPENDENCE_REQUIRED"); }
+  });
+
+  it("enforces the revision-vs-critic relationship (the reviser authors the final artifact)", () => {
+    const valid = new StaticRoleRouter({ REVISION: stub("openai", "r"), CRITIC: stub("anthropic", "c") });
+    expect(() => assertDistinctRoleProviders(valid, "REVISION", "CRITIC")).not.toThrow();
+    const invalid = new StaticRoleRouter({ REVISION: stub("anthropic", "r"), CRITIC: stub("anthropic", "c") });
+    try { assertDistinctRoleProviders(invalid, "REVISION", "CRITIC"); expect.unreachable("expected AI_PROVIDER_INDEPENDENCE_REQUIRED"); }
+    catch (error) { expect((error as ModelRoutingError).code).toBe("AI_PROVIDER_INDEPENDENCE_REQUIRED"); }
+  });
+
+  it("reproduces the default-both-to-openai collapse and rejects it", () => {
+    clear();
+    credentials();
+    process.env.OPENAI_MODEL = "one-model";
+    // No VIDEO_SCRIPT provider vars → both roles default to openai.
+    const router = new EnvironmentRoleRouter("VIDEO_SCRIPT");
+    try { assertDistinctRoleProviders(router, "GENERATOR", "CRITIC"); expect.unreachable("expected independence rejection"); }
+    catch (error) { expect((error as ModelRoutingError).code).toBe("AI_PROVIDER_INDEPENDENCE_REQUIRED"); }
+  });
+
+  it("still fails closed for missing model configuration before checking independence", () => {
+    clear();
+    credentials();
+    const router = new EnvironmentRoleRouter("VIDEO_SCRIPT");
+    try { assertDistinctRoleProviders(router, "GENERATOR", "CRITIC"); expect.unreachable("expected AI_MODEL_NOT_CONFIGURED"); }
+    catch (error) { expect((error as ModelRoutingError).code).toBe("AI_MODEL_NOT_CONFIGURED"); }
   });
 });
 

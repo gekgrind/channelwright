@@ -245,6 +245,8 @@ describe("forward-only migration discipline", () => {
     const files = readdirSync(resolve(process.cwd(), "supabase/migrations")).sort();
     expect(files.indexOf("202608150001_video_brief.sql")).toBeGreaterThan(files.indexOf("202608140003_content_intelligence.sql"));
     expect(files.indexOf("202608150002_extension_search_path.sql")).toBeGreaterThan(files.indexOf("202608150001_video_brief.sql"));
-    expect(files[files.length - 1]).toBe("202608150002_extension_search_path.sql");
+    // The video-script migration is the later forward migration; the search-path
+    // repair still orders after the video-brief migration it also repairs.
+    expect(files.indexOf("202608160001_video_script.sql")).toBeGreaterThan(files.indexOf("202608150002_extension_search_path.sql"));
   });
 });
