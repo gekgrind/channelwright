@@ -1,162 +1,135 @@
 ---
-Agent: Claude Code
-Task: Round-6 repair — fix disposable-PostgreSQL apply-time failure in CHANNEL_STRATEGY migration (digest search_path)
+Agent: Claude (Opus 4.8)
+Task: Round-8 repair — disposable-PostgreSQL gate `$2` parameter-type failure
 Verified: 2026-08-29
 Repository: `C:\DevProjects\channelwright`
 Branch: `feat/channel-video-script`
-HEAD: `10a8d3ed2ca14172df7484ab3601e43ec73768f1`
-Base: `0db4c814d4a19a0da5740d2667fe6f15d7a6088f` (`main` and local `origin/main`)
-Verdict: `APPLY-TIME GATE DEFECT REPAIRED — DISPOSABLE-POSTGRESQL GATE MUST BE RE-RUN BY OPERATOR TO CONFIRM PASS`
+HEAD: `5f2426ed8ec3e46922548d80e04832edf9803f17`
+Repaired source commit: `5f2426ed8ec3e46922548d80e04832edf9803f17`
+Prior HEAD: `db9b6f652d52f53fc40b08f3884d373fd42fbced`
+Base: `0db4c814d4a19a0da5740d2667fe6f15d7a6088f` (`main`, merge base)
+Verdict: `DISPOSABLE-POSTGRESQL 17 PROOF PASSED — READY FOR CODEX RE-VERIFICATION`
 ---
 
-# CHANNEL_VIDEO_SCRIPT Round-6 Repair (Claude Code)
+# CHANNEL_VIDEO_SCRIPT Round-8 Repair (Claude)
 
-## New Evidence That Reopened The Task
+## Decision
 
-After the round-5 handoff (which said no further source repair was required and
-only the disposable-PostgreSQL gate remained), an operator provisioned an
-explicitly disposable local PostgreSQL 17 cluster and ran
-`npm run gate:videoscript:disposable-pg`. The gate **ran** (it did not report
-UNAVAILABLE) and returned:
+The disposable-PostgreSQL 17 gate now returns `VIDEO_SCRIPT_DISPOSABLE_PG_PASSED`
+with 22/22 checks and exit 0, run against a real throwaway database on the
+operator's PostgreSQL 17 Docker cluster (`localhost:55432`). The round-7 operator
+evidence (`VIDEO_SCRIPT_DISPOSABLE_PG_FAILED`, sole failure
+`could not determine data type of parameter $2`) was independently reproduced and
+repaired with a two-line change to the gate's own seeding helper. The gate was
+not weakened; the fix makes the run reach checks it was previously aborting
+before.
 
-- `VIDEO_SCRIPT_DISPOSABLE_PG_FAILED`
-- Failing statement: applying `202608140001_channel_strategy.sql`
-- Error: `function digest(text, unknown) does not exist`
-- Check results: `supabase shim installed` PASS; `migration applies:
-  202608140001_channel_strategy.sql` **FAIL**; `gate completed without a fatal
-  error` **FAIL**; `disposable database dropped` PASS; `gate-created cluster
-  roles removed` PASS.
+## Reproduced Defect
 
-This is real runtime evidence from a clean PostgreSQL 17 and supersedes the
-prior "no repair required" disposition.
+Command: `npm.cmd run gate:videoscript:disposable-pg` against
+`postgres://***@localhost:55432/postgres`.
 
-## Root Cause
+Reproduction result before the fix: `VIDEO_SCRIPT_DISPOSABLE_PG_FAILED`,
+7 passed / 1 failed. The four operator-reported PASSes were reproduced exactly
+(shim installed; full 18-migration chain applied from scratch; pgcrypto
+`extensions.digest` runtime resolution; all four approved-artifact resolvers
+compiled; `canonical_jsonb_text` parity). The sole failure was recorded as
+`gate completed without a fatal error = false`,
+detail `could not determine data type of parameter $2` — i.e. an uncaught
+(non-`expectFailure`) error thrown immediately after the canonical-parity check.
 
-- The disposable gate installs a minimal Supabase-compatible shim that creates
-  `pgcrypto` in the `extensions` schema (matching Supabase), then applies the
-  entire migration chain from scratch. The migration session runs with the
-  cluster default search_path, which does **not** include `extensions`.
-- `202608140001_channel_strategy.sql` contains a **top-level backfill `UPDATE`**
-  (adds `artifact_hash`/`provenance_hash` to existing `CHANNEL_RESEARCH` runs)
-  that called **bare `digest()`**. A top-level statement resolves its function
-  references at **plan time** using the session search_path — even against an
-  empty table — so bare `digest()` fails on a cluster without `extensions` on
-  the path. That aborts the whole chain at 140001.
-- This is the same pgcrypto/search_path hazard that `202608150002_extension_
-  search_path.sql` already fixed for **function bodies** via `ALTER FUNCTION ...
-  set search_path = channelwright, extensions, pg_temp`. That escape hatch works
-  only because plpgsql resolves identifiers at **runtime**. It cannot help a
-  **top-level apply-time** statement inside 140001, and no later forward
-  migration can either, because nothing runs between the earlier applied
-  migrations and 140001 on a fresh apply.
-- The rest of the chain was already correct: every other DML `digest()` call is
-  either schema-qualified (`extensions.digest`, e.g.
-  `202608110001:357`, and the gate's own seed code) or lives in a function whose
-  search_path includes `extensions` by end-of-chain (video-brief resolver and
-  `decide_workflow_approval` are recreated with `extensions` on the path in
-  `202608160001`). 140001's top-level backfill was the single outlier.
+### Exact SQL and root cause
 
-## The Repair (minimal, forward-safe)
+The first `seedApprovedRun` call after the canonical-parity check runs the
+provenance-hash backfill in
+`scripts/channel-video-script-disposable-pg.ts` (the `if (provStep)` block).
+That `UPDATE` is a ternary with two branches sharing one three-element params
+array:
 
-`supabase/migrations/202608140001_channel_strategy.sql` — the two `digest()`
-calls in the top-level backfill `UPDATE` are now `extensions.digest(...)`, with a
-comment explaining why a forward migration cannot fix an apply-time failure. This
-changes only name resolution; the SHA-256 output is identical, and the statement
-does not re-run in any environment where the migration already applied.
+- Corrupt branch — SQL uses `$1`, `$2` (`artifact_hash`), `$3`; params
+  `[runId, "f".repeat(64), provStep]`. All three bound and referenced. Correct.
+- Non-corrupt branch (the default, hit first) — SQL computed `artifact_hash`
+  inline via `encode(extensions.digest(output_payload::text,'sha256'),'hex')`
+  and referenced only `$1` and `$3`, yet still bound `[runId, null, provStep]`.
+  Because `$2` (`null`) appeared **nowhere** in the SQL text, PostgreSQL could
+  not infer its data type and raised `could not determine data type of
+  parameter $2`, aborting the run before any resolver/RLS/immutability/
+  concurrency/accounting check executed.
 
-`src/server/workflows/channel-strategy-migration.test.ts` — adds a narrow
-regression asserting the backfill uses `encode(extensions.digest(r.output_payload
-...))` and `encode(extensions.digest(e.output_payload ...))` (the `r.`/`e.`
-aliases are unique to the top-level backfill, so the assertion cannot be
-satisfied by function-body calls).
+The stray `null` placeholder was carried over from the corrupt branch, where
+`$2` is the forced-bad `artifact_hash`.
 
-### Note for the reviewer: this edits an already-written migration
+## Repair
 
-The codebase's forward-only discipline (enforced in
-`video-brief-migration.test.ts`) says repairs go in **new** migrations, not by
-editing applied ones. That discipline was designed around **runtime** (function
-body) digest resolution, where `ALTER FUNCTION` is available. It has no
-mechanism for an **apply-time** failure inside 140001: a forward migration runs
-after 140001 and cannot stop it from failing on a fresh apply. Editing 140001 is
-therefore the only possible fix, and it is forward-safe: identical hash output,
-no re-run where already applied, and it matches the schema-qualification
-convention used everywhere else in the chain. The gate is not weakened — adding
-`extensions` to the shim's migration search_path was deliberately **not** done,
-because that would mask exactly the search_path bug class the gate exists to
-catch.
+`scripts/channel-video-script-disposable-pg.ts` (2 insertions, 2 deletions,
+commit `5f2426e`):
 
-## Local Validation At `10a8d3e`
+- Non-corrupt branch now references `step_key=$2` (was `$3`) and binds
+  `[runId, provStep]` (was `[runId, null, provStep]`).
+- Corrupt branch is unchanged.
 
-- `npm run typecheck`: PASS.
-- `npm run lint`: PASS — 0 errors; the only 2 warnings are the documented
-  nested-worktree files under `.claude/worktrees/amazing-mestorf-08eaf8`, not
-  Video Script sources.
-- `npm run build`: PASS (full route map produced).
-- Focused migration tests (`channel-strategy`, `content-intelligence`,
-  `finalize-strategy-output`, `video-brief`, `video-script`): PASS — 6 files /
-  88 tests, including the new regression.
-- `npm test` (full): 122 files / 971 tests PASS. One file
-  (`src/features/studio/video-brief-workspace.test.tsx`) hit the previously
-  documented vitest thread-pool **worker-startup** flake ("Failed to start
-  threads worker" / "Timeout waiting for worker to respond") — not an assertion
-  failure. Confirmed by an isolated rerun of the two Studio workspace files
-  (2 files / 23 tests PASS). Effective state: 123 files / 983 tests green.
+This is the narrowest fix for the reproduced error. It does not touch any
+migration, any runtime resolver, the migration session `search_path`, the
+`extensions`-schema pgcrypto install, or any gate assertion. It restores the
+gate's ability to run its full check set rather than relaxing it.
 
-## Disposable-PostgreSQL Gate — Operator Re-Run Required
+## Post-Repair Verification
 
-- In THIS environment the gate remains **UNAVAILABLE** (exit 2,
-  `CHANNELWRIGHT_DISPOSABLE_DATABASE_URL is not set`; no docker/psql/local PG).
-  The repair could not be proven here.
-- The operator who reproduced the failure must re-run
-  `npm run gate:videoscript:disposable-pg` against the same explicitly disposable
-  PostgreSQL 17 cluster and require `VIDEO_SCRIPT_DISPOSABLE_PG_PASSED`
-  (all checks passed, exit 0). `UNAVAILABLE`/skipped is not sufficient.
-- Expected outcome after this repair: `migration applies:
-  202608140001_channel_strategy.sql` now PASSES, the full chain applies, and the
-  downstream runtime checks (resolvers, RLS, immutability, concurrency,
-  accounting) run. If any downstream check fails, preserve the exact database
-  evidence and repair only the reproduced defect.
+All from `C:\DevProjects\channelwright` at HEAD `5f2426e`, Node `v24.15.0`.
 
-## Repository State
+- `npm.cmd run gate:videoscript:disposable-pg` against disposable PostgreSQL 17
+  at `localhost:55432`:
+  **`VIDEO_SCRIPT_DISPOSABLE_PG_PASSED` — 22 passed / 0 failed, exit 0.**
+  Includes: full 18-migration chain from scratch; pgcrypto `extensions.digest`;
+  four resolvers compiled; canonical parity; resolver returns owner scope;
+  inherited Viewer Value contract-hash match; VIDEO_BRIEF origin + PASS gate;
+  cross-owner `NOT_FOUND`; unapproved `UPSTREAM_BRIEF_NOT_APPROVED`; altered-hash
+  `UPSTREAM_BRIEF_INTEGRITY_MISMATCH`; RLS on all six workflow tables;
+  VIDEO_BRIEF/VIDEO_SCRIPT run + finalized-step immutability; CHANNEL_RESEARCH
+  immutability (no regression); concurrency unique-index block;
+  nonzero-retrieval `VALIDATION_ERROR`; zero-retrieval passes ceilings then
+  `LEASE_NOT_ACTIVE`; disposable database dropped; gate-created roles removed.
+- Focused migration tests (`npx.cmd vitest run` for channel-strategy,
+  video-brief, video-script, content-intelligence, finalize-strategy-output):
+  **PASS — 6 files / 88 tests** (sixth file is the imported fixture helper).
+- `npm.cmd run typecheck`: **PASS**.
+- `npm.cmd run lint`: **PASS — 0 errors / 2 warnings**, both confined to the
+  pre-existing nested checkout `.claude/worktrees/amazing-mestorf-08eaf8`;
+  neither is in the repaired source.
 
-- Branch: `feat/channel-video-script`
-- HEAD: `10a8d3ed2ca14172df7484ab3601e43ec73768f1`
-- Prior HEAD: `35430fc0cefff957315778035e80d81ce010970f`
-- `main`, local `origin/main`, and merge base:
-  `0db4c814d4a19a0da5740d2667fe6f15d7a6088f`
-- Relationship to `main`: 7 ahead, 0 behind.
-- Upstream: none configured. No push, merge, deploy, shared-migration
-  application, shared/persisted gate, browser action, or paid-provider run was
-  performed. Only the two source files above were changed and committed
-  (`10a8d3e`); this handoff is the only uncommitted working-tree change.
+## Repository Truth
 
-## Exact Next Action
+- Branch `feat/channel-video-script`, HEAD `5f2426e`.
+- Repair commit `5f2426e`; prior HEAD `db9b6f6`.
+- `main` / merge base `0db4c81`; 9 ahead / 0 behind; no upstream configured.
+- Working-tree docs changes for this handoff are the only remaining untracked/
+  modified files: `docs/agent-handoffs/current.md` and the repo-tracked mirror
+  `docs/agent-handoffs/obsidian-round7-pending.md` (still awaiting vault paste);
+  `docs/agent-handoffs/obsidian-round6-pending.md` remains staged for deletion
+  from the round-7 state update. No source, migration, or runtime code changed
+  beyond the single gate-script commit.
 
-1. Operator: re-run `npm run gate:videoscript:disposable-pg` on the disposable
-   PostgreSQL 17 cluster. Require a real `VIDEO_SCRIPT_DISPOSABLE_PG_PASSED`.
-2. If it passes: update this handoff and the Obsidian state with the gate
-   result and reassess merge readiness — without implicitly claiming
-   live-provider, shared-project, deployment, browser, or production proof, none
-   of which were performed.
-3. If it fails: capture the exact failing check and error, and repair only the
-   reproduced defect (narrowest regression, no editing of unrelated applied
-   migrations, rerun focused tests + typecheck + full tests + lint + build + the
-   disposable gate).
+## Exact Next Action (Codex re-verification)
 
-## Do Not Redo
+1. Confirm the diff of `5f2426e` is exactly the two-line non-corrupt-branch
+   binding change to `scripts/channel-video-script-disposable-pg.ts` and touches
+   no migration, resolver, or gate assertion.
+2. Expose the operator's throwaway PostgreSQL 17 as
+   `CHANNELWRIGHT_DISPOSABLE_DATABASE_URL` and run
+   `npm.cmd run gate:videoscript:disposable-pg`.
+3. Require `VIDEO_SCRIPT_DISPOSABLE_PG_PASSED`, all checks passed, exit 0.
+4. Re-run `npm.cmd run typecheck`, `npm.cmd run lint`, and the focused migration
+   tests; optionally `npm.cmd test` and `npm.cmd run build` for the full local
+   picture.
+5. If all pass, mark the branch ready to merge, keeping provider/shared-project/
+   browser/deployment/production proof explicitly out of scope.
 
-- Do not revert the 140001 schema-qualification or the new regression without a
-  new reproduction; bare `digest()` there is the confirmed apply-time defect.
-- Do not "fix" this by adding `extensions` to the disposable gate's migration
-  search_path or otherwise relaxing the shim — that masks the bug class the gate
-  exists to catch (gate must not be weakened/bypassed).
-- Do not change the verified budget invariant, legacy migration/env contract,
-  retry-order regression, critic-verdict behavior, claim/section validation,
-  immutability, provider independence, accepted-author provenance, Studio run
-  scoping, or gate cleanup/isolation without new evidence.
-- Do not change the final `AGREED`/revision-history disposition or restore the
-  removed lexical `OUTCOME_GUARANTEE` heuristic.
-- Do not treat the two nested-worktree lint warnings or the transient vitest
-  worker-startup flake as Video Script failures.
-- Do not push, merge, deploy, apply shared migrations, use paid providers, or
-  run shared/persisted gates without explicit authority.
+## Boundaries Preserved
+
+- No push, merge, deploy, shared/persisted gate, browser action, paid-provider
+  call, or shared/production database mutation was performed.
+- The disposable gate created and dropped its own throwaway database and cleaned
+  up its gate-created cluster roles; it never touched the application or any
+  shared/production database.
+- The gate was repaired, not weakened: no assertion removed, no search-path
+  relaxation, no `extensions`-schema change.
