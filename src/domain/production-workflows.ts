@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { originalContributionKindSchema, viewerNeedKindSchema, viewerValueAssessmentSchema, viewerValueProvenanceSchema } from "./viewer-value";
 
-export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING"]);
+export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING", "CHANNEL_VIDEO_RELEASE"]);
 export type ProductionWorkflowType = z.infer<typeof workflowTypeSchema>;
 
 export const workflowStatusSchema = z.enum(["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL", "BLOCKED", "COMPLETED", "FAILED", "CANCELED"]);
@@ -1400,6 +1400,256 @@ export const videoPackagingRevisionSchema = z.object({
   modelUsage: researchDraftSchema.shape.modelUsage,
 }).strict();
 
+// ---------------------------------------------------------------------------
+// CHANNEL_VIDEO_RELEASE
+//
+// The distribution / release-decision artifact: it turns one exact approved
+// CHANNEL_VIDEO_PACKAGING into a human-approved, immutable RELEASE RECORD — the
+// final release decision made before any external publishing occurs. Unlike
+// packaging (which deliberately produces candidates and never a selection),
+// release IS the selection stage: it SELECTS exactly one title from the approved
+// packaging's title candidates and one thumbnail concept, reconciles the final
+// metadata, recommends a publish window, plans playlist/series placement and the
+// distribution surfaces, binds the release to the strategy KPI(s)/hypothesis it
+// tests (identity and intent only), re-runs the misleading/deceptive-packaging
+// guard at selection time, and carries its own viewer-value/integrity assessment.
+//
+// It is a DECISION and DURABLE-RECORD system, not a publishing system. It
+// deliberately performs no provider OAuth, no live publish/upload, no scheduling
+// through an external provider API, no media rendering, no TTS/image/video
+// generation, no thumbnail image generation, no cross-platform recut generation,
+// and no performance ingestion or measurement. Deterministic QA rejects those as
+// scope violations. The selected title and thumbnail must be EXACT members of the
+// approved packaging's candidate set — a release can never invent a new title.
+//
+// It reasons only over the approved packaging and its upstream chain (zero
+// external retrieval). Chapters and the reconciled metadata are DERIVED FROM the
+// approved packaging, never invented.
+//
+// Size discipline: this result becomes a durable step output and the run's
+// `output_payload`, both bounded at 64 KiB by the workflow engine. Collection
+// sizes are capped so a realistic release record fits with margin, and
+// deterministic QA additionally rejects an oversized payload before persistence
+// so the failure is a typed QA error rather than PAYLOAD_TOO_LARGE.
+// ---------------------------------------------------------------------------
+
+/** Immutable reference to the exact approved video-packaging artifact. */
+export const approvedVideoPackagingReferenceSchema = z.object({
+  packagingWorkflowId: z.string().uuid(),
+  packagingRunId: z.string().uuid(),
+  workflowDefinitionVersion: z.number().int().positive(),
+  outputSchemaVersion: z.literal(1),
+  approvalId: z.string().uuid(),
+  approvedBy: z.string().uuid(),
+  approvedAt: z.string().datetime(),
+  finalQaState: z.enum(["accept", "human_review_required"]),
+  finalQaScore: z.number().int().min(0).max(100),
+  packagingArtifactHash: sha256Schema,
+  packagingProvenanceHash: sha256Schema,
+  parentRunId: z.string().uuid().nullable(),
+  rootRunId: z.string().uuid(),
+  // Transitive provenance: the packaging already proved its own upstream video
+  // script, which anchors the whole
+  // RESEARCH -> STRATEGY -> CONTENT -> VIDEO_BRIEF -> VIDEO_SCRIPT -> VIDEO_PACKAGING
+  // chain. One reference therefore carries the entire lineage, including the
+  // strategy identity the KPI/hypothesis binding must anchor to.
+  upstreamVideoScript: approvedVideoScriptReferenceSchema,
+}).strict();
+
+export const videoReleaseRequestInputSchema = z.object({
+  videoPackagingWorkflowId: z.string().uuid(),
+  videoPackagingRunId: z.string().uuid(),
+}).strict();
+
+export const videoReleaseInputSchema = videoReleaseRequestInputSchema.extend({
+  approvedVideoPackagingReference: approvedVideoPackagingReferenceSchema,
+  humanRevisionNote: z.string().trim().min(1).max(2_000).optional(),
+}).strict();
+
+/**
+ * Which packaging this release is for, carried from authoritative resolver state.
+ * The inherited Viewer Value provenance is lifted from the approved packaging's
+ * own assessment, so a release that silently changes the promise no longer
+ * matches its source contract hash. `titleCandidateIds`/`thumbnailConceptIds` are
+ * the authoritative selectable sets: the release's selection must be an exact
+ * member of them, so the DB — not the caller — decides what may be chosen.
+ */
+export const selectedVideoPackagingScopeSchema = z.object({
+  packagingTopicId: topicIdSchema,
+  pillarId: pillarIdSchema,
+  packagedPromise: z.string().min(20).max(600),
+  titleCandidateIds: z.array(titleCandidateIdSchema).min(1).max(8),
+  thumbnailConceptIds: z.array(thumbnailConceptIdSchema).min(1).max(6),
+  inheritedViewerValueProvenance: viewerValueProvenanceSchema,
+}).strict();
+
+/** Resolver output: the authoritative approved packaging and its inherited evidence. */
+export const approvedVideoPackagingArtifactSchema = z.object({
+  reference: approvedVideoPackagingReferenceSchema,
+  packagingResult: channelVideoPackagingResultSchema,
+  discoveryBundle: topicDiscoveryBundleSchema,
+  scope: selectedVideoPackagingScopeSchema,
+}).strict();
+
+/** KPI/hypothesis identity this release tests. Identity and intent only. */
+export const releaseKpiMetricSchema = z.enum([
+  "IMPRESSIONS", "CLICK_THROUGH_RATE", "AVERAGE_VIEW_DURATION", "AUDIENCE_RETENTION",
+  "RETURNING_VIEWERS", "SUBSCRIBERS", "PUBLISHING_CONSISTENCY", "REVENUE_INDICATOR",
+  "CONVERSION_INDICATOR", "OTHER",
+]);
+
+/**
+ * A binding of this release to one strategy KPI and the hypothesis it tests.
+ * `strategyRunId` anchors the binding to the exact upstream strategy identity
+ * carried transitively through the chain, so a release cannot bind to a KPI from
+ * a strategy it does not descend from. There is deliberately no measured value,
+ * baseline, or ingestion field: measurement is a later vertical, and both
+ * `targetIsHypothesis` and `measurementDeferred` are fixed literals so this stage
+ * can never assert a performance outcome.
+ */
+export const releaseKpiHypothesisBindingSchema = z.object({
+  metric: releaseKpiMetricSchema,
+  label: z.string().min(1).max(300),
+  hypothesis: z.string().min(1).max(600),
+  rationale: z.string().min(1).max(600),
+  strategyRunId: z.string().uuid(),
+  targetIsHypothesis: z.literal(true),
+  measurementDeferred: z.literal(true),
+}).strict();
+
+/** The selected title, an EXACT member of the packaging's candidate set. */
+export const releaseTitleDecisionSchema = z.object({
+  selectedCandidateId: titleCandidateIdSchema,
+  selectedTitleText: z.string().min(1).max(100),
+  rationale: z.string().min(1).max(600),
+  promiseAlignment: z.string().min(1).max(500),
+  deceptionRisk: z.enum(["none", "low", "material"]),
+}).strict();
+
+/** The selected thumbnail concept, an EXACT member of the packaging's concept set. */
+export const releaseThumbnailDecisionSchema = z.object({
+  selectedConceptId: thumbnailConceptIdSchema,
+  rationale: z.string().min(1).max(600),
+  promiseAlignment: z.string().min(1).max(500),
+  deceptionRisk: z.enum(["none", "low", "material"]),
+}).strict();
+
+/**
+ * A RECOMMENDED publish window — an intent, not a dispatch. The window is bounded
+ * ISO timestamps plus rationale; nothing here schedules through a provider API,
+ * and deterministic QA rejects any external-scheduling action.
+ */
+export const releasePublishWindowSchema = z.object({
+  timezone: z.string().min(1).max(60),
+  earliest: z.string().datetime(),
+  latest: z.string().datetime(),
+  cadenceRationale: z.string().min(1).max(600),
+  rationale: z.string().min(1).max(600),
+}).strict();
+
+/** Playlist / series placement intent. A decision to be executed later, not now. */
+export const releasePlaylistPlacementSchema = z.object({
+  seriesName: z.string().min(1).max(200).nullable(),
+  playlistName: z.string().min(1).max(200).nullable(),
+  episodeIntent: z.string().min(1).max(300).nullable(),
+  placementRationale: z.string().min(1).max(600),
+}).strict();
+
+/** One planned distribution surface for the single approved video. Intent only. */
+export const releaseDistributionSurfaceSchema = z.object({
+  surface: z.enum(["YOUTUBE_LONG_FORM", "YOUTUBE_PLAYLIST", "YOUTUBE_COMMUNITY_POST", "CHANNEL_TRAILER_SLOT", "EMAIL_LIST", "COMMUNITY_OR_FORUM", "OTHER"]),
+  label: z.string().min(1).max(200).nullable(),
+  intent: z.string().min(1).max(500),
+  rationale: z.string().min(1).max(500),
+  viewerValueImpact: z.enum(["supports", "neutral", "competes"]),
+}).strict();
+
+/**
+ * The final reconciled metadata for the release record. `finalTitle` must equal
+ * the selected title text verbatim, and chapters must be derived from the
+ * approved packaging's own chapters. This is the durable metadata a later
+ * publishing stage would consume; it is not itself a publish action.
+ */
+export const releaseReconciledMetadataSchema = z.object({
+  finalTitle: z.string().min(1).max(100),
+  finalDescription: z.object({
+    summary: z.string().min(1).max(600),
+    body: z.string().min(1).max(3_000),
+  }).strict(),
+  tags: z.array(z.string().min(1).max(60)).min(1).max(30),
+  chapters: z.array(packagingChapterSchema).min(3).max(14),
+  categoryHint: z.string().min(1).max(120).nullable(),
+  language: z.string().min(1).max(60).nullable(),
+}).strict();
+
+export const channelVideoReleaseContentSchema = z.object({
+  schemaVersion: z.literal(1),
+  workflowType: z.literal("CHANNEL_VIDEO_RELEASE"),
+  source: z.object({
+    packagingTopicId: topicIdSchema,
+    pillarId: pillarIdSchema,
+    pillarName: z.string().min(1).max(300),
+    workingConcept: z.string().min(1).max(400),
+    /** The promise this release keeps; must match the approved packaging's promise. */
+    releasePromise: z.string().min(20).max(600),
+  }).strict(),
+  titleDecision: releaseTitleDecisionSchema,
+  thumbnailDecision: releaseThumbnailDecisionSchema,
+  publishWindow: releasePublishWindowSchema,
+  playlistPlacement: releasePlaylistPlacementSchema,
+  distributionSurfaces: z.array(releaseDistributionSurfaceSchema).min(1).max(8),
+  reconciledMetadata: releaseReconciledMetadataSchema,
+  kpiHypothesisBindings: z.array(releaseKpiHypothesisBindingSchema).min(1).max(8),
+  /** This stage's own Viewer Value judgement, under the same shared doctrine. */
+  viewerValue: viewerValueAssessmentSchema,
+  releaseIntegrity: z.object({
+    /** The misleading/deceptive-packaging guard is re-run at selection time. */
+    deceptionGuardRerun: z.literal(true),
+    misleadingGuardOutcome: z.enum(["PASS", "FAIL"]),
+    /** Title/thumbnail options considered but rejected as too deceptive to release. */
+    rejectedForDeception: z.array(z.string().min(1).max(200)).max(12),
+    summary: z.string().min(1).max(600),
+  }).strict(),
+  risks: z.array(z.object({
+    risk: z.string().min(1).max(500),
+    severity: z.enum(["high", "medium", "low"]),
+    mitigation: z.string().min(1).max(500).nullable(),
+  }).strict()).min(1).max(10),
+  assumptions: z.array(z.string().min(1).max(400)).min(1).max(12),
+  openQuestions: z.array(z.string().min(1).max(400)).min(1).max(12),
+  recommendedNextAction: z.string().min(1).max(500),
+}).strict();
+
+export const channelVideoReleaseResultSchema = channelVideoReleaseContentSchema.extend({
+  upstreamVideoPackaging: approvedVideoPackagingReferenceSchema,
+  releaseScope: selectedVideoPackagingScopeSchema,
+  crossModelReview: crossModelReviewSchema.nullable(),
+  // A finalized release is always model-generated: the synthesis step stamps at
+  // least the generator's attribution. An empty trail would mean a release record
+  // with no accountable author, which must never persist.
+  modelProvenance: z.array(modelAttributionSchema).min(1).max(8),
+}).strict();
+
+export const videoReleaseQAFindingSchema = researchQAFindingSchema;
+export const videoReleaseQAResultSchema = researchQAResultSchema;
+
+export const videoReleaseDraftSchema = z.object({
+  result: channelVideoReleaseResultSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+}).strict();
+
+export const videoReleaseQAStepSchema = z.object({
+  qa: videoReleaseQAResultSchema,
+  crossModelReview: crossModelReviewSchema,
+}).strict();
+
+export const videoReleaseRevisionSchema = z.object({
+  attempted: z.boolean(),
+  reason: z.string().min(1).max(1_000),
+  result: channelVideoReleaseResultSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+}).strict();
+
 export const channelConceptValidationInputSchema = z.object({
   proposedConcept: z.string().trim().min(20).max(2_000),
   audienceContext: z.string().trim().min(3).max(2_000).optional(),
@@ -1419,7 +1669,8 @@ export const workflowStartRequestSchema = z.object({
         : request.workflowType === "CHANNEL_VIDEO_BRIEF" ? videoBriefRequestInputSchema
           : request.workflowType === "CHANNEL_VIDEO_SCRIPT" ? videoScriptRequestInputSchema
             : request.workflowType === "CHANNEL_VIDEO_PACKAGING" ? videoPackagingRequestInputSchema
-              : channelConceptValidationInputSchema;
+              : request.workflowType === "CHANNEL_VIDEO_RELEASE" ? videoReleaseRequestInputSchema
+                : channelConceptValidationInputSchema;
   const parsed = schema.safeParse(request.input);
   if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue, path: ["input", ...issue.path] });
 }).transform((request) => request as
@@ -1429,7 +1680,8 @@ export const workflowStartRequestSchema = z.object({
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_CONTENT_INTELLIGENCE"; definitionVersion: 1; input: ContentIntelligenceRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_BRIEF"; definitionVersion: 1; input: VideoBriefRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_SCRIPT"; definitionVersion: 1; input: VideoScriptRequestInput }
-  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_PACKAGING"; definitionVersion: 1; input: VideoPackagingRequestInput });
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_PACKAGING"; definitionVersion: 1; input: VideoPackagingRequestInput }
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_RELEASE"; definitionVersion: 1; input: VideoReleaseRequestInput });
 
 export const workflowApprovalDecisionSchema = z.object({
   decision: z.enum(["APPROVE", "REJECT", "REQUEST_REVISION"]),
@@ -1517,6 +1769,17 @@ export type VideoPackagingQAResult = z.infer<typeof videoPackagingQAResultSchema
 export type TitleCandidate = z.infer<typeof titleCandidateSchema>;
 export type ThumbnailConcept = z.infer<typeof thumbnailConceptSchema>;
 export type PackagingChapter = z.infer<typeof packagingChapterSchema>;
+export type ApprovedVideoPackagingReference = z.infer<typeof approvedVideoPackagingReferenceSchema>;
+export type ApprovedVideoPackagingArtifact = z.infer<typeof approvedVideoPackagingArtifactSchema>;
+export type SelectedVideoPackagingScope = z.infer<typeof selectedVideoPackagingScopeSchema>;
+export type VideoReleaseRequestInput = z.infer<typeof videoReleaseRequestInputSchema>;
+export type VideoReleaseInput = z.infer<typeof videoReleaseInputSchema>;
+export type ChannelVideoReleaseContent = z.infer<typeof channelVideoReleaseContentSchema>;
+export type ChannelVideoReleaseResult = z.infer<typeof channelVideoReleaseResultSchema>;
+export type VideoReleaseQAResult = z.infer<typeof videoReleaseQAResultSchema>;
+export type ReleaseKpiHypothesisBinding = z.infer<typeof releaseKpiHypothesisBindingSchema>;
+export type ReleaseTitleDecision = z.infer<typeof releaseTitleDecisionSchema>;
+export type ReleaseThumbnailDecision = z.infer<typeof releaseThumbnailDecisionSchema>;
 export type WorkflowStartRequest = z.infer<typeof workflowStartRequestSchema>;
 export type WorkflowApprovalDecision = z.infer<typeof workflowApprovalDecisionSchema>;
 
@@ -1659,6 +1922,23 @@ const channelVideoPackagingDefinition: WorkflowDefinition<VideoPackagingRequestI
   ],
 };
 
+const channelVideoReleaseDefinition: WorkflowDefinition<VideoReleaseRequestInput, ChannelVideoReleaseResult> = {
+  type: "CHANNEL_VIDEO_RELEASE",
+  version: 1,
+  objective: "Turn one exact approved CHANNEL_VIDEO_PACKAGING into a viewer-value-gated, evidence-disciplined, independently critiqued, human-approved immutable release decision for a single video",
+  inputSchema: videoReleaseRequestInputSchema,
+  outputSchema: channelVideoReleaseResultSchema,
+  steps: [
+    { key: "validate-approved-packaging", kind: "WORKER", capability: "approved-packaging-validation", dependsOn: [], maxAttempts: 2, retryBaseSeconds: 5 },
+    { key: "draft-video-release", kind: "WORKER", capability: "video-release-synthesis", dependsOn: ["validate-approved-packaging"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "initial-video-release-qa", kind: "WORKER", capability: "independent-video-release-qa", dependsOn: ["draft-video-release"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "bounded-video-release-revision", kind: "WORKER", capability: "video-release-revision", dependsOn: ["initial-video-release-qa"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "final-video-release-qa", kind: "WORKER", capability: "independent-video-release-qa", dependsOn: ["bounded-video-release-revision"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "finalize-video-release", kind: "WORKER", capability: "video-release-finalizer", dependsOn: ["final-video-release-qa"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "review-video-release", kind: "APPROVAL", capability: "human", dependsOn: ["finalize-video-release"], maxAttempts: 1, retryBaseSeconds: 0 },
+  ],
+};
+
 const registry = new Map<string, WorkflowDefinition>([
   [`${channelConceptValidationDefinition.type}:${channelConceptValidationDefinition.version}`, channelConceptValidationDefinition],
   [`${channelResearchDefinition.type}:${channelResearchDefinition.version}`, channelResearchDefinition],
@@ -1667,6 +1947,7 @@ const registry = new Map<string, WorkflowDefinition>([
   [`${channelVideoBriefDefinition.type}:${channelVideoBriefDefinition.version}`, channelVideoBriefDefinition],
   [`${channelVideoScriptDefinition.type}:${channelVideoScriptDefinition.version}`, channelVideoScriptDefinition],
   [`${channelVideoPackagingDefinition.type}:${channelVideoPackagingDefinition.version}`, channelVideoPackagingDefinition],
+  [`${channelVideoReleaseDefinition.type}:${channelVideoReleaseDefinition.version}`, channelVideoReleaseDefinition],
 ]);
 
 /** Canonical finalizer per workflow type; its output becomes the run's durable `output_payload`. */
@@ -1678,6 +1959,7 @@ export const WORKFLOW_FINALIZER_STEP: Record<ProductionWorkflowType, string> = {
   CHANNEL_VIDEO_BRIEF: "finalize-video-brief",
   CHANNEL_VIDEO_SCRIPT: "finalize-video-script",
   CHANNEL_VIDEO_PACKAGING: "finalize-video-packaging",
+  CHANNEL_VIDEO_RELEASE: "finalize-video-release",
 };
 
 export function getWorkflowDefinition(type: ProductionWorkflowType, version: number) {
