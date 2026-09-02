@@ -65,20 +65,26 @@ export const WORLD = {
   thresholdLabel: "Operating floor \u00b7 Authorised",
   dept01: { index: "01", name: "Intelligence Room", note: "Research \u00b7 Evidence \u00b7 Ranking" },
   dept02: { index: "02", name: "Strategy Room", note: "Positioning \u00b7 Versioned decisions" },
+  dept03: { index: "03", name: "Writers' Room", note: "Brief \u00b7 Script \u00b7 Sourced claims" },
 } as const;
 
 /**
  * The signal's designation as it is worked on, keyed to journey progress.
  * Every state describes something the shipped workflows actually produce \u2014
  * see `./capabilities.ts`. No state may promise a downstream outcome.
+ *
+ * Ranges are fractions of the whole journey's `--j`, so they were rescaled
+ * when Department 03 extended the building \u2014 see `LANDMARK` in `./world.tsx`
+ * for the same rescale applied to the fixed props.
  */
 export const SIGNAL = {
   states: [
-    { from: -0.06, to: 0.3, label: "Raw signal \u00b7 unverified" },
-    { from: 0.28, to: 0.54, label: "In research \u00b7 retrieving evidence" },
-    { from: 0.52, to: 0.7, label: "Claims bound to sources \u00b7 QA passed" },
-    { from: 0.68, to: 0.88, label: "Approved research \u00b7 ranked backlog" },
-    { from: 0.86, to: 1.14, label: "Strategy input \u00b7 awaiting decision" },
+    { from: -0.04, to: 0.22, label: "Raw signal \u00b7 unverified" },
+    { from: 0.2, to: 0.39, label: "In research \u00b7 retrieving evidence" },
+    { from: 0.37, to: 0.5, label: "Claims bound to sources \u00b7 QA passed" },
+    { from: 0.49, to: 0.63, label: "Approved research \u00b7 ranked backlog" },
+    { from: 0.62, to: 0.81, label: "Strategy input \u00b7 awaiting decision" },
+    { from: 0.79, to: 0.99, label: "Script structured \u00b7 locked at QA" },
   ],
 } as const;
 
@@ -114,6 +120,38 @@ export const STRATEGY = {
   arrival: "Department 02 \u00b7 arriving",
 } as const;
 
+/**
+ * Department 03, built to the standard set by 01 and 02. Approved strategy
+ * does not become a video; it becomes a brief, then a script the room can
+ * defend — structured, sourced, checked, and versioned before it leaves.
+ */
+export const WRITERS = {
+  index: "03",
+  department: "Writers' Room",
+  heading: "A brief is not a script until it can defend itself.",
+  body: [
+    "Approved strategy becomes a brief — audience, promise, and the slot it earns — before a line is written. The brief becomes a script: a hook and timed sections, each claim bound to a researched source, checked by an independent QA pass, and revised only within a bound before a human approves an exact version.",
+  ],
+  panelTitle: "Brief record",
+  panelNote: "Structured",
+  rows: [
+    { key: "brief", label: "Brief", value: "Audience, promise, and the slot it earns" },
+    { key: "structure", label: "Script structure", value: "Hook and timed sections" },
+    { key: "revision", label: "Failed QA", value: "Bounded revision, not infinite" },
+  ],
+  instrumentTitle: "Script sequencer",
+  instrumentNote: "Illustrative",
+  readout: [
+    { at: 0.08, label: "Sections drafted", value: "5" },
+    { at: 0.36, label: "Claims sourced", value: "11" },
+    { at: 0.54, label: "Flagged for revision", value: "1" },
+    { at: 0.76, label: "Locked at", value: "v2" },
+  ],
+  verdict: "Script approved at v2",
+  rejected: "1 section revised — unsourced claim caught at QA",
+  arrival: "Department 03 · arriving",
+} as const;
+
 export const REGISTER = {
   kicker: "Capability register",
   heading: "What is built, what is proven, and what is not.",
@@ -127,8 +165,8 @@ export const REGISTER = {
 
 export const NEXT_UP = {
   kicker: "Under construction",
-  heading: "Four rooms still dark.",
-  body: "The Writers' Room, the Production Floor, the Control Room and Analytics Command are staged into this experience but not yet built into it. They are being made to the standard set by the Intelligence Room, not generated to fill the page \u2014 a statement about this site, not about the product. Each department's real status is in the register above.",
+  heading: "Three rooms still dark.",
+  body: "The Production Floor, the Control Room and Analytics Command are staged into this experience but not yet built into it. They are being made to the standard set by the Intelligence, Strategy and Writers' Rooms, not generated to fill the page \u2014 a statement about this site, not about the product. Each department's real status is in the register above.",
 } as const;
 
 export const FOOTER = {

@@ -5,7 +5,8 @@ import { CSSProperties } from "react";
 import { Cue, Scene, useLightweightMode } from "./scene";
 import { OpportunityPlot } from "./opportunity-plot";
 import { VersionGate } from "./version-gate";
-import { INTELLIGENCE, OPEN, STRATEGY } from "./copy";
+import { ScriptSequencer } from "./script-sequencer";
+import { INTELLIGENCE, OPEN, STRATEGY, WRITERS } from "./copy";
 import { CAPABILITIES, STATUS_LABEL } from "./capabilities";
 
 /**
@@ -285,6 +286,104 @@ export function StrategyRoom() {
                   <span className="cw-verdict__mark" aria-hidden="true" />
                   <span className="cw-verdict__line">{STRATEGY.verdict}</span>
                   <span className="cw-verdict__note">{STRATEGY.rejected}</span>
+                </div>
+              </Cue>
+            </div>
+          </div>
+        </Cue>
+      </div>
+    </Scene>
+  );
+}
+
+/* ---------------------------------------------------------------- ACT 03 -- */
+
+const WRITERS_CAPABILITIES = CAPABILITIES.filter((capability) => capability.department === "03");
+
+/**
+ * Department 03, built to the standard set by 01 and 02. Where the Strategy
+ * Room resolves candidate positions into one approved decision, the Writers'
+ * Room resolves that decision into a script it can defend — sections
+ * assembling in order, one caught by QA and corrected in place, then locked
+ * and handed to Production.
+ */
+export function WritersRoom() {
+  const lightweight = useLightweightMode();
+
+  return (
+    <Scene id="writers" travel={4} className="cw-room cw-room--03 cw-scene--overlap" label="Department 03: Writers' Room">
+      <div className="cw-layer cw-layer--copy">
+        <Cue from={0.88} to={1} className="cw-exit">
+          <div className="cw-shell">
+            <div className="cw-room__grid cw-room__grid--03">
+              <div className="cw-room__brief">
+                <Cue from={0} to={0.08} as="p" className="cw-mono cw-rise cw-room__kicker">
+                  Department {WRITERS.index} — {WRITERS.department}
+                </Cue>
+                <h2 className="cw-heading">
+                  <Cue from={0.03} to={0.18} as="span" className="cw-rise cw-room__heading-line">
+                    {WRITERS.heading}
+                  </Cue>
+                </h2>
+                <Cue from={0.1} to={0.28} as="p" className="cw-lede cw-rise">
+                  {WRITERS.body[0]}
+                </Cue>
+
+                <Cue from={0.18} to={0.36} className="cw-panel cw-rise">
+                  <div className="cw-panel__bar">
+                    <span className="cw-mono">{WRITERS.panelTitle}</span>
+                    <span className="cw-mono">{WRITERS.panelNote}</span>
+                  </div>
+                  <dl className="cw-record">
+                    {WRITERS.rows.map((row, index) => (
+                      <div key={row.key} className="cw-record__row" style={{ "--at": 0.3 + index * 0.07 } as CSSProperties}>
+                        <dt>{row.label}</dt>
+                        <dd>{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <div className="cw-record__foot">
+                    {WRITERS_CAPABILITIES.map((capability) => (
+                      <span key={capability.id} className="cw-status" data-status={capability.status}>
+                        {STATUS_LABEL[capability.status]}
+                      </span>
+                    ))}
+                  </div>
+                </Cue>
+              </div>
+
+              <Cue from={0.08} to={0.24} className="cw-instrument cw-rise">
+                {/* The panel brightens while the sequence is being assembled
+                    and checked. */}
+                <div className="cw-panel cw-panel--live">
+                  <div className="cw-panel__bar">
+                    <span className="cw-mono">{WRITERS.instrumentTitle}</span>
+                    <span className="cw-mono">{WRITERS.instrumentNote}</span>
+                  </div>
+                  <div className="cw-sequencer">
+                    {lightweight ? <span className="cw-sequencer__static" /> : <ScriptSequencer />}
+                  </div>
+
+                  <div className="cw-readout">
+                    {WRITERS.readout.map((cell) => (
+                      <div
+                        key={cell.label}
+                        className="cw-readout__cell"
+                        data-terminal={cell.at > 0.6 ? "true" : undefined}
+                        style={{ "--at": cell.at } as CSSProperties}
+                      >
+                        <span className="cw-readout__value">{cell.value}</span>
+                        <span className="cw-readout__label">{cell.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Verdict, in the same register as Departments 01 and 02. */}
+                <div className="cw-verdict" style={{ "--at": 0.82 } as CSSProperties}>
+                  <span className="cw-verdict__mark" aria-hidden="true" />
+                  <span className="cw-verdict__line">{WRITERS.verdict}</span>
+                  <span className="cw-verdict__note">{WRITERS.rejected}</span>
                 </div>
               </Cue>
             </div>

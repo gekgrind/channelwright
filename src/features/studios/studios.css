@@ -613,6 +613,7 @@
 }
 .cw-fixture[data-kind="research"] { grid-template-columns: repeat(8, 1fr); }
 .cw-fixture[data-kind="decision"] { grid-template-columns: repeat(4, 1fr); }
+.cw-fixture[data-kind="writers"] { grid-template-columns: repeat(6, 1fr); }
 .cw-fixture__cell {
   position: relative;
   aspect-ratio: 4 / 3;
@@ -629,6 +630,15 @@
 .cw-fixture[data-kind="decision"] .cw-fixture__cell {
   background: linear-gradient(160deg, rgba(196, 172, 130, .11), rgba(196, 172, 130, .02));
 }
+/* Warmer acid tint against the writers' bench: neither the research wall's
+   cool blue nor the decision board's brass, so the third room still reads
+   as its own place at a glance. */
+.cw-fixture[data-kind="writers"] .cw-fixture__cell {
+  background: linear-gradient(160deg, rgba(216, 255, 62, .05), rgba(216, 255, 62, .015));
+}
+.cw-fixture[data-kind="writers"] .cw-fixture__cell:nth-child(4n + 1) {
+  background: linear-gradient(160deg, rgba(216, 255, 62, .1), rgba(216, 255, 62, .02));
+}
 .cw-fixture__cell::after {
   content: "";
   position: absolute;
@@ -642,20 +652,25 @@
    is continuous by construction — it can never blink from one place to
    another — and its designation changes while the object itself does not. */
 .cw-signal {
-  --s1: clamp(0, calc((var(--j) - .05) / .19), 1);   /* lifts into the beam   */
-  --s2: clamp(0, calc((var(--j) - .27) / .11), 1);   /* settles on the line   */
-  --s3: clamp(0, calc((var(--j) - .4) / .22), 1);    /* crosses Department 01 */
-  --s4: clamp(0, calc((var(--j) - .62) / .1), 1);    /* leaves, transformed   */
-  --s5: clamp(0, calc((var(--j) - .74) / .11), 1);   /* carried down the hall */
-  --s6: clamp(0, calc((var(--j) - .86) / .11), 1);   /* docks in Department 02*/
+  /* `--j` is a fraction of the whole journey; Department 03 lengthened the
+     building, so every stop below is the pre-03 value rescaled by
+     old-travel/new-travel (~.7183) to keep each beat at the same absolute
+     scroll distance it held before — see `LANDMARK` in `./world.tsx`. */
+  --s1: clamp(0, calc((var(--j) - .036) / .136), 1);  /* lifts into the beam   */
+  --s2: clamp(0, calc((var(--j) - .194) / .079), 1);  /* settles on the line   */
+  --s3: clamp(0, calc((var(--j) - .287) / .158), 1);  /* crosses Department 01 */
+  --s4: clamp(0, calc((var(--j) - .445) / .072), 1);  /* leaves, transformed   */
+  --s5: clamp(0, calc((var(--j) - .532) / .079), 1);  /* carried down the hall */
+  --s6: clamp(0, calc((var(--j) - .618) / .079), 1);  /* docks in Department 02*/
+  --s7: clamp(0, calc((var(--j) - .79) / .14), 1);    /* structured in Department 03 */
 
   /* Research is active while the signal is inside the instrument's reach. */
   --work: calc(
-    clamp(0, calc((var(--j) - .44) * 12), 1) *
-    clamp(0, calc((.65 - var(--j)) * 12), 1)
+    clamp(0, calc((var(--j) - .316) * 17), 1) *
+    clamp(0, calc((.467 - var(--j)) * 17), 1)
   );
   /* Evidence stays attached once it has been attached. */
-  --bound: clamp(0, calc((var(--j) - .58) / .08), 1);
+  --bound: clamp(0, calc((var(--j) - .417) / .058), 1);
 
   /* Lateral throw is scaled down on a narrow viewport: the same journey read
      across 390px would carry the artifact off both edges of the frame. */
@@ -668,8 +683,8 @@
   height: 0;
   translate: -50% -50%;
   transform: translate3d(
-    calc((var(--s1) * 6 - var(--s2) * 40 + var(--s3) * 46 + var(--s4) * 12 - var(--s5) * 48 + var(--s6) * 26) * var(--throw, 1) * 1vw),
-    calc((var(--s1) * -33 + var(--s2) * 62 - var(--s6) * 6) * 1vh),
+    calc((var(--s1) * 6 - var(--s2) * 40 + var(--s3) * 46 + var(--s4) * 12 - var(--s5) * 48 + var(--s6) * 26 + var(--s7) * 20) * var(--throw, 1) * 1vw),
+    calc((var(--s1) * -33 + var(--s2) * 62 - var(--s6) * 6 - var(--s7) * 8) * 1vh),
     0
   );
   will-change: transform;
@@ -925,6 +940,24 @@
     linear-gradient(90deg, rgba(242, 239, 230, .14), transparent 62%) 0 50% / 100% 2px no-repeat,
     linear-gradient(90deg, var(--signal-dim), transparent 82%) 0 86% / 100% 2px no-repeat;
   border-right: 1px dashed var(--edge);
+}
+
+/* --- Script sequencer ---------------------------------------------------- */
+
+.cw-sequencer { position: relative; aspect-ratio: 16 / 9; width: 100%; }
+.cw-sequencer canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* Static fallback: five sections of a timeline, drafted and locked, one
+   still under a warm revision mark — the same claim the animation makes,
+   held still. */
+.cw-sequencer__static {
+  position: absolute;
+  inset: 26px 70px 30px 16px;
+  background:
+    linear-gradient(90deg, var(--signal-dim) 0 13%, transparent 13% 19%,
+      rgba(242, 239, 230, .16) 19% 39%, transparent 39% 45%,
+      rgba(255, 104, 70, .22) 45% 73%, transparent 73% 79%,
+      var(--signal-dim) 79% 101%) 0 42% / 100% 10px no-repeat;
+  border-bottom: 1px solid var(--edge);
 }
 
 /* --- Research stream ---------------------------------------------------- */
