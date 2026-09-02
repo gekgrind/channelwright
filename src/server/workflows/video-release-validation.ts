@@ -14,7 +14,7 @@ import type { VideoReleaseSemanticQAOutput } from "./video-release-model";
 type Finding = VideoReleaseQAResult["findings"][number];
 
 /** Deterministic rule count used to report a checks-passed figure. */
-export const DETERMINISTIC_VIDEO_RELEASE_RULE_COUNT = 40;
+export const DETERMINISTIC_VIDEO_RELEASE_RULE_COUNT = 46;
 
 const FABRICATED_VIEWS = /\b(?:will|should|expect(?:ed)?\s+to)\s+(?:get|reach|receive|hit)\b[^.]{0,40}\b(?:views?|subscribers?)\b|\b\d[\d,.]*\s*(?:k|m|million|thousand)?\+?\s*(?:views?|subscribers?)\s+(?:in|within|per|guaranteed|expected)\b/i;
 const FABRICATED_REVENUE = /\b(?:cpm|rpm)\b\s*(?:of|is|=|:)?\s*\$?\d|\b(?:earn|earning|earnings|make|makes|making|generate|generates|generating|revenue|profit|income|payout)\b[^.]{0,40}\$\s*\d|\$\s*\d[\d,.]*\s*(?:\/|per\s+|a\s+)?(?:month|mo|year|yr|day)\b[^.]{0,40}\b(?:revenue|income|profit|earnings|payout)\b/i;
@@ -83,6 +83,30 @@ export function deterministicVideoReleaseValidation(
   const packaging = upstream.packagingResult;
   const findings: Finding[] = [];
   const add = (severity: Finding["severity"], code: string, message: string, evidenceIds: string[] = []) => findings.push({ severity, code, message, evidenceIds });
+  const duplicates = (ids: readonly string[]) => {
+    const seen = new Set<string>();
+    const dupes = new Set<string>();
+    for (const id of ids) (seen.has(id) ? dupes : seen).add(id);
+    return [...dupes];
+  };
+
+  // --- Unambiguous upstream candidate identity ---------------------------
+  // Candidate selection must resolve to exactly one upstream candidate. A
+  // duplicate id in any packaging candidate/concept/chapter set, or in the
+  // authoritative selectable id sets, makes the selection ambiguous and is
+  // rejected before any selection rule runs.
+  if (duplicates(packaging.titleCandidates.map((candidate) => candidate.candidateId)).length || duplicates(upstream.scope.titleCandidateIds).length) {
+    add("error", "DUPLICATE_TITLE_CANDIDATE_ID", "The approved packaging exposes more than one title candidate with the same id; the release selection would be ambiguous.");
+  }
+  if (duplicates(packaging.thumbnailConcepts.map((concept) => concept.conceptId)).length || duplicates(upstream.scope.thumbnailConceptIds).length) {
+    add("error", "DUPLICATE_THUMBNAIL_CONCEPT_ID", "The approved packaging exposes more than one thumbnail concept with the same id; the release selection would be ambiguous.");
+  }
+  if (duplicates(packaging.chapters.map((chapter) => chapter.chapterId)).length) {
+    add("error", "DUPLICATE_CHAPTER_ID", "The approved packaging contains duplicate chapter ids; chapter identity is ambiguous and cannot be reconciled.");
+  }
+  if (duplicates(result.reconciledMetadata.chapters.map((chapter) => chapter.chapterId)).length) {
+    add("error", "AMBIGUOUS_RECONCILED_CHAPTER", "The reconciled metadata repeats a chapter id; each reconciled chapter must have a distinct identity.");
+  }
 
   // --- Upstream identity and provenance -----------------------------------
   if (!canonicalEquals(result.upstreamVideoPackaging, upstream.reference)) {
@@ -172,12 +196,25 @@ export function deterministicVideoReleaseValidation(
     add("error", "PUBLISH_WINDOW_INVERTED", "The recommended publish window ends before it begins.");
   }
 
-  // --- KPI / hypothesis bindings anchor to the exact strategy identity -------
+  // --- KPI / hypothesis bindings: exact strategy identity AND framework -----
+  // A structurally valid metric is not enough: the metric must be one the
+  // approved upstream strategy actually adopted in its KPI framework (resolved
+  // authoritatively into scope.strategyKpiMetrics), and no two bindings may
+  // target the same metric.
   const strategyRunId = transitiveStrategyRunId(upstream);
+  const approvedKpiMetrics = new Set<string>(upstream.scope.strategyKpiMetrics);
+  const boundMetrics = new Set<string>();
   for (const binding of result.kpiHypothesisBindings) {
     if (binding.strategyRunId !== strategyRunId) {
       add("error", "KPI_STRATEGY_IDENTITY_MISMATCH", `A KPI/hypothesis binding cites strategy run ${binding.strategyRunId}, which is not the release's upstream strategy ${strategyRunId}.`);
     }
+    if (!approvedKpiMetrics.has(binding.metric)) {
+      add("error", "KPI_NOT_IN_STRATEGY_FRAMEWORK", `A KPI/hypothesis binding targets metric ${binding.metric}, which is not in the approved upstream strategy's KPI framework.`);
+    }
+    if (boundMetrics.has(binding.metric)) {
+      add("error", "DUPLICATE_KPI_BINDING", `More than one KPI/hypothesis binding targets metric ${binding.metric}; the release intent is ambiguous.`);
+    }
+    boundMetrics.add(binding.metric);
   }
 
   // --- Evidence integrity --------------------------------------------------
@@ -285,6 +322,12 @@ export const UNREVISABLE_VIDEO_RELEASE_CODES = new Set([
   "MISLEADING_RELEASE_RISK",
   "MISLEADING_RELEASE_SELECTION",
   "KPI_STRATEGY_IDENTITY_MISMATCH",
+  "KPI_NOT_IN_STRATEGY_FRAMEWORK",
+  "DUPLICATE_KPI_BINDING",
+  "DUPLICATE_TITLE_CANDIDATE_ID",
+  "DUPLICATE_THUMBNAIL_CONCEPT_ID",
+  "DUPLICATE_CHAPTER_ID",
+  "AMBIGUOUS_RECONCILED_CHAPTER",
   "UNSUPPORTED_MONETARY_GUARANTEE",
   "FABRICATED_SEARCH_VOLUME",
   "EVIDENCE_REFERENCE_NOT_FOUND",

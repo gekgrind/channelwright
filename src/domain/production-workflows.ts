@@ -1466,6 +1466,13 @@ export const videoReleaseInputSchema = videoReleaseRequestInputSchema.extend({
   humanRevisionNote: z.string().trim().min(1).max(2_000).optional(),
 }).strict();
 
+/** KPI/hypothesis identity this release tests. Identity and intent only. */
+export const releaseKpiMetricSchema = z.enum([
+  "IMPRESSIONS", "CLICK_THROUGH_RATE", "AVERAGE_VIEW_DURATION", "AUDIENCE_RETENTION",
+  "RETURNING_VIEWERS", "SUBSCRIBERS", "PUBLISHING_CONSISTENCY", "REVENUE_INDICATOR",
+  "CONVERSION_INDICATOR", "OTHER",
+]);
+
 /**
  * Which packaging this release is for, carried from authoritative resolver state.
  * The inherited Viewer Value provenance is lifted from the approved packaging's
@@ -1480,6 +1487,12 @@ export const selectedVideoPackagingScopeSchema = z.object({
   packagedPromise: z.string().min(20).max(600),
   titleCandidateIds: z.array(titleCandidateIdSchema).min(1).max(8),
   thumbnailConceptIds: z.array(thumbnailConceptIdSchema).min(1).max(6),
+  // The metrics the approved upstream strategy actually adopted in its KPI
+  // framework, resolved authoritatively from that strategy run by the database
+  // resolver. A release may only bind a KPI/hypothesis to a metric in this set,
+  // exactly as its title/thumbnail selection must be a member of the candidate
+  // id sets above.
+  strategyKpiMetrics: z.array(releaseKpiMetricSchema).min(1).max(20),
   inheritedViewerValueProvenance: viewerValueProvenanceSchema,
 }).strict();
 
@@ -1490,13 +1503,6 @@ export const approvedVideoPackagingArtifactSchema = z.object({
   discoveryBundle: topicDiscoveryBundleSchema,
   scope: selectedVideoPackagingScopeSchema,
 }).strict();
-
-/** KPI/hypothesis identity this release tests. Identity and intent only. */
-export const releaseKpiMetricSchema = z.enum([
-  "IMPRESSIONS", "CLICK_THROUGH_RATE", "AVERAGE_VIEW_DURATION", "AUDIENCE_RETENTION",
-  "RETURNING_VIEWERS", "SUBSCRIBERS", "PUBLISHING_CONSISTENCY", "REVENUE_INDICATOR",
-  "CONVERSION_INDICATOR", "OTHER",
-]);
 
 /**
  * A binding of this release to one strategy KPI and the hypothesis it tests.
