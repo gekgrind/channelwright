@@ -1,0 +1,757 @@
+/* ============================================================================
+   CHANNELWRIGHT STUDIOS — cinematic surface
+   ----------------------------------------------------------------------------
+   Scoped entirely under `.cw-studios`. The production surfaces at "/" and
+   "/studio" keep every token in `src/app/globals.css` untouched; the two
+   `:root:has()` rules below are the only reach outside this class, and they
+   only apply while a Studios page is mounted.
+
+   Brand continuity: the existing Channelwright palette is inverted rather than
+   replaced. Paper (#f2efe6) becomes the light source, acid (#d8ff3e) stays the
+   single signal colour, orange and mint keep their existing meanings — alarm
+   and pass. Typefaces are the ones already loaded by the root layout.
+   ============================================================================ */
+
+:root:has(.cw-studios) { color-scheme: dark; }
+:root:has(.cw-studios), :root:has(.cw-studios) body { background: #050607; }
+:root:has(.cw-studios) .grain { opacity: .085; mix-blend-mode: screen; }
+
+.cw-studios {
+  /* Ground — four steps of darkness, used to build depth without gradients. */
+  --void: #050607;
+  --deep: #0a0c10;
+  --deck: #12151b;
+  --riser: #1b1f27;
+
+  /* Light — one paper tone at four intensities. */
+  --lume: #f2efe6;
+  --lume-2: rgba(242, 239, 230, .66);
+  --lume-3: rgba(242, 239, 230, .40);
+  --lume-4: rgba(242, 239, 230, .20);
+  --edge: rgba(242, 239, 230, .10);
+  --edge-2: rgba(242, 239, 230, .18);
+
+  /* Signal — earned, never decorative. */
+  --signal: #d8ff3e;
+  --signal-dim: rgba(216, 255, 62, .34);
+  --signal-haze: rgba(216, 255, 62, .12);
+  --warn: #ff6846;
+  --pass: #91e6c1;
+
+  --shell: 1380px;
+  --gutter: clamp(20px, 5vw, 76px);
+  --ease: cubic-bezier(.22, .61, .28, 1);
+
+  position: relative;
+  background: var(--void);
+  color: var(--lume);
+  font-family: var(--font-body), sans-serif;
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+}
+
+.cw-studios ::selection { background: var(--signal); color: var(--void); }
+.cw-studios :focus-visible { outline: 2px solid var(--signal); outline-offset: 4px; border-radius: 2px; }
+
+/* --- Typography -------------------------------------------------------- */
+
+.cw-studios h1, .cw-studios h2, .cw-studios h3 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-weight: 600;
+  letter-spacing: -.035em;
+  line-height: .94;
+  text-wrap: balance;
+}
+.cw-studios p { margin: 0; }
+
+.cw-display { font-size: clamp(2.2rem, 5.2vw, 4.6rem); }
+.cw-display--xl { font-size: clamp(2.4rem, 5.9vw, 5.3rem); letter-spacing: -.042em; }
+.cw-heading { font-size: clamp(1.7rem, 3.4vw, 3rem); }
+
+.cw-lede {
+  max-width: 46ch;
+  color: var(--lume-2);
+  font-size: clamp(1rem, 1.35vw, 1.19rem);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.cw-mono {
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--lume-3);
+}
+.cw-mono--signal { color: var(--signal); }
+
+.cw-rule { height: 1px; background: var(--edge); border: 0; margin: 0; }
+
+/* --- Scene architecture ------------------------------------------------ */
+
+.cw-studios [data-cw-scene] {
+  position: relative;
+  height: calc(var(--travel, 3) * 100svh);
+}
+
+.cw-stage {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  overflow: hidden;
+  display: grid;
+  grid-template-areas: "stage";
+  isolation: isolate;
+}
+.cw-stage > * { grid-area: stage; }
+
+.cw-layer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.cw-layer--copy { pointer-events: auto; }
+
+/* Cue: maps a slice of scene progress onto --t (linear) and --te (ease-out). */
+.cw-cue {
+  --in: 0;
+  --out: 1;
+  --t: clamp(0, calc((var(--p, 1) - var(--in)) / (var(--out) - var(--in))), 1);
+  --te: calc(1 - (1 - var(--t)) * (1 - var(--t)));
+  --ti: calc(var(--t) * var(--t));
+  /* Symmetric window: rises then falls, for layers that pass through. */
+  --tw: calc(var(--t) * (1 - var(--t)) * 4);
+}
+
+/* Content is fully legible until the engine confirms it is driving. */
+.cw-studios[data-ready="true"] .cw-fade { opacity: var(--t); }
+.cw-studios[data-ready="true"] .cw-hold { opacity: calc(1 - var(--t)); }
+.cw-studios[data-ready="true"] .cw-rise {
+  opacity: var(--t);
+  transform: translate3d(0, calc((1 - var(--te)) * 34px), 0);
+}
+.cw-studios[data-ready="true"] .cw-wipe {
+  clip-path: inset(0 calc((1 - var(--te)) * 101%) 0 0);
+}
+.cw-fade, .cw-hold, .cw-rise, .cw-wipe { will-change: opacity, transform; }
+
+/* --- Shell ------------------------------------------------------------- */
+
+.cw-shell {
+  width: 100%;
+  max-width: var(--shell);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+.cw-stage .cw-shell { height: 100%; display: flex; flex-direction: column; justify-content: center; }
+.cw-room .cw-stage .cw-shell { padding-top: 84px; }
+
+/* --- Chrome ------------------------------------------------------------ */
+
+.cw-topbar {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px var(--gutter);
+  background: linear-gradient(to bottom, rgba(5, 6, 7, .92), rgba(5, 6, 7, 0));
+  transition: opacity .55s var(--ease), visibility .55s var(--ease);
+}
+.cw-topbar__mark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.cw-topbar__mark b { font-weight: 700; }
+.cw-topbar__mark span { color: var(--lume-3); font-weight: 500; letter-spacing: .22em; font-size: 10.5px; }
+.cw-topbar__right { display: flex; align-items: center; gap: 18px; }
+.cw-studios[data-phase="open"] .cw-topbar { opacity: 0; visibility: hidden; }
+
+.cw-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 10px 20px;
+  border: 1px solid var(--signal);
+  background: transparent;
+  color: var(--signal);
+  font-family: var(--font-display), sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background .28s var(--ease), color .28s var(--ease), box-shadow .28s var(--ease);
+}
+.cw-cta:hover { background: var(--signal); color: var(--void); box-shadow: 0 0 44px var(--signal-haze); }
+.cw-cta--solid { background: var(--signal); color: var(--void); }
+.cw-cta--solid:hover { box-shadow: 0 0 60px rgba(216, 255, 62, .28); }
+.cw-cta--ghost { border-color: var(--edge-2); color: var(--lume-2); }
+.cw-cta--ghost:hover { background: transparent; color: var(--lume); border-color: var(--lume-3); box-shadow: none; }
+
+/* Department rail — a position indicator, not navigation chrome. */
+.cw-rail {
+  position: fixed;
+  right: max(18px, calc((100vw - var(--shell)) / 2 - 34px));
+  top: 50%;
+  z-index: 35;
+  translate: 0 -50%;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  opacity: 0;
+  transition: opacity .6s var(--ease);
+}
+.cw-rail[data-visible="true"] { opacity: 1; }
+.cw-rail__item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 11px;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--lume-4);
+  cursor: pointer;
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: .16em;
+  transition: color .3s var(--ease);
+}
+.cw-rail__item:hover { color: var(--lume-2); }
+.cw-rail__item[data-current="true"] { color: var(--signal); }
+.cw-rail__name {
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  text-transform: uppercase;
+  transition: max-width .45s var(--ease), opacity .3s var(--ease);
+}
+.cw-rail__item:hover .cw-rail__name,
+.cw-rail__item:focus-visible .cw-rail__name { max-width: 190px; opacity: 1; }
+.cw-rail__tick { width: 26px; height: 1px; background: currentColor; flex: none; transition: width .35s var(--ease); }
+.cw-rail__item[data-current="true"] .cw-rail__tick { width: 40px; }
+
+/* --- Status chips (truthful capability labelling) ---------------------- */
+
+.cw-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px 4px 7px;
+  border: 1px solid var(--edge-2);
+  font-family: var(--font-mono), monospace;
+  font-size: 9.5px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--lume-3);
+  white-space: nowrap;
+}
+.cw-status::before { content: ""; width: 5px; height: 5px; background: currentColor; flex: none; }
+.cw-status[data-status="OPERATING"] { color: var(--pass); border-color: rgba(145, 230, 193, .3); }
+.cw-status[data-status="PROVEN"] { color: var(--lume-2); }
+.cw-status[data-status="DESIGNED"] { color: var(--warn); border-color: rgba(255, 104, 70, .28); }
+
+/* ============================================================================
+   ACT 00 — COLD OPEN
+   A dormant facility. One source of light, then the room answers it.
+   Depth is built from stacked gradients and line geometry; no blur filters and
+   no particle canvas, so the whole act is transform/opacity only.
+   ============================================================================ */
+
+.cw-open { background: var(--void); }
+
+/* Volumetric ground. Grows from the spark rather than sitting behind it. */
+.cw-open__vault {
+  position: absolute;
+  inset: -10%;
+  background:
+    radial-gradient(58% 46% at 50% 62%, rgba(216, 255, 62, .07), transparent 62%),
+    radial-gradient(120% 84% at 50% 74%, rgba(120, 150, 190, .10), transparent 68%),
+    radial-gradient(90% 60% at 50% 8%, rgba(90, 120, 165, .07), transparent 70%);
+  opacity: calc(.08 + var(--te) * .92);
+  transform: scale(calc(.86 + var(--te) * .14));
+}
+
+/* Studio floor. A single perspective plane reads as architecture at low cost. */
+.cw-open__floor {
+  position: absolute;
+  inset: 52% -60% -40%;
+  background:
+    repeating-linear-gradient(to right, var(--edge) 0 1px, transparent 1px 132px),
+    repeating-linear-gradient(to bottom, var(--edge) 0 1px, transparent 1px 132px);
+  transform: perspective(760px) rotateX(74deg) scale(calc(1 + var(--te) * .22));
+  transform-origin: 50% 0;
+  mask-image: radial-gradient(58% 76% at 50% 6%, #000 0%, transparent 78%);
+  opacity: calc(var(--te) * .75);
+}
+
+/* Overhead lighting truss + rigging, drawn as line art, parallaxed by depth. */
+.cw-arch {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: var(--lume);
+}
+.cw-arch svg { width: 100%; height: 100%; display: block; }
+.cw-arch--far { opacity: calc(.028 + var(--te) * .15); transform: translate3d(0, calc(var(--te) * -14px), 0) scale(calc(1 + var(--te) * .04)); }
+.cw-arch--near { opacity: calc(var(--te) * .3); transform: translate3d(0, calc(var(--te) * 26px), 0) scale(calc(1 + var(--te) * .16)); }
+
+/* The key light. A hard-edged trapezoid, softened only by its own gradient. */
+.cw-open__beam {
+  position: absolute;
+  left: 50%;
+  top: -6%;
+  width: min(58vw, 720px);
+  height: 86%;
+  translate: -50% 0;
+  clip-path: polygon(43% 0, 57% 0, 100% 100%, 0 100%);
+  background: linear-gradient(to bottom, rgba(216, 255, 62, .16), rgba(216, 255, 62, .05) 42%, transparent 86%);
+  transform: scaleY(calc(.1 + var(--te) * .9));
+  transform-origin: 50% 0;
+  opacity: calc(var(--t) * .9);
+}
+
+/* The idea. Visual protagonist for the whole experience. */
+.cw-spark {
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  width: 8px;
+  height: 8px;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow:
+    0 0 12px 2px rgba(216, 255, 62, .85),
+    0 0 46px 10px rgba(216, 255, 62, .3),
+    0 0 130px 40px rgba(216, 255, 62, .12);
+}
+.cw-studios[data-ready="true"] .cw-spark--open {
+  transform: translate3d(calc(var(--te) * 15vw), calc(var(--te) * -20vh), 0) scale(calc(1 + var(--te) * 1.6));
+}
+/* A soft bloom that swells as the facility answers the spark. No ring: a
+   hard circle reads as interface furniture, not light. */
+.cw-spark__halo {
+  position: absolute;
+  inset: -220px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(216, 255, 62, .16), transparent 72%);
+  opacity: calc(var(--tw) * .9);
+  transform: scale(calc(.35 + var(--t) * .9));
+}
+
+/* Equipment status lights. They ignite in sequence as the facility wakes. */
+.cw-leds {
+  position: absolute;
+  left: var(--gutter);
+  right: var(--gutter);
+  bottom: 116px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.cw-leds__dot {
+  --lit: clamp(0, calc((var(--t) - var(--i) * .055) * 9), 1);
+  width: 4px;
+  height: 4px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--lume);
+  opacity: calc(.06 + var(--lit) * .7);
+  box-shadow: 0 0 calc(var(--lit) * 9px) rgba(242, 239, 230, .5);
+}
+.cw-leds__dot[data-signal="true"] { background: var(--signal); box-shadow: 0 0 calc(var(--lit) * 14px) rgba(216, 255, 62, .8); }
+
+/* Distant monitors coming up in an unlit gallery. */
+.cw-screens { position: absolute; inset: 0; }
+.cw-screens__unit {
+  position: absolute;
+  border: 1px solid var(--edge);
+  background: linear-gradient(150deg, rgba(150, 190, 235, .1), rgba(150, 190, 235, .02));
+  opacity: calc(var(--t) * var(--depth, 1));
+  transform: translate3d(0, calc((1 - var(--te)) * 18px), 0);
+}
+.cw-screens__unit::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  background: repeating-linear-gradient(to bottom, rgba(200, 225, 255, .16) 0 1px, transparent 1px 5px);
+  opacity: .5;
+}
+
+/* Copy stack. Kept small and mono early, then displaced by display type. */
+.cw-open__copy { position: relative; z-index: 3; }
+.cw-open__line { display: block; max-width: 30ch; }
+.cw-open__title { position: relative; }
+.cw-open__title em { font-style: normal; color: var(--signal); }
+.cw-open__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 34px; }
+
+.cw-scrollhint {
+  position: absolute;
+  left: 50%;
+  bottom: 40px;
+  translate: -50% 0;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  z-index: 4;
+}
+.cw-scrollhint__bar { width: 1px; height: 46px; background: linear-gradient(to bottom, var(--lume-4), transparent); }
+
+/* ============================================================================
+   DEPARTMENT SHELL — shared by every room, so 02–06 inherit this vocabulary
+   ============================================================================ */
+
+.cw-room { background: var(--deep); }
+.cw-room__ambient {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(74% 58% at 22% 34%, rgba(120, 160, 210, .11), transparent 66%),
+    radial-gradient(52% 44% at 82% 76%, rgba(216, 255, 62, .05), transparent 68%);
+  opacity: calc(.25 + var(--te) * .75);
+}
+.cw-room__floor {
+  position: absolute;
+  inset: 62% -40% -30%;
+  background: repeating-linear-gradient(to right, var(--edge) 0 1px, transparent 1px 108px);
+  transform: perspective(700px) rotateX(76deg);
+  transform-origin: 50% 0;
+  mask-image: linear-gradient(to bottom, #000, transparent 72%);
+  opacity: calc(var(--te) * .6);
+}
+
+.cw-room__grid {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: clamp(28px, 4vw, 62px);
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+  align-items: center;
+  width: 100%;
+}
+.cw-room__brief { display: grid; gap: 20px; align-content: center; }
+.cw-room__kicker { display: flex; align-items: center; gap: 12px; }
+.cw-room__kicker::after { content: ""; height: 1px; flex: 1; background: var(--edge); }
+
+/* --- Framed instrument panel ------------------------------------------- */
+
+.cw-panel {
+  position: relative;
+  border: 1px solid var(--edge-2);
+  background: linear-gradient(168deg, rgba(27, 31, 39, .72), rgba(10, 12, 16, .78));
+  backdrop-filter: none;
+}
+.cw-panel::before, .cw-panel::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--signal-dim);
+}
+.cw-panel::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.cw-panel::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+.cw-panel__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--edge);
+}
+
+/* --- Opportunity plot --------------------------------------------------- */
+
+.cw-plot { position: relative; aspect-ratio: 16 / 10; width: 100%; }
+.cw-plot canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.cw-plot__axes { position: absolute; inset: 0; pointer-events: none; }
+.cw-plot__axis {
+  position: absolute;
+  color: var(--lume-4);
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  opacity: var(--t);
+}
+.cw-plot__axis--x { left: 16px; bottom: 10px; }
+.cw-plot__axis--y { left: 16px; top: 14px; }
+.cw-plot__frame {
+  position: absolute;
+  inset: 16px 16px 26px 16px;
+  border-left: 1px solid var(--edge);
+  border-bottom: 1px solid var(--edge);
+  opacity: var(--t);
+}
+/* Static fallback drawn whenever the canvas layer is not in use. */
+.cw-plot__static {
+  position: absolute;
+  inset: 16px 16px 26px 16px;
+  background:
+    radial-gradient(22% 30% at 72% 30%, var(--signal-dim), transparent 70%),
+    radial-gradient(16% 22% at 40% 62%, rgba(242, 239, 230, .16), transparent 72%),
+    radial-gradient(14% 18% at 26% 30%, rgba(242, 239, 230, .1), transparent 74%);
+}
+
+/* --- Research stream ---------------------------------------------------- */
+
+.cw-stream { display: grid; gap: 0; }
+.cw-stream__step {
+  --lit: clamp(0, calc((var(--p, 1) - var(--at)) * 14), 1);
+  display: grid;
+  grid-template-columns: 15px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--edge);
+  color: var(--lume-4);
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.cw-stream__step:last-child { border-bottom: 0; }
+.cw-studios[data-ready="true"] .cw-stream__step { color: color-mix(in srgb, var(--lume) calc(var(--lit) * 78%), var(--lume-4)); }
+.cw-stream__pip {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: calc(.3 + var(--lit) * .7);
+  box-shadow: 0 0 calc(var(--lit) * 10px) currentColor;
+}
+/* The approval gate is the point of the sequence, so it keeps the signal
+   colour once lit rather than being flattened by the generic ramp above. */
+.cw-stream__step[data-role="human"] { color: var(--signal); }
+.cw-studios[data-ready="true"] .cw-stream__step[data-role="human"] {
+  color: color-mix(in srgb, var(--signal) calc(var(--lit) * 92%), var(--lume-4));
+}
+.cw-stream__tag { font-size: 9px; letter-spacing: .16em; color: var(--lume-4); }
+
+/* --- Evidence ledger ---------------------------------------------------- */
+
+.cw-ledger {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--edge);
+}
+.cw-ledger__cell { padding: 12px 14px; border-right: 1px solid var(--edge); }
+.cw-ledger__cell:last-child { border-right: 0; }
+.cw-ledger__value {
+  display: block;
+  font-family: var(--font-display), sans-serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -.03em;
+  line-height: 1;
+  margin-bottom: 5px;
+}
+.cw-ledger__cell[data-tone="warn"] .cw-ledger__value { color: var(--warn); }
+.cw-ledger__cell[data-tone="signal"] .cw-ledger__value { color: var(--signal); }
+
+/* --- Travelling artifact ------------------------------------------------ */
+
+.cw-artifact {
+  position: absolute;
+  left: 0;
+  top: calc(100% - 96px);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 10px;
+  border: 1px solid var(--signal-dim);
+  background: rgba(5, 6, 7, .82);
+  color: var(--signal);
+  font-family: var(--font-mono), monospace;
+  font-size: 9.5px;
+  letter-spacing: .17em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.cw-artifact::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 10px 2px rgba(216, 255, 62, .7);
+}
+.cw-studios[data-ready="true"] .cw-artifact {
+  transform: translate3d(calc(4vw + var(--te) * 62vw), -50%, 0);
+  opacity: clamp(0, calc(var(--tw) * 1.4), 1);
+}
+
+/* --- Capability strip --------------------------------------------------- */
+
+.cw-capability { display: grid; gap: 10px; padding: 16px 0; border-top: 1px solid var(--edge); }
+.cw-capability__head { display: flex; align-items: center; gap: 16px; }
+.cw-capability__head::after { content: ""; order: 1; flex: 1; height: 1px; background: var(--edge); }
+.cw-capability__head .cw-status { order: 2; }
+.cw-capability__name { font-family: var(--font-display), sans-serif; font-size: 1rem; font-weight: 600; letter-spacing: -.01em; }
+.cw-capability__claim { color: var(--lume-2); font-size: .93rem; line-height: 1.5; max-width: 62ch; }
+.cw-capability__boundary { color: var(--lume-3); font-size: .84rem; line-height: 1.5; max-width: 62ch; }
+.cw-capability__boundary::before { content: "Boundary — "; color: var(--lume-4); font-family: var(--font-mono), monospace; font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase; }
+
+/* ============================================================================
+   REGISTER + FOOTER — flow sections, no scroll choreography
+   ============================================================================ */
+
+.cw-block { position: relative; padding-block: clamp(90px, 12vw, 170px); background: var(--void); }
+.cw-block--deep { background: var(--deep); border-top: 1px solid var(--edge); }
+.cw-block__head { display: grid; gap: 18px; max-width: 68ch; margin-bottom: clamp(40px, 6vw, 72px); }
+
+.cw-register { display: grid; gap: 0; border-top: 1px solid var(--edge-2); }
+.cw-register__row { display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: clamp(16px, 3vw, 40px); padding-block: 26px; border-bottom: 1px solid var(--edge); }
+.cw-register__dept { font-family: var(--font-mono), monospace; font-size: 12px; letter-spacing: .18em; color: var(--lume-3); padding-top: 4px; }
+
+.cw-tally { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.cw-footer { padding: clamp(60px, 8vw, 96px) 0 44px; background: var(--void); border-top: 1px solid var(--edge); }
+.cw-footer__grid { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 30px; }
+.cw-footer__note { color: var(--lume-3); font-size: .85rem; max-width: 52ch; line-height: 1.6; }
+
+.cw-preview-flag {
+  position: fixed;
+  left: 14px;
+  bottom: 12px;
+  z-index: 60;
+  padding: 6px 13px;
+  border: 1px solid var(--edge-2);
+  background: rgba(5, 6, 7, .9);
+  color: var(--lume-4);
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  pointer-events: none;
+  opacity: .7;
+}
+
+/* ============================================================================
+   STATIC MODE — served to prefers-reduced-motion, and to no-JS visitors
+   Same narrative, same copy, no travel.
+   ============================================================================ */
+
+.cw-static__act { padding-block: clamp(72px, 10vw, 128px); border-bottom: 1px solid var(--edge); }
+.cw-static__act:last-of-type { border-bottom: 0; }
+.cw-static__whispers { display: grid; gap: 8px; margin-bottom: 30px; }
+.cw-static__body { display: grid; gap: 22px; max-width: 62ch; margin-top: 26px; }
+.cw-static__panel { margin-top: 40px; max-width: 640px; }
+
+/* ============================================================================
+   RESPONSIVE
+   ============================================================================ */
+
+@media (max-width: 1080px) {
+  .cw-room__grid { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+  .cw-rail { display: none; }
+  .cw-ledger { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .cw-studios { --gutter: 20px; }
+  .cw-stage { height: 100svh; }
+  /* Scenes cost less travel on a phone: the same choreography at desktop
+     length reads as an unresponsive page rather than a slow reveal. */
+  .cw-studios [data-cw-scene] { height: calc(var(--travel) * 68svh); }
+  .cw-topbar { padding: 12px var(--gutter); }
+  .cw-topbar__mark { font-size: 11px; }
+  .cw-topbar__mark span { display: none; }
+  .cw-topbar__right .cw-cta--ghost { display: none; }
+  .cw-topbar__right .cw-cta { min-height: 36px; padding: 8px 13px; font-size: 11px; }
+  .cw-room .cw-stage .cw-shell { padding-top: 60px; }
+  .cw-heading { font-size: clamp(1.5rem, 7.4vw, 2rem); }
+  .cw-lede { font-size: .95rem; }
+  .cw-leds { bottom: 92px; gap: 8px; }
+  .cw-leds__dot:nth-child(n + 15) { display: none; }
+  .cw-screens { display: none; }
+  .cw-open__beam { width: 86vw; }
+  .cw-room__grid { align-content: start; padding-top: 84px; }
+  .cw-plot { aspect-ratio: 4 / 3; }
+  .cw-ledger { grid-template-columns: minmax(0, 1fr); }
+  .cw-ledger__cell { border-right: 0; border-bottom: 1px solid var(--edge); }
+  .cw-ledger__cell:last-child { border-bottom: 0; }
+  .cw-register__row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .cw-capability__head { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .cw-artifact { display: none; }
+}
+
+/* Short phones: trim the instrument, never the honest copy beneath it. */
+@media (max-width: 720px) and (max-height: 780px) {
+  .cw-plot { aspect-ratio: 16 / 4.6; }
+  .cw-lede { font-size: .89rem; }
+  .cw-room .cw-stage .cw-shell { padding-top: 52px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-studios *, .cw-studios *::before, .cw-studios *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* --- Act-level detail added alongside the components ------------------- */
+
+.cw-studios[data-ready="true"] .cw-pulse { opacity: var(--tw); }
+
+.cw-open__slate {
+  position: absolute;
+  left: var(--gutter);
+  bottom: 152px;
+  display: grid;
+  grid-template-areas: "slate";
+}
+.cw-open__slate > * { grid-area: slate; }
+.cw-open__line { font-size: 11px; letter-spacing: .22em; color: var(--lume-2); }
+
+.cw-stage .cw-shell.cw-open__copy { align-items: flex-start; justify-content: flex-end; padding-bottom: 13vh; }
+.cw-open__title { max-width: 24ch; }
+.cw-open__over { margin-bottom: 20px; }
+.cw-open__title-line { display: block; }
+.cw-open__title em { font-style: normal; color: var(--signal); }
+.cw-open__lede { margin-top: 26px; max-width: 44ch; }
+
+.cw-room__heading-line { display: block; }
+
+.cw-stream-panel { margin-top: 6px; }
+.cw-stream__digest { display: none; padding: 12px 14px; color: var(--lume-2); line-height: 1.7; }
+.cw-ledger__note { display: block; color: var(--lume-3); letter-spacing: .06em; text-transform: none; font-size: 10px; line-height: 1.5; }
+
+@media (max-width: 1080px) {
+  .cw-stream { display: none; }
+  .cw-stream__digest { display: block; }
+  .cw-plot { aspect-ratio: 16 / 7; }
+  .cw-open__slate { bottom: 130px; }
+}
+
+@media (max-width: 720px) {
+  .cw-open__slate { bottom: 118px; right: var(--gutter); }
+  .cw-open__lede { margin-top: 20px; font-size: .96rem; }
+  .cw-open__actions { margin-top: 24px; }
+  .cw-plot { aspect-ratio: 16 / 5.6; }
+  .cw-ledger__value { font-size: 1rem; }
+  .cw-ledger__cell { padding: 8px 12px; }
+  .cw-ledger__note { font-size: 9.5px; }
+  /* One instrument per viewport: the step digest is carried by the capability
+     register further down the page. */
+  .cw-stream-panel { display: none; }
+  .cw-room__brief { gap: 12px; }
+}
