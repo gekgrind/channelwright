@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ColdOpen, IntelligenceRoom, IntelligenceCapabilities, StrategyRoom } from "./acts";
 import { StudiosWorld } from "./world";
+import { HallFar, HallNear } from "./facility";
 import { useReducedMotion } from "./scene";
 import { refreshScenes } from "./scroll-engine";
 import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL, type CapabilityStatus } from "./capabilities";
@@ -98,6 +99,21 @@ function DepartmentRail({ current }: { current: string | null }) {
 }
 
 /* ------------------------------------------------------------ flow sections */
+
+/** The same hall, pinned behind the register/next-up/footer flow. The
+ *  cinematic journey has ended, but the visitor has only walked further into
+ *  the building — this is not a new page. */
+function ArchiveHall() {
+  return (
+    <div className="cw-archive__hall" aria-hidden="true">
+      <div className="cw-plane cw-plane--near"><HallNear /></div>
+      <div className="cw-plane cw-plane--far"><HallFar /></div>
+      <div className="cw-archive__wash" />
+      <div className="cw-world__haze" />
+      <div className="cw-archive__floor" />
+    </div>
+  );
+}
 
 function CapabilityRegister() {
   const grouped = DEPARTMENTS.map((department) => ({
@@ -326,11 +342,22 @@ export default function StudiosExperience() {
             <StrategyRoom />
           </div>
         )}
-        <CapabilityRegister />
-        <NextUp />
+        {reduced ? (
+          <>
+            <CapabilityRegister />
+            <NextUp />
+          </>
+        ) : (
+          <div className="cw-archive">
+            <ArchiveHall />
+            <CapabilityRegister />
+            <NextUp />
+            <Footer />
+          </div>
+        )}
       </main>
 
-      <Footer />
+      {reduced ? <Footer /> : null}
       <span className="cw-preview-flag">Preview · /studios-preview</span>
     </div>
   );

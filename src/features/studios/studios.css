@@ -1070,7 +1070,19 @@
 
 /* --- Capability strip --------------------------------------------------- */
 
-.cw-capability { display: grid; gap: 10px; padding: 16px 0; border-top: 1px solid var(--edge); }
+/* Mounted on the wall rather than floating on the page: the same corner
+   bracket the instrument panels use, at rest instead of lit. */
+.cw-capability { position: relative; display: grid; gap: 10px; padding: 16px 0 16px 14px; border-top: 1px solid var(--edge); }
+.cw-capability::before {
+  content: "";
+  position: absolute;
+  top: 15px;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  border-left: 1px solid var(--edge-2);
+  border-top: 1px solid var(--edge-2);
+}
 .cw-capability__head { display: flex; align-items: center; gap: 16px; }
 .cw-capability__head::after { content: ""; order: 1; flex: 1; height: 1px; background: var(--edge); }
 .cw-capability__head .cw-status { order: 2; }
@@ -1081,10 +1093,47 @@
 
 /* ============================================================================
    REGISTER + FOOTER — flow sections, no scroll choreography
+   ----------------------------------------------------------------------------
+   The cinematic journey ends at Department 02, but the building does not: the
+   visitor has simply walked into the records room behind it. A static sliver
+   of the same hall — the overhead rig, the back wall, the floor datum — stays
+   pinned behind this whole flow so the register reads as one more room in the
+   facility rather than a return to a website.
    ============================================================================ */
 
-.cw-block { position: relative; padding-block: clamp(90px, 12vw, 170px); background: var(--void); }
-.cw-block--deep { background: var(--deep); border-top: 1px solid var(--edge); }
+.cw-archive { position: relative; }
+.cw-archive__hall {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  margin-bottom: calc(-1 * 100vh);
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--lume);
+}
+.cw-archive__hall .cw-plane { position: absolute; left: 0; right: 0; }
+.cw-archive__hall .cw-plane--far { top: 8%; height: 40%; opacity: .14; }
+.cw-archive__hall .cw-plane--near { top: 0; height: 22%; opacity: .3; }
+.cw-archive__floor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 46%;
+  border-top: 1px solid var(--edge-2);
+  background: linear-gradient(to bottom, transparent, rgba(5, 6, 7, .7));
+}
+.cw-archive__wash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 70% at 50% 100%, rgba(172, 154, 120, .1), transparent 68%);
+}
+.cw-archive__hall .cw-world__haze,
+.cw-archive__hall .cw-world__vignette { position: absolute; inset: 0; }
+
+.cw-block { position: relative; z-index: 1; padding-block: clamp(90px, 12vw, 170px); background: transparent; }
+.cw-block--deep { border-top: 1px solid var(--edge); }
 .cw-block__head { display: grid; gap: 18px; max-width: 68ch; margin-bottom: clamp(40px, 6vw, 72px); }
 
 .cw-register { display: grid; gap: 0; border-top: 1px solid var(--edge-2); }
@@ -1093,7 +1142,7 @@
 
 .cw-tally { display: flex; flex-wrap: wrap; gap: 10px; }
 
-.cw-footer { padding: clamp(60px, 8vw, 96px) 0 44px; background: var(--void); border-top: 1px solid var(--edge); }
+.cw-footer { position: relative; z-index: 1; padding: clamp(60px, 8vw, 96px) 0 44px; background: transparent; border-top: 1px solid var(--edge); }
 .cw-footer__grid { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 30px; }
 .cw-footer__note { color: var(--lume-3); font-size: .85rem; max-width: 52ch; line-height: 1.6; }
 
