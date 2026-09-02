@@ -614,6 +614,7 @@
 .cw-fixture[data-kind="research"] { grid-template-columns: repeat(8, 1fr); }
 .cw-fixture[data-kind="decision"] { grid-template-columns: repeat(4, 1fr); }
 .cw-fixture[data-kind="writers"] { grid-template-columns: repeat(6, 1fr); }
+.cw-fixture[data-kind="production"] { grid-template-columns: repeat(6, 1fr); }
 .cw-fixture__cell {
   position: relative;
   aspect-ratio: 4 / 3;
@@ -639,6 +640,14 @@
 .cw-fixture[data-kind="writers"] .cw-fixture__cell:nth-child(4n + 1) {
   background: linear-gradient(160deg, rgba(216, 255, 62, .1), rgba(216, 255, 62, .02));
 }
+/* Cooler, harder steel tint against the production line: the floor reads as
+   execution machinery, not another editorial bench. */
+.cw-fixture[data-kind="production"] .cw-fixture__cell {
+  background: linear-gradient(160deg, rgba(180, 190, 200, .1), rgba(180, 190, 200, .02));
+}
+.cw-fixture[data-kind="production"] .cw-fixture__cell:nth-child(3n + 1) {
+  background: linear-gradient(160deg, rgba(216, 255, 62, .08), rgba(216, 255, 62, .015));
+}
 .cw-fixture__cell::after {
   content: "";
   position: absolute;
@@ -652,25 +661,27 @@
    is continuous by construction — it can never blink from one place to
    another — and its designation changes while the object itself does not. */
 .cw-signal {
-  /* `--j` is a fraction of the whole journey; Department 03 lengthened the
-     building, so every stop below is the pre-03 value rescaled by
-     old-travel/new-travel (~.7183) to keep each beat at the same absolute
-     scroll distance it held before — see `LANDMARK` in `./world.tsx`. */
-  --s1: clamp(0, calc((var(--j) - .036) / .136), 1);  /* lifts into the beam   */
-  --s2: clamp(0, calc((var(--j) - .194) / .079), 1);  /* settles on the line   */
-  --s3: clamp(0, calc((var(--j) - .287) / .158), 1);  /* crosses Department 01 */
-  --s4: clamp(0, calc((var(--j) - .445) / .072), 1);  /* leaves, transformed   */
-  --s5: clamp(0, calc((var(--j) - .532) / .079), 1);  /* carried down the hall */
-  --s6: clamp(0, calc((var(--j) - .618) / .079), 1);  /* docks in Department 02*/
-  --s7: clamp(0, calc((var(--j) - .79) / .14), 1);    /* structured in Department 03 */
+  /* `--j` is a fraction of the whole journey; Department 03 and now
+     Department 04 each lengthened the building, so every stop below is the
+     pre-04 value rescaled by old-travel/new-travel (~.7887 for this pass) to
+     keep each beat at the same absolute scroll distance it held before —
+     see `LANDMARK` in `./world.tsx`. */
+  --s1: clamp(0, calc((var(--j) - .0284) / .1073), 1); /* lifts into the beam   */
+  --s2: clamp(0, calc((var(--j) - .153) / .0623), 1);  /* settles on the line   */
+  --s3: clamp(0, calc((var(--j) - .2264) / .1246), 1); /* crosses Department 01 */
+  --s4: clamp(0, calc((var(--j) - .351) / .0568), 1);  /* leaves, transformed   */
+  --s5: clamp(0, calc((var(--j) - .4196) / .0623), 1); /* carried down the hall */
+  --s6: clamp(0, calc((var(--j) - .4874) / .0623), 1); /* docks in Department 02*/
+  --s7: clamp(0, calc((var(--j) - .6231) / .1104), 1); /* structured in Department 03 */
+  --s8: clamp(0, calc((var(--j) - .78) / .18), 1);     /* validated in Department 04 */
 
   /* Research is active while the signal is inside the instrument's reach. */
   --work: calc(
-    clamp(0, calc((var(--j) - .316) * 17), 1) *
-    clamp(0, calc((.467 - var(--j)) * 17), 1)
+    clamp(0, calc((var(--j) - .2492) * 21.56), 1) *
+    clamp(0, calc((.3683 - var(--j)) * 21.56), 1)
   );
   /* Evidence stays attached once it has been attached. */
-  --bound: clamp(0, calc((var(--j) - .417) / .058), 1);
+  --bound: clamp(0, calc((var(--j) - .3289) / .0457), 1);
 
   /* Lateral throw is scaled down on a narrow viewport: the same journey read
      across 390px would carry the artifact off both edges of the frame. */
@@ -683,8 +694,8 @@
   height: 0;
   translate: -50% -50%;
   transform: translate3d(
-    calc((var(--s1) * 6 - var(--s2) * 40 + var(--s3) * 46 + var(--s4) * 12 - var(--s5) * 48 + var(--s6) * 26 + var(--s7) * 20) * var(--throw, 1) * 1vw),
-    calc((var(--s1) * -33 + var(--s2) * 62 - var(--s6) * 6 - var(--s7) * 8) * 1vh),
+    calc((var(--s1) * 6 - var(--s2) * 40 + var(--s3) * 46 + var(--s4) * 12 - var(--s5) * 48 + var(--s6) * 26 + var(--s7) * 20 + var(--s8) * 24) * var(--throw, 1) * 1vw),
+    calc((var(--s1) * -33 + var(--s2) * 62 - var(--s6) * 6 - var(--s7) * 8 - var(--s8) * 10) * 1vh),
     0
   );
   will-change: transform;
@@ -957,6 +968,21 @@
       rgba(242, 239, 230, .16) 19% 39%, transparent 39% 45%,
       rgba(255, 104, 70, .22) 45% 73%, transparent 73% 79%,
       var(--signal-dim) 79% 101%) 0 42% / 100% 10px no-repeat;
+  border-bottom: 1px solid var(--edge);
+}
+
+/* --- Render line ---------------------------------------------------------- */
+
+.cw-line { position: relative; aspect-ratio: 16 / 9; width: 100%; }
+.cw-line canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* Static fallback: a master block sitting past six gate stations, all lit,
+   under an approval frame — the same claim the animation makes, held still. */
+.cw-line__static {
+  position: absolute;
+  inset: 26px 66px 30px 18px;
+  background:
+    linear-gradient(90deg, transparent 0 78%, var(--signal-dim) 78% 82%, transparent 82% 100%) 0 46% / 100% 2px no-repeat,
+    repeating-linear-gradient(90deg, rgba(216, 255, 62, .22) 0 2px, transparent 2px calc(100% / 6)) 6% 20% / 88% 62% no-repeat;
   border-bottom: 1px solid var(--edge);
 }
 
@@ -1301,6 +1327,7 @@
   .cw-room__grid { align-content: start; padding-top: 36px; }
   .cw-plot { aspect-ratio: 4 / 3; }
   .cw-gate { aspect-ratio: 4 / 3; }
+  .cw-line { aspect-ratio: 4 / 3; }
   .cw-ledger { grid-template-columns: minmax(0, 1fr); }
   .cw-ledger__cell { border-right: 0; border-bottom: 1px solid var(--edge); }
   .cw-ledger__cell:last-child { border-bottom: 0; }
@@ -1312,6 +1339,7 @@
 @media (max-width: 720px) and (max-height: 780px) {
   .cw-plot { aspect-ratio: 16 / 4.6; }
   .cw-gate { aspect-ratio: 16 / 4.6; }
+  .cw-line { aspect-ratio: 16 / 4.6; }
   .cw-lede { font-size: .89rem; }
   .cw-room .cw-stage .cw-shell { padding-top: 52px; }
 }
@@ -1326,6 +1354,7 @@
   .cw-room__brief { gap: 13px; }
   .cw-plot { aspect-ratio: 16 / 7.6; }
   .cw-gate { aspect-ratio: 16 / 7.6; }
+  .cw-line { aspect-ratio: 16 / 7.6; }
   .cw-stream__step { padding: 6px 13px; }
   .cw-readout__cell { padding: 7px 12px; }
   .cw-ledger__cell { padding: 9px 13px; }
@@ -1374,6 +1403,7 @@
   .cw-stream__digest { display: block; }
   .cw-plot { aspect-ratio: 16 / 7; }
   .cw-gate { aspect-ratio: 16 / 7; }
+  .cw-line { aspect-ratio: 16 / 7; }
   .cw-open__slate { bottom: 130px; }
 }
 
@@ -1383,6 +1413,7 @@
   .cw-open__actions { margin-top: 24px; }
   .cw-plot { aspect-ratio: 16 / 5.6; }
   .cw-gate { aspect-ratio: 16 / 5.6; }
+  .cw-line { aspect-ratio: 16 / 5.6; }
   .cw-ledger__value { font-size: 1rem; }
   .cw-ledger__cell { padding: 8px 12px; }
   .cw-ledger__note { font-size: 9.5px; }

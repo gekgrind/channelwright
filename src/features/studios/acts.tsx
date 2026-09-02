@@ -6,7 +6,8 @@ import { Cue, Scene, useLightweightMode } from "./scene";
 import { OpportunityPlot } from "./opportunity-plot";
 import { VersionGate } from "./version-gate";
 import { ScriptSequencer } from "./script-sequencer";
-import { INTELLIGENCE, OPEN, STRATEGY, WRITERS } from "./copy";
+import { RenderLine } from "./render-line";
+import { INTELLIGENCE, OPEN, PRODUCTION, STRATEGY, WRITERS } from "./copy";
 import { CAPABILITIES, STATUS_LABEL } from "./capabilities";
 
 /**
@@ -384,6 +385,104 @@ export function WritersRoom() {
                   <span className="cw-verdict__mark" aria-hidden="true" />
                   <span className="cw-verdict__line">{WRITERS.verdict}</span>
                   <span className="cw-verdict__note">{WRITERS.rejected}</span>
+                </div>
+              </Cue>
+            </div>
+          </div>
+        </Cue>
+      </div>
+    </Scene>
+  );
+}
+
+/* ---------------------------------------------------------------- ACT 04 -- */
+
+const PRODUCTION_CAPABILITIES = CAPABILITIES.filter((capability) => capability.department === "04");
+
+/**
+ * Department 04, built to the standard set by 01–03. Where the Writers' Room
+ * resolves a brief into a script it can defend, the Production Floor
+ * resolves that script into a master it can release — rendered once, then
+ * held on the line until every independent QA gate reports a pass and a
+ * human approves the exact version that did.
+ */
+export function ProductionFloor() {
+  const lightweight = useLightweightMode();
+
+  return (
+    <Scene id="production" travel={4} className="cw-room cw-room--04 cw-scene--overlap" label="Department 04: Production Floor">
+      <div className="cw-layer cw-layer--copy">
+        <Cue from={0.88} to={1} className="cw-exit">
+          <div className="cw-shell">
+            <div className="cw-room__grid cw-room__grid--04">
+              <div className="cw-room__brief">
+                <Cue from={0} to={0.08} as="p" className="cw-mono cw-rise cw-room__kicker">
+                  Department {PRODUCTION.index} — {PRODUCTION.department}
+                </Cue>
+                <h2 className="cw-heading">
+                  <Cue from={0.03} to={0.18} as="span" className="cw-rise cw-room__heading-line">
+                    {PRODUCTION.heading}
+                  </Cue>
+                </h2>
+                <Cue from={0.1} to={0.28} as="p" className="cw-lede cw-rise">
+                  {PRODUCTION.body[0]}
+                </Cue>
+
+                <Cue from={0.18} to={0.36} className="cw-panel cw-rise">
+                  <div className="cw-panel__bar">
+                    <span className="cw-mono">{PRODUCTION.panelTitle}</span>
+                    <span className="cw-mono">{PRODUCTION.panelNote}</span>
+                  </div>
+                  <dl className="cw-record">
+                    {PRODUCTION.rows.map((row, index) => (
+                      <div key={row.key} className="cw-record__row" style={{ "--at": 0.3 + index * 0.07 } as CSSProperties}>
+                        <dt>{row.label}</dt>
+                        <dd>{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <div className="cw-record__foot">
+                    {PRODUCTION_CAPABILITIES.map((capability) => (
+                      <span key={capability.id} className="cw-status" data-status={capability.status}>
+                        {STATUS_LABEL[capability.status]}
+                      </span>
+                    ))}
+                  </div>
+                </Cue>
+              </div>
+
+              <Cue from={0.08} to={0.24} className="cw-instrument cw-rise">
+                {/* The panel brightens while the master is being rendered
+                    and swept through the gates. */}
+                <div className="cw-panel cw-panel--live">
+                  <div className="cw-panel__bar">
+                    <span className="cw-mono">{PRODUCTION.instrumentTitle}</span>
+                    <span className="cw-mono">{PRODUCTION.instrumentNote}</span>
+                  </div>
+                  <div className="cw-line">
+                    {lightweight ? <span className="cw-line__static" /> : <RenderLine />}
+                  </div>
+
+                  <div className="cw-readout">
+                    {PRODUCTION.readout.map((cell) => (
+                      <div
+                        key={cell.label}
+                        className="cw-readout__cell"
+                        data-terminal={cell.at > 0.6 ? "true" : undefined}
+                        style={{ "--at": cell.at } as CSSProperties}
+                      >
+                        <span className="cw-readout__value">{cell.value}</span>
+                        <span className="cw-readout__label">{cell.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Verdict, in the same register as Departments 01–03. */}
+                <div className="cw-verdict" style={{ "--at": 0.82 } as CSSProperties}>
+                  <span className="cw-verdict__mark" aria-hidden="true" />
+                  <span className="cw-verdict__line">{PRODUCTION.verdict}</span>
+                  <span className="cw-verdict__note">{PRODUCTION.rejected}</span>
                 </div>
               </Cue>
             </div>

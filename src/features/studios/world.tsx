@@ -21,23 +21,26 @@ import { SIGNAL, WORLD } from "./copy";
 /**
  * Journey positions of the fixed landmarks, in `--j` units.
  *
- * `--j` is a fraction of the *whole* journey, so adding Department 03
- * lengthened the building and shrank every existing fraction — each value
- * below is the pre-03 position rescaled by the ratio of old to new
- * scrollable travel, which keeps every prop at the same absolute scroll
- * distance it held before. New 03 landmarks are placed at the same
- * proportion into their scene that Department 02's held into its own,
- * so the rhythm of arrival repeats rather than being invented twice.
+ * `--j` is a fraction of the *whole* journey, so adding a department
+ * lengthens the building and shrinks every existing fraction — each value
+ * below is the pre-04 position rescaled by the ratio of old to new
+ * scrollable travel (~.7887 for this pass), which keeps every prop at the
+ * same absolute scroll distance it held before. New 04 landmarks are placed
+ * at the same proportion into their scene that Department 03's held into
+ * its own, so the rhythm of arrival repeats rather than being invented
+ * twice.
  */
 export const LANDMARK = {
   /* Placed on the scene handoffs: the camera passes through the aperture at
      the exact scroll position where Department 01 takes the stage. */
-  threshold: 0.2406,
-  dept01: 0.3592,
-  partition: 0.5567,
-  dept02: 0.6465,
-  partition02to03: 0.8127,
-  dept03: 0.9127,
+  threshold: 0.1898,
+  dept01: 0.2834,
+  partition: 0.4391,
+  dept02: 0.5099,
+  partition02to03: 0.641,
+  dept03: 0.7198,
+  partition03to04: 0.8523,
+  dept04: 0.9312,
 } as const;
 
 type PropStyle = CSSProperties & Record<string, string | number>;
@@ -98,7 +101,7 @@ function Partition({ at }: { at: number }) {
  * works against a decision board. The tint carries the difference at a glance,
  * before any copy is read.
  */
-function Fixture({ at, kind }: { at: number; kind: "research" | "decision" | "writers" }) {
+function Fixture({ at, kind }: { at: number; kind: "research" | "decision" | "writers" | "production" }) {
   return (
     <div className="cw-prop cw-fixture" data-kind={kind} style={prop(at)}>
       {Array.from({ length: kind === "research" ? 16 : kind === "decision" ? 8 : 12 }, (_, index) => (
@@ -195,10 +198,12 @@ export function StudiosWorld({ scope }: { scope: string }) {
       <Fixture at={LANDMARK.dept01} kind="research" />
       <Fixture at={LANDMARK.dept02} kind="decision" />
       <Fixture at={LANDMARK.dept03} kind="writers" />
+      <Fixture at={LANDMARK.dept04} kind="production" />
 
       <Sign at={LANDMARK.dept01} index={WORLD.dept01.index} name={WORLD.dept01.name} note={WORLD.dept01.note} />
       <Sign at={LANDMARK.dept02} index={WORLD.dept02.index} name={WORLD.dept02.name} note={WORLD.dept02.note} />
       <Sign at={LANDMARK.dept03} index={WORLD.dept03.index} name={WORLD.dept03.name} note={WORLD.dept03.note} />
+      <Sign at={LANDMARK.dept04} index={WORLD.dept04.index} name={WORLD.dept04.name} note={WORLD.dept04.note} />
 
       <div className="cw-plane cw-plane--mid"><HallMid /></div>
 
@@ -208,6 +213,7 @@ export function StudiosWorld({ scope }: { scope: string }) {
 
       <Partition at={LANDMARK.partition} />
       <Partition at={LANDMARK.partition02to03} />
+      <Partition at={LANDMARK.partition03to04} />
       <div className="cw-plane cw-plane--near"><HallNear /></div>
       <Threshold at={LANDMARK.threshold} label={WORLD.thresholdLabel} />
 

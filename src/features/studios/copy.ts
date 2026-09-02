@@ -66,6 +66,7 @@ export const WORLD = {
   dept01: { index: "01", name: "Intelligence Room", note: "Research \u00b7 Evidence \u00b7 Ranking" },
   dept02: { index: "02", name: "Strategy Room", note: "Positioning \u00b7 Versioned decisions" },
   dept03: { index: "03", name: "Writers' Room", note: "Brief \u00b7 Script \u00b7 Sourced claims" },
+  dept04: { index: "04", name: "Production Floor", note: "Render \u00b7 QA gates \u00b7 Master" },
 } as const;
 
 /**
@@ -74,17 +75,19 @@ export const WORLD = {
  * see `./capabilities.ts`. No state may promise a downstream outcome.
  *
  * Ranges are fractions of the whole journey's `--j`, so they were rescaled
- * when Department 03 extended the building \u2014 see `LANDMARK` in `./world.tsx`
- * for the same rescale applied to the fixed props.
+ * when Department 03 extended the building, and again when Department 04
+ * did \u2014 see `LANDMARK` in `./world.tsx` for the same rescale applied to the
+ * fixed props (ratio ~.7887 for this pass).
  */
 export const SIGNAL = {
   states: [
-    { from: -0.04, to: 0.22, label: "Raw signal \u00b7 unverified" },
-    { from: 0.2, to: 0.39, label: "In research \u00b7 retrieving evidence" },
-    { from: 0.37, to: 0.5, label: "Claims bound to sources \u00b7 QA passed" },
-    { from: 0.49, to: 0.63, label: "Approved research \u00b7 ranked backlog" },
-    { from: 0.62, to: 0.81, label: "Strategy input \u00b7 awaiting decision" },
-    { from: 0.79, to: 0.99, label: "Script structured \u00b7 locked at QA" },
+    { from: -0.0315, to: 0.1735, label: "Raw signal \u00b7 unverified" },
+    { from: 0.1577, to: 0.3076, label: "In research \u00b7 retrieving evidence" },
+    { from: 0.2918, to: 0.3944, label: "Claims bound to sources \u00b7 QA passed" },
+    { from: 0.3865, to: 0.4969, label: "Approved research \u00b7 ranked backlog" },
+    { from: 0.489, to: 0.6389, label: "Strategy input \u00b7 awaiting decision" },
+    { from: 0.6231, to: 0.7808, label: "Script structured \u00b7 locked at QA" },
+    { from: 0.78, to: 0.98, label: "Master validated \u00b7 queued for release" },
   ],
 } as const;
 
@@ -152,6 +155,40 @@ export const WRITERS = {
   arrival: "Department 03 · arriving",
 } as const;
 
+/**
+ * Department 04, built to the standard set by 01–03. Where the Writers' Room
+ * resolves a brief into a script it can defend, the Production Floor
+ * resolves that script into a master it can release — rendered once,
+ * deterministically, and blocked from leaving until every gate checking it
+ * reports a pass.
+ */
+export const PRODUCTION = {
+  index: "04",
+  department: "Production Floor",
+  heading: "A script does not leave as a video until it can pass every gate.",
+  body: [
+    "The approved script becomes a composition, rendered once to a deterministic 1920×1080 master and probed for its own container, codecs, loudness and checksum. Nothing clears the floor until six independent QA gates — technical, rights, claims, visual, subjective-audio and platform — each report a pass, and a human approves the exact version that did.",
+  ],
+  panelTitle: "Production record",
+  panelNote: "Gated",
+  rows: [
+    { key: "render", label: "Master render", value: "1920×1080, deterministic, checksum-probed" },
+    { key: "gates", label: "QA gates", value: "Technical, rights, claims, visual, audio, platform" },
+    { key: "approval", label: "Human approval", value: "Exact version, before it can leave the floor" },
+  ],
+  instrumentTitle: "Render line",
+  instrumentNote: "Illustrative",
+  readout: [
+    { at: 0.1, label: "Render started", value: "1" },
+    { at: 0.42, label: "Gates cleared", value: "6/6" },
+    { at: 0.64, label: "Checksum", value: "Verified" },
+    { at: 0.82, label: "Approved at", value: "v1" },
+  ],
+  verdict: "Master approved for release",
+  rejected: "0 blocked — technical, rights, claims, visual, audio, platform all clear",
+  arrival: "Department 04 · arriving",
+} as const;
+
 export const REGISTER = {
   kicker: "Capability register",
   heading: "What is built, what is proven, and what is not.",
@@ -165,8 +202,8 @@ export const REGISTER = {
 
 export const NEXT_UP = {
   kicker: "Under construction",
-  heading: "Three rooms still dark.",
-  body: "The Production Floor, the Control Room and Analytics Command are staged into this experience but not yet built into it. They are being made to the standard set by the Intelligence, Strategy and Writers' Rooms, not generated to fill the page \u2014 a statement about this site, not about the product. Each department's real status is in the register above.",
+  heading: "Two rooms still dark.",
+  body: "The Control Room and Analytics Command are staged into this experience but not yet built into it. They are being made to the standard set by the Intelligence, Strategy, Writers' and Production rooms, not generated to fill the page \u2014 a statement about this site, not about the product. Each department's real status is in the register above.",
 } as const;
 
 export const FOOTER = {
