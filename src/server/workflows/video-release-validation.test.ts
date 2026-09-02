@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { deterministicVideoReleaseValidation } from "./video-release-validation";
 import { approvedVideoPackagingArtifactFixture, videoReleaseResultFixture, RELEASE_STRATEGY_RUN_ID } from "./video-release-fixtures.test-helper";
+import type { ApprovedVideoPackagingArtifact } from "@/domain/production-workflows";
 
 const MAX = 60_000;
 const codes = (result: unknown) => new Set(deterministicVideoReleaseValidation(result, approvedVideoPackagingArtifactFixture, MAX).filter((f) => f.severity === "error").map((f) => f.code));
+const codesWith = (result: unknown, upstream: ApprovedVideoPackagingArtifact) =>
+  new Set(deterministicVideoReleaseValidation(result, upstream, MAX).filter((f) => f.severity === "error").map((f) => f.code));
+const cloneUpstream = () => structuredClone(approvedVideoPackagingArtifactFixture) as ApprovedVideoPackagingArtifact;
 
 describe("deterministic video release validation", () => {
   it("passes the clean fixture with no error findings", () => {
@@ -110,6 +114,48 @@ describe("deterministic video release validation", () => {
   it("rejects a performance-ingestion action", () => {
     const result = videoReleaseResultFixture({ recommendedNextAction: "Ingest the actual views and retention data after launch." });
     expect(codes(result)).toContain("PERFORMANCE_INGESTION_SCOPE_VIOLATION");
+  });
+
+  it("rejects a KPI binding whose metric is not in the approved upstream strategy's KPI framework", () => {
+    const upstream = cloneUpstream();
+    upstream.scope.strategyKpiMetrics = ["IMPRESSIONS"];
+    expect(codesWith(videoReleaseResultFixture(), upstream)).toContain("KPI_NOT_IN_STRATEGY_FRAMEWORK");
+  });
+
+  it("accepts KPI bindings whose metrics are all members of the strategy KPI framework", () => {
+    expect(codes(videoReleaseResultFixture()).has("KPI_NOT_IN_STRATEGY_FRAMEWORK")).toBe(false);
+  });
+
+  it("rejects two KPI bindings that target the same metric", () => {
+    const base = videoReleaseResultFixture();
+    const result = videoReleaseResultFixture({ kpiHypothesisBindings: [base.kpiHypothesisBindings[0], { ...base.kpiHypothesisBindings[0] }] });
+    expect(codes(result)).toContain("DUPLICATE_KPI_BINDING");
+  });
+
+  it("rejects an approved packaging that exposes duplicate title-candidate ids", () => {
+    const upstream = cloneUpstream();
+    upstream.packagingResult.titleCandidates[1] = { ...upstream.packagingResult.titleCandidates[0] };
+    expect(codesWith(videoReleaseResultFixture(), upstream)).toContain("DUPLICATE_TITLE_CANDIDATE_ID");
+  });
+
+  it("rejects an approved packaging that exposes duplicate thumbnail-concept ids", () => {
+    const upstream = cloneUpstream();
+    upstream.packagingResult.thumbnailConcepts[1] = { ...upstream.packagingResult.thumbnailConcepts[0] };
+    expect(codesWith(videoReleaseResultFixture(), upstream)).toContain("DUPLICATE_THUMBNAIL_CONCEPT_ID");
+  });
+
+  it("rejects an approved packaging that contains duplicate chapter ids", () => {
+    const upstream = cloneUpstream();
+    upstream.packagingResult.chapters[1] = { ...upstream.packagingResult.chapters[0] };
+    expect(codesWith(videoReleaseResultFixture(), upstream)).toContain("DUPLICATE_CHAPTER_ID");
+  });
+
+  it("rejects reconciled metadata that repeats a chapter id", () => {
+    const base = videoReleaseResultFixture();
+    const result = videoReleaseResultFixture({
+      reconciledMetadata: { ...base.reconciledMetadata, chapters: base.reconciledMetadata.chapters.map((c, i) => i === 1 ? { ...base.reconciledMetadata.chapters[0] } : c) },
+    });
+    expect(codes(result)).toContain("AMBIGUOUS_RECONCILED_CHAPTER");
   });
 
   it("rejects an altered inherited viewer-value provenance", () => {

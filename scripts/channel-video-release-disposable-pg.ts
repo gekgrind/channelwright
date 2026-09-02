@@ -26,7 +26,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import pg from "pg";
 import { canonicalJson } from "../src/server/workflows/canonical-json";
-import { approvedVideoPackagingArtifactFixture } from "../src/server/workflows/video-release-fixtures.test-helper";
+import { approvedVideoPackagingArtifactFixture, releaseScopeFixture } from "../src/server/workflows/video-release-fixtures.test-helper";
 
 try { process.loadEnvFile(".env.local"); } catch { /* optional */ }
 
@@ -159,6 +159,19 @@ async function runChecks(db: pg.Client) {
   const canon = await db.query<{ c: string }>("select channelwright.canonical_jsonb_text($1::jsonb) as c", [JSON.stringify(contract)]);
   record("canonical_jsonb_text parity with application", canon.rows[0].c === canonicalJson(contract));
 
+  // The resolver now reads the upstream strategy run's own KPI framework, so the
+  // exact CHANNEL_STRATEGY run the packaging descends from must exist for ownerA.
+  const upstreamStrategy = packaging.upstreamVideoScript.upstreamVideoBrief.upstreamContentIntelligence.upstreamStrategy;
+  await db.query("insert into auth.users(id,email) values ($1,$2) on conflict do nothing", [ownerA, `${ownerA}@disposable.test`]);
+  await db.query(
+    `insert into channelwright.workflows(id,owner_id,workflow_type,definition_version,objective,status) values ($1,$2,'CHANNEL_STRATEGY',1,'disposable gate','COMPLETED') on conflict do nothing`,
+    [upstreamStrategy.strategyWorkflowId, ownerA]);
+  await db.query(
+    `insert into channelwright.workflow_runs(id,owner_id,workflow_id,workflow_type,definition_version,status,idempotency_key,input_hash,input_payload,output_payload,completed_at)
+     values ($1,$2,$3,'CHANNEL_STRATEGY',1,'COMPLETED',$4,$5,'{}'::jsonb,$6::jsonb,now()) on conflict do nothing`,
+    [upstreamStrategy.strategyRunId, ownerA, upstreamStrategy.strategyWorkflowId, `disp-strategy:${upstreamStrategy.strategyRunId}`, "0".repeat(64),
+      JSON.stringify({ schemaVersion: 1, kpiFramework: releaseScopeFixture.strategyKpiMetrics.map((metric) => ({ metric, label: `${metric} target`, targetIsHypothesis: true })) })]);
+
   // --- resolver valid ----------------------------------------------------
   const seeded = await seedApprovedRun(db, ownerA, "CHANNEL_VIDEO_PACKAGING", packaging, "validate-approved-script", provenance, { finalizerStep: "finalize-video-packaging", finalQaStep: "final-video-packaging-qa" });
   const resolved = await asOwner(db, ownerA, () => db.query<{ result: Record<string, unknown> }>("select channelwright.resolve_approved_video_packaging_artifact($1,$2) as result", [seeded.workflowId, seeded.runId]));
@@ -166,6 +179,7 @@ async function runChecks(db: pg.Client) {
   const prov = (scope as { inheritedViewerValueProvenance: Record<string, unknown> }).inheritedViewerValueProvenance;
   record("resolver returns scope for the approved packaging owner", typeof scope.packagingTopicId === "string");
   record("resolver derives the selectable candidate and concept identity sets", Array.isArray(scope.titleCandidateIds) && (scope.titleCandidateIds as unknown[]).length === packaging.titleCandidates.length && Array.isArray(scope.thumbnailConceptIds) && (scope.thumbnailConceptIds as unknown[]).length === packaging.thumbnailConcepts.length);
+  record("resolver threads the upstream strategy KPI framework into scope", Array.isArray(scope.strategyKpiMetrics) && [...(scope.strategyKpiMetrics as string[])].sort().join(",") === [...releaseScopeFixture.strategyKpiMetrics].sort().join(","));
   record("resolver carries the packaged promise", scope.packagedPromise === packaging.source.packagedPromise);
   record("inherited Viewer Value contract hash matches app canonical hash", prov.contractHash === sha256(canonicalJson(contract)));
   record("inherited provenance records PACKAGING origin and PASS gate", prov.originStage === "PACKAGING" && prov.gate === "PASS");

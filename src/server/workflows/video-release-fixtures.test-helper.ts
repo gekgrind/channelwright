@@ -45,6 +45,9 @@ export const releaseScopeFixture: SelectedVideoPackagingScope = {
   packagedPromise: packagingResultFixture.source.packagedPromise,
   titleCandidateIds: packagingResultFixture.titleCandidates.map((candidate) => candidate.candidateId),
   thumbnailConceptIds: packagingResultFixture.thumbnailConcepts.map((concept) => concept.conceptId),
+  // The metrics the upstream strategy adopted in its KPI framework; the release's
+  // KPI/hypothesis bindings must each target one of these.
+  strategyKpiMetrics: ["IMPRESSIONS", "CLICK_THROUGH_RATE", "AUDIENCE_RETENTION", "RETURNING_VIEWERS", "SUBSCRIBERS"],
   inheritedViewerValueProvenance: {
     originStage: "PACKAGING",
     originWorkflowType: "CHANNEL_VIDEO_PACKAGING",

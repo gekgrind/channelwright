@@ -6,6 +6,7 @@ const read = (name: string) => readFileSync(resolve(process.cwd(), "supabase/mig
 const packaging = read("202608170001_video_packaging.sql");
 const migration = read("202608180001_video_release.sql");
 const immutability = read("202608180002_video_release_immutability.sql");
+const kpiScope = read("202608180003_video_release_kpi_scope.sql");
 
 describe("CHANNEL_VIDEO_RELEASE migration", () => {
   it("stays inside the isolated schema and touches no unrelated schema", () => {
@@ -182,10 +183,39 @@ describe("forward-only migration discipline", () => {
   });
 
   it("orders after the video-packaging chain", () => {
-    const files = readdirSync(resolve(process.cwd(), "supabase/migrations")).sort();
+    const files = readdirSync(resolve(process.cwd(), "supabase/migrations")).sort().filter((name) => name.endsWith(".sql"));
     expect(files.indexOf("202608180001_video_release.sql")).toBeGreaterThan(files.indexOf("202608170002_video_packaging_immutability.sql"));
     expect(files.indexOf("202608180002_video_release_immutability.sql")).toBe(files.indexOf("202608180001_video_release.sql") + 1);
-    expect(files[files.length - 1]).toBe("202608180002_video_release_immutability.sql");
+    // The KPI-scope repair is the last file of the release chain and follows the
+    // immutability migration it does not disturb.
+    expect(files.indexOf("202608180003_video_release_kpi_scope.sql")).toBe(files.indexOf("202608180002_video_release_immutability.sql") + 1);
+  });
+});
+
+describe("CHANNEL_VIDEO_RELEASE KPI-scope repair migration", () => {
+  it("re-creates only the packaging resolver and threads the strategy KPI framework into scope", () => {
+    expect(kpiScope).toContain("create or replace function channelwright.resolve_approved_video_packaging_artifact");
+    expect(kpiScope).toContain("'strategykpimetrics', v_kpi_metrics");
+    expect(kpiScope).toContain("v_strategy.output_payload->'kpiframework'");
+    expect(kpiScope).toContain("v_strategy.workflow_type = 'channel_strategy'");
+    expect(kpiScope).toContain("upstream_packaging_integrity_mismatch: the upstream strategy kpi framework could not be resolved");
+  });
+
+  it("stays additive: one function, no unrelated schema, no new table or index or trigger", () => {
+    expect(kpiScope).not.toMatch(/(?:create|alter|drop) table public\./);
+    expect(kpiScope).not.toMatch(/\bcreate schema\b/);
+    expect(kpiScope).not.toMatch(/create (?:unique )?index/);
+    expect(kpiScope).not.toMatch(/create trigger/);
+    expect(kpiScope).not.toMatch(/create or replace function channelwright\.(?:start_workflow|complete_workflow_step|decide_workflow_approval|canonical_jsonb_text|protect_final)/);
+    expect(kpiScope).not.toMatch(/set search_path[^\n]*public/);
+    expect(kpiScope).toContain("set search_path = channelwright, extensions, pg_temp");
+  });
+
+  it("keeps the resolver owner-scoped and privileged", () => {
+    expect(kpiScope).toContain("auth.uid() <> v_run.owner_id");
+    expect(kpiScope).toContain("v_strategy.owner_id = v_run.owner_id");
+    expect(kpiScope).toContain("revoke all on function channelwright.resolve_approved_video_packaging_artifact(uuid,uuid) from public,anon");
+    expect(kpiScope).not.toMatch(/grant[^;]*to anon/);
   });
 });
 
