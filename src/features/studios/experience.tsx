@@ -2,14 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ColdOpen, IntelligenceRoom, IntelligenceCapabilities } from "./acts";
+import { ColdOpen, IntelligenceRoom, IntelligenceCapabilities, StrategyRoom } from "./acts";
+import { StudiosWorld } from "./world";
 import { useReducedMotion } from "./scene";
 import { refreshScenes } from "./scroll-engine";
 import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL, type CapabilityStatus } from "./capabilities";
-import { FOOTER, INTELLIGENCE, NEXT_UP, OPEN, REGISTER } from "./copy";
+import { FOOTER, INTELLIGENCE, NEXT_UP, OPEN, REGISTER, STRATEGY } from "./copy";
 import "./studios.css";
 
-const BUILT_DEPARTMENTS = new Set(["intelligence"]);
+/** Departments this experience has actually staged. The rail must not offer
+ *  a destination that does not exist yet. */
+const BUILT_DEPARTMENTS = new Set(["intelligence", "strategy"]);
+
+/** Wrapper whose scroll span drives the persistent facility. */
+const JOURNEY_ID = "cw-journey";
 
 /* ------------------------------------------------------------------ chrome */
 
@@ -50,7 +56,9 @@ function useStageScene() {
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) intersecting.set(entry.target.id, entry.isIntersecting);
-        const active = scenes.find((scene) => intersecting.get(scene.id));
+        // Scenes overlap by a viewport, so more than one can be intersecting at
+        // a handoff. The later one is the room being entered, so it wins.
+        const active = [...scenes].reverse().find((scene) => intersecting.get(scene.id));
         setCurrent(active ? active.id : null);
       },
       { rootMargin: "-45% 0px -45% 0px" },
@@ -251,6 +259,30 @@ function StaticNarrative() {
           <IntelligenceCapabilities />
         </div>
       </section>
+
+      <section id="strategy" className="cw-static__act">
+        <p className="cw-mono">Department {STRATEGY.index} — {STRATEGY.department}</p>
+        <h2 className="cw-heading" style={{ marginTop: 16 }}>{STRATEGY.heading}</h2>
+        <div className="cw-static__body">
+          {STRATEGY.body.map((paragraph) => (
+            <p key={paragraph} className="cw-lede">{paragraph}</p>
+          ))}
+        </div>
+        <div className="cw-panel cw-static__panel">
+          <div className="cw-panel__bar">
+            <span className="cw-mono">{STRATEGY.panelTitle}</span>
+            <span className="cw-mono">{STRATEGY.panelNote}</span>
+          </div>
+          <dl className="cw-record">
+            {STRATEGY.rows.map((row) => (
+              <div key={row.key} className="cw-record__row">
+                <dt>{row.label}</dt>
+                <dd>{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
     </div>
   );
 }
@@ -284,10 +316,15 @@ export default function StudiosExperience() {
         {reduced ? (
           <StaticNarrative />
         ) : (
-          <>
+          /* One scroll span for the whole cinematic run. The world reads its
+             progress from this element, which is why the facility can keep
+             moving across a scene boundary that the scenes themselves cut on. */
+          <div id={JOURNEY_ID} className="cw-journey">
+            <StudiosWorld scope={JOURNEY_ID} />
             <ColdOpen />
             <IntelligenceRoom />
-          </>
+            <StrategyRoom />
+          </div>
         )}
         <CapabilityRegister />
         <NextUp />

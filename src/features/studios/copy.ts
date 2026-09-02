@@ -11,7 +11,7 @@ export const OPEN = {
   overline: "Channelwright Studios",
   title: ["One idea enters.", "An entire media operation", "comes to life."],
   emphasis: "One idea",
-  lede: "Channelwright is the AI operating system for building and running a YouTube media business. Evidence before strategy. Strategy before production. A human decision at every gate.",
+  lede: "The AI operating system for building and running a YouTube media business. Evidence before strategy, strategy before production, and a human decision at every gate.",
   primaryCta: "Enter the studio",
   secondaryCta: "See what is built",
   hint: "Scroll to enter",
@@ -46,8 +46,62 @@ export const INTELLIGENCE = {
     { value: "Contradictions", note: "Held in the record, not smoothed away.", tone: "warn" as const },
     { value: "Unknowns", note: "Declared rather than guessed at.", tone: "plain" as const },
   ],
-  artifactBefore: "Idea · unverified",
-  artifactAfter: "Idea · evidence attached",
+  readout: [
+    { at: 0.06, label: "Raw signals", value: "212" },
+    { at: 0.3, label: "Clustered", value: "41" },
+    { at: 0.52, label: "Candidates", value: "4" },
+    { at: 0.7, label: "Selected", value: "1" },
+  ],
+  verdict: "Opportunity verified",
+  rejected: "3 rejected \u2014 saturation, thin evidence, no monetisation path",
+} as const;
+
+/**
+ * Environmental copy: signage, thresholds and instrument labelling that belong
+ * to the facility rather than to a paragraph. Kept here so the reduced-motion
+ * rendering can reuse the same words as headings where it needs them.
+ */
+export const WORLD = {
+  thresholdLabel: "Operating floor \u00b7 Authorised",
+  dept01: { index: "01", name: "Intelligence Room", note: "Research \u00b7 Evidence \u00b7 Ranking" },
+  dept02: { index: "02", name: "Strategy Room", note: "Positioning \u00b7 Versioned decisions" },
+} as const;
+
+/**
+ * The signal's designation as it is worked on, keyed to journey progress.
+ * Every state describes something the shipped workflows actually produce \u2014
+ * see `./capabilities.ts`. No state may promise a downstream outcome.
+ */
+export const SIGNAL = {
+  states: [
+    { from: -0.06, to: 0.3, label: "Raw signal \u00b7 unverified" },
+    { from: 0.28, to: 0.54, label: "In research \u00b7 retrieving evidence" },
+    { from: 0.52, to: 0.7, label: "Claims bound to sources \u00b7 QA passed" },
+    { from: 0.68, to: 0.88, label: "Approved research \u00b7 ranked backlog" },
+    { from: 0.86, to: 1.14, label: "Strategy input \u00b7 awaiting decision" },
+  ],
+} as const;
+
+/**
+ * Department 02, established rather than fully staged. Pass 2 proves the
+ * continuous-world grammar across one transition; 02 arrives, powers up and
+ * states what it is for, and is deliberately not given 01's screen time.
+ */
+export const STRATEGY = {
+  index: "02",
+  department: "Strategy Room",
+  heading: "A channel is a position, not a playlist.",
+  body: [
+    "Approved research does not become a video. It becomes a strategy \u2014 audience, promise, and the hypothesis the next slate is meant to test \u2014 versioned so production can only ever run against a decision someone actually approved.",
+  ],
+  panelTitle: "Strategy record",
+  panelNote: "Versioned",
+  rows: [
+    { key: "position", label: "Position", value: "Approved at an exact version" },
+    { key: "supersede", label: "Superseded strategy", value: "Retained in the record" },
+    { key: "gate", label: "Stale strategy", value: "Blocks production start" },
+  ],
+  arrival: "Department 02 \u00b7 arriving",
 } as const;
 
 export const REGISTER = {
@@ -63,8 +117,8 @@ export const REGISTER = {
 
 export const NEXT_UP = {
   kicker: "Under construction",
-  heading: "Five departments still dark.",
-  body: "Strategy, the Writers' Room, the Production Floor, the Control Room and Analytics Command are designed and scheduled into this experience. They are being built to the standard set by the opening, not generated to fill the page.",
+  heading: "Four rooms still dark.",
+  body: "The Writers' Room, the Production Floor, the Control Room and Analytics Command are staged into this experience but not yet built into it. They are being made to the standard set by the Intelligence Room, not generated to fill the page \u2014 a statement about this site, not about the product. Each department's real status is in the register above.",
 } as const;
 
 export const FOOTER = {
