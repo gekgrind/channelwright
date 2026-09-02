@@ -101,6 +101,16 @@ export const STRATEGY = {
     { key: "supersede", label: "Superseded strategy", value: "Retained in the record" },
     { key: "gate", label: "Stale strategy", value: "Blocks production start" },
   ],
+  instrumentTitle: "Version gate",
+  instrumentNote: "Illustrative",
+  readout: [
+    { at: 0.08, label: "Versions filed", value: "3" },
+    { at: 0.42, label: "Superseded", value: "2" },
+    { at: 0.5, label: "Approved", value: "v3" },
+    { at: 0.68, label: "Blocked at gate", value: "1" },
+  ],
+  verdict: "Gate holds \u2014 only v3 clears",
+  rejected: "v1, v2 retained \u2014 struck through, not deleted",
   arrival: "Department 02 \u00b7 arriving",
 } as const;
 

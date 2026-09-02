@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CSSProperties } from "react";
 import { Cue, Scene, useLightweightMode } from "./scene";
 import { OpportunityPlot } from "./opportunity-plot";
+import { VersionGate } from "./version-gate";
 import { INTELLIGENCE, OPEN, STRATEGY } from "./copy";
 import { CAPABILITIES, STATUS_LABEL } from "./capabilities";
 
@@ -208,8 +209,10 @@ const STRATEGY_CAPABILITIES = CAPABILITIES.filter((capability) => capability.dep
  * changing — so it is composed, not elaborated.
  */
 export function StrategyRoom() {
+  const lightweight = useLightweightMode();
+
   return (
-    <Scene id="strategy" travel={2.6} className="cw-room cw-room--02 cw-scene--overlap" label="Department 02: Strategy Room">
+    <Scene id="strategy" travel={3.6} className="cw-room cw-room--02 cw-scene--overlap" label="Department 02: Strategy Room">
       <div className="cw-layer cw-layer--copy">
         <Cue from={0.9} to={1} className="cw-exit">
           <div className="cw-shell">
@@ -226,27 +229,62 @@ export function StrategyRoom() {
                 <Cue from={0.12} to={0.32} as="p" className="cw-lede cw-rise">
                   {STRATEGY.body[0]}
                 </Cue>
+
+                <Cue from={0.2} to={0.4} className="cw-panel cw-rise">
+                  <div className="cw-panel__bar">
+                    <span className="cw-mono">{STRATEGY.panelTitle}</span>
+                    <span className="cw-mono">{STRATEGY.panelNote}</span>
+                  </div>
+                  <dl className="cw-record">
+                    {STRATEGY.rows.map((row, index) => (
+                      <div key={row.key} className="cw-record__row" style={{ "--at": 0.34 + index * 0.07 } as CSSProperties}>
+                        <dt>{row.label}</dt>
+                        <dd>{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <div className="cw-record__foot">
+                    {STRATEGY_CAPABILITIES.map((capability) => (
+                      <span key={capability.id} className="cw-status" data-status={capability.status}>
+                        {STATUS_LABEL[capability.status]}
+                      </span>
+                    ))}
+                  </div>
+                </Cue>
               </div>
 
-              <Cue from={0.18} to={0.4} className="cw-panel cw-rise">
-                <div className="cw-panel__bar">
-                  <span className="cw-mono">{STRATEGY.panelTitle}</span>
-                  <span className="cw-mono">{STRATEGY.panelNote}</span>
+              <Cue from={0.1} to={0.26} className="cw-instrument cw-rise">
+                {/* The panel brightens while the approved signal is passing
+                    through the gate. */}
+                <div className="cw-panel cw-panel--live">
+                  <div className="cw-panel__bar">
+                    <span className="cw-mono">{STRATEGY.instrumentTitle}</span>
+                    <span className="cw-mono">{STRATEGY.instrumentNote}</span>
+                  </div>
+                  <div className="cw-gate">
+                    {lightweight ? <span className="cw-gate__static" /> : <VersionGate />}
+                  </div>
+
+                  <div className="cw-readout">
+                    {STRATEGY.readout.map((cell) => (
+                      <div
+                        key={cell.label}
+                        className="cw-readout__cell"
+                        data-terminal={cell.at > 0.6 ? "true" : undefined}
+                        style={{ "--at": cell.at } as CSSProperties}
+                      >
+                        <span className="cw-readout__value">{cell.value}</span>
+                        <span className="cw-readout__label">{cell.label}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <dl className="cw-record">
-                  {STRATEGY.rows.map((row, index) => (
-                    <div key={row.key} className="cw-record__row" style={{ "--at": 0.34 + index * 0.07 } as CSSProperties}>
-                      <dt>{row.label}</dt>
-                      <dd>{row.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-                <div className="cw-record__foot">
-                  {STRATEGY_CAPABILITIES.map((capability) => (
-                    <span key={capability.id} className="cw-status" data-status={capability.status}>
-                      {STATUS_LABEL[capability.status]}
-                    </span>
-                  ))}
+
+                {/* Verdict, in the same register as Department 01's. */}
+                <div className="cw-verdict" style={{ "--at": 0.62 } as CSSProperties}>
+                  <span className="cw-verdict__mark" aria-hidden="true" />
+                  <span className="cw-verdict__line">{STRATEGY.verdict}</span>
+                  <span className="cw-verdict__note">{STRATEGY.rejected}</span>
                 </div>
               </Cue>
             </div>
