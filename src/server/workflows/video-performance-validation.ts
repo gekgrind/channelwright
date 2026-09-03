@@ -123,7 +123,13 @@ function metricProbe(metric: ReleasedVideoKpiBindingIdentity["metric"], snapshot
     case "AUDIENCE_RETENTION": return { observed: "AUDIENCE_RETENTION", unit, value: m.averagePercentageViewedPct };
     case "RETURNING_VIEWERS": return { observed: "RETURNING_VIEWERS", unit, value: m.returningViewersPct };
     case "SUBSCRIBERS":
-      return { observed: "NET_SUBSCRIBERS", unit, value: m.subscribersGained === null ? null : m.subscribersGained - (m.subscribersLost ?? 0) };
+      // NET_SUBSCRIBERS is only derivable when BOTH components are present.
+      // Missing gained or lost is missing data, never a synthetic zero.
+      return {
+        observed: "NET_SUBSCRIBERS",
+        unit,
+        value: m.subscribersGained === null || m.subscribersLost === null ? null : m.subscribersGained - m.subscribersLost,
+      };
     case "REVENUE_INDICATOR": return { observed: "REVENUE_INDICATOR", unit, value: m.estimatedRevenueUsdIndicator };
     // Channel-level or funnel-level KPIs a per-video snapshot cannot answer.
     case "PUBLISHING_CONSISTENCY":
@@ -221,6 +227,20 @@ export function deterministicVideoPerformanceValidation(
     add("error", "SNAPSHOT_COVERAGE_OVERSTATED", `The record declares ${result.snapshotIntegrity.coverage} coverage but only ${coreMetricCount(result.measuredSnapshot)} core metrics are present (${computedCoverage}).`);
   }
 
+  // --- Operator baselines: at most one per metric (order-independent) -----
+  // Multiple baselines for the same metric make baseline selection ambiguous:
+  // the verdict would depend on array order. Reject deterministically rather
+  // than pick one; revision cannot decide which entry was authoritative.
+  const baselineMetricCounts = new Map<string, number>();
+  for (const entry of result.measuredSnapshot.operatorBaselines) {
+    baselineMetricCounts.set(entry.metric, (baselineMetricCounts.get(entry.metric) ?? 0) + 1);
+  }
+  for (const [metric, count] of baselineMetricCounts) {
+    if (count > 1) {
+      add("error", "DUPLICATE_OPERATOR_BASELINE", `The snapshot carries ${count} operator baselines for ${metric}; at most one is allowed so a verdict cannot depend on which entry was selected.`);
+    }
+  }
+
   // --- KPI/hypothesis adjudication: exactly the release's bound set -------
   const boundList = upstream.scope.kpiBindings;
   const adjudicatedCounts = new Map<number, number>();
@@ -265,10 +285,14 @@ export function deterministicVideoPerformanceValidation(
       }
     } else {
       // OPERATOR_SUPPLIED_BASELINE
-      const baseline = result.measuredSnapshot.operatorBaselines.find((entry) => entry.metric === outcome.binding.metric);
-      if (!baseline) {
+      const matchingBaselines = result.measuredSnapshot.operatorBaselines.filter((entry) => entry.metric === outcome.binding.metric);
+      if (matchingBaselines.length === 0) {
         add("error", "BASELINE_NOT_OPERATOR_SUPPLIED", `${outcome.binding.label} cites an operator-supplied baseline, but the snapshot has no operator baseline for ${outcome.binding.metric}.`);
+      } else if (matchingBaselines.length > 1) {
+        // Ambiguous: DUPLICATE_OPERATOR_BASELINE already fired above. Do not pick
+        // an arbitrary entry to validate value/unit against.
       } else {
+        const baseline = matchingBaselines[0];
         // Authoritative operator baselines are preserved verbatim: exact equality.
         if (outcome.baselineValue === null || outcome.baselineValue !== baseline.value) {
           add("error", "BASELINE_NOT_OPERATOR_SUPPLIED", `${outcome.binding.label} does not cite the operator baseline value (${baseline.value}) verbatim.`);
@@ -430,9 +454,14 @@ export const UNREVISABLE_VIDEO_PERFORMANCE_CODES = new Set([
   "VERDICT_WITHOUT_BASELINE",
   "QUALITATIVE_VERDICT_OVERSTATED",
   "BASELINE_NOT_OPERATOR_SUPPLIED",
-  // The cited operator baseline's unit is incompatible with its metric; the
-  // operator baseline set is immutable at this stage.
+  // The cited operator baseline's unit is incompatible with its metric, or the
+  // immutable operator baseline set carries two entries for one metric so no
+  // authoritative baseline can be identified — neither is a model-fixable defect.
   "BASELINE_UNIT_INCOMPATIBLE",
+  "DUPLICATE_OPERATOR_BASELINE",
+  // Server-resolved upstream evidence identity is corrupted; a model cannot
+  // repair immutable upstream discovery evidence.
+  "EVIDENCE_IDENTITY_MISMATCH",
   "FABRICATED_BENCHMARK",
   "FABRICATED_SEARCH_VOLUME",
   "FABRICATED_REVENUE_PREDICTION",

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { getWorkflowDefinition, WORKFLOW_FINALIZER_STEP, type ClaimedWorkflowStep } from "@/domain/production-workflows";
+import { approvedVideoReleaseArtifactSchema, getWorkflowDefinition, WORKFLOW_FINALIZER_STEP, type ClaimedWorkflowStep } from "@/domain/production-workflows";
 import { ChannelVideoPerformanceExecutor, VideoPerformanceExecutionError } from "./video-performance-executor";
 import { channelVideoPerformanceConfig } from "./video-performance-config";
 import {
@@ -429,6 +429,64 @@ describe("video performance executor — bounded revision", () => {
       "draft-video-performance": { result: badDraft(), modelUsage: usage },
       "initial-video-performance-qa": initial,
     })))).rejects.toThrow(/cannot be resolved by automated revision/);
+    expect(m.reviseRecord).not.toHaveBeenCalled();
+    expect(usageMeter.calls).not.toContain("reserve:video-performance:automated-revision");
+  });
+
+  it("fails a duplicate operator baseline before any revision reservation (real deterministic path)", async () => {
+    const dupSnapshot = operatorPerformanceSnapshotFixture({
+      operatorBaselines: [
+        { metric: "CLICK_THROUGH_RATE", label: "CTR baseline A", value: 8, unit: "PERCENT", basisNote: "One Studio export." },
+        { metric: "CLICK_THROUGH_RATE", label: "CTR baseline B", value: 4, unit: "PERCENT", basisNote: "A different, older export." },
+      ],
+    });
+    const draft = () => channelVideoPerformanceResultFixture({ measuredSnapshot: dupSnapshot });
+    const withSnapshot = (s: ClaimedWorkflowStep) =>
+      ({ ...s, input: { ...(s.input as Record<string, unknown>), performanceSnapshot: dupSnapshot } }) as ClaimedWorkflowStep;
+
+    const usageMeter = meter();
+    const m = model();
+    const executor = new ChannelVideoPerformanceExecutor(resolver(), m, usageMeter);
+
+    const initial = await executor.execute(withSnapshot(step("initial-video-performance-qa", {
+      "validate-approved-release": approvedVideoReleaseArtifactFixture,
+      "draft-video-performance": { result: draft(), modelUsage: usage },
+    }))) as unknown as { qa: { findings: Array<{ code: string }> } };
+    expect(initial.qa.findings.map((f) => f.code)).toContain("DUPLICATE_OPERATOR_BASELINE");
+
+    await expect(executor.execute(withSnapshot(step("bounded-video-performance-revision", {
+      "validate-approved-release": approvedVideoReleaseArtifactFixture,
+      "draft-video-performance": { result: draft(), modelUsage: usage },
+      "initial-video-performance-qa": initial,
+    })))).rejects.toThrow(/cannot be resolved by automated revision/);
+    expect(m.reviseRecord).not.toHaveBeenCalled();
+    expect(usageMeter.calls).not.toContain("reserve:video-performance:automated-revision");
+  });
+
+  it("fails corrupted upstream evidence identity before any revision reservation (real deterministic path)", async () => {
+    const corruptedUpstream = approvedVideoReleaseArtifactSchema.parse({
+      ...approvedVideoReleaseArtifactFixture,
+      discoveryBundle: {
+        ...approvedVideoReleaseArtifactFixture.discoveryBundle,
+        evidence: approvedVideoReleaseArtifactFixture.discoveryBundle.evidence.map((e) =>
+          e.sourceType === "video" ? { ...e, url: "https://www.youtube.com/watch?v=tamperedid" } : e),
+      },
+    });
+    const usageMeter = meter();
+    const m = model();
+    const executor = new ChannelVideoPerformanceExecutor(resolver(), m, usageMeter);
+
+    const initial = await executor.execute(step("initial-video-performance-qa", {
+      "validate-approved-release": corruptedUpstream,
+      "draft-video-performance": { result: channelVideoPerformanceResultFixture(), modelUsage: usage },
+    })) as unknown as { qa: { findings: Array<{ code: string }> } };
+    expect(initial.qa.findings.map((f) => f.code)).toContain("EVIDENCE_IDENTITY_MISMATCH");
+
+    await expect(executor.execute(step("bounded-video-performance-revision", {
+      "validate-approved-release": corruptedUpstream,
+      "draft-video-performance": { result: channelVideoPerformanceResultFixture(), modelUsage: usage },
+      "initial-video-performance-qa": initial,
+    }))).rejects.toThrow(/cannot be resolved by automated revision/);
     expect(m.reviseRecord).not.toHaveBeenCalled();
     expect(usageMeter.calls).not.toContain("reserve:video-performance:automated-revision");
   });

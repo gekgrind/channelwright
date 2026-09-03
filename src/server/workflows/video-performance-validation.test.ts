@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { deterministicVideoPerformanceValidation } from "./video-performance-validation";
+import { deterministicVideoPerformanceValidation, hasUnrevisableVideoPerformanceFailure } from "./video-performance-validation";
 import {
   approvedVideoReleaseArtifactFixture,
   channelVideoPerformanceResultFixture,
   operatorPerformanceSnapshotFixture,
+  performanceKpiBindingsFixture,
+  performanceScopeFixture,
   PERFORMANCE_STRATEGY_RUN_ID,
 } from "./video-performance-fixtures.test-helper";
-import type { OperatorPerformanceSnapshot } from "@/domain/production-workflows";
+import { approvedVideoReleaseArtifactSchema, type OperatorPerformanceSnapshot } from "@/domain/production-workflows";
 
 const MAX = 200_000;
 
@@ -257,5 +259,156 @@ describe("deterministic video performance validation", () => {
         : o)),
     });
     expect(errors(result, snapshot)).toContain("BASELINE_UNIT_INCOMPATIBLE");
+  });
+
+  // --- Duplicate operator baseline identity (order-independent) -------------
+
+  /** Two CLICK_THROUGH_RATE baselines; `order` controls which is first. */
+  const dupCtrBaseline = (order: "validFirst" | "invalidFirst") => {
+    const valid = { metric: "CLICK_THROUGH_RATE" as const, label: "CTR baseline (current)", value: 8, unit: "PERCENT" as const, basisNote: "Trailing 10-video median." };
+    const stale = { metric: "CLICK_THROUGH_RATE" as const, label: "CTR baseline (older)", value: 4, unit: "PERCENT" as const, basisNote: "An earlier export kept by mistake." };
+    const operatorBaselines = order === "validFirst" ? [valid, stale] : [stale, valid];
+    const snapshot = operatorPerformanceSnapshotFixture({ operatorBaselines });
+    const baseFixture = channelVideoPerformanceResultFixture();
+    const result = channelVideoPerformanceResultFixture({
+      measuredSnapshot: snapshot,
+      kpiHypothesisOutcomes: baseFixture.kpiHypothesisOutcomes.map((o, i) => (i === 0
+        ? { ...o, comparisonBasis: "OPERATOR_SUPPLIED_BASELINE", baselineValue: 8, verdict: "SUPPORTED" }
+        : o)),
+    });
+    return { snapshot, result };
+  };
+
+  it("still accepts exactly one operator baseline for a metric", () => {
+    const { snapshot, result } = withCtrBaseline();
+    expect([...errors(result, snapshot)]).toEqual([]);
+  });
+
+  it("rejects two operator baselines for the same metric", () => {
+    const { snapshot, result } = dupCtrBaseline("validFirst");
+    expect(errors(result, snapshot)).toContain("DUPLICATE_OPERATOR_BASELINE");
+  });
+
+  it("fails identically no matter which duplicate baseline is listed first", () => {
+    const a = errors(dupCtrBaseline("validFirst").result, dupCtrBaseline("validFirst").snapshot);
+    const b = errors(dupCtrBaseline("invalidFirst").result, dupCtrBaseline("invalidFirst").snapshot);
+    expect(a.has("DUPLICATE_OPERATOR_BASELINE")).toBe(true);
+    expect([...a].sort()).toEqual([...b].sort());
+  });
+
+  it("classifies a duplicate operator baseline as unrevisable", () => {
+    const { snapshot, result } = dupCtrBaseline("invalidFirst");
+    const findings = deterministicVideoPerformanceValidation(result, approvedVideoReleaseArtifactFixture, snapshot, MAX);
+    expect(findings.some((f) => f.code === "DUPLICATE_OPERATOR_BASELINE")).toBe(true);
+    expect(hasUnrevisableVideoPerformanceFailure(findings)).toBe(true);
+  });
+
+  // --- Corrupted upstream evidence identity is unrevisable -----------------
+
+  it("classifies corrupted upstream evidence identity as unrevisable via the real validator", () => {
+    const corruptedUpstream = approvedVideoReleaseArtifactSchema.parse({
+      ...approvedVideoReleaseArtifactFixture,
+      discoveryBundle: {
+        ...approvedVideoReleaseArtifactFixture.discoveryBundle,
+        evidence: approvedVideoReleaseArtifactFixture.discoveryBundle.evidence.map((e) =>
+          e.sourceType === "video" ? { ...e, url: "https://www.youtube.com/watch?v=tamperedid" } : e),
+      },
+    });
+    const findings = deterministicVideoPerformanceValidation(
+      channelVideoPerformanceResultFixture(), corruptedUpstream, operatorPerformanceSnapshotFixture(), MAX,
+    );
+    expect(findings.some((f) => f.code === "EVIDENCE_IDENTITY_MISMATCH")).toBe(true);
+    expect(hasUnrevisableVideoPerformanceFailure(findings)).toBe(true);
+  });
+
+  // --- NET_SUBSCRIBERS is only derivable from BOTH components --------------
+
+  describe("NET_SUBSCRIBERS requires both subscribersGained and subscribersLost", () => {
+    const SUBS_BINDING = {
+      metric: "SUBSCRIBERS" as const,
+      label: "Subscriber conversion",
+      hypothesis: "The method-forward packaging converts more viewers into subscribers than a benefit-only framing.",
+      strategyRunId: PERFORMANCE_STRATEGY_RUN_ID,
+    };
+    const upstreamWithSubs = approvedVideoReleaseArtifactSchema.parse({
+      ...approvedVideoReleaseArtifactFixture,
+      scope: { ...performanceScopeFixture, kpiBindings: [...performanceKpiBindingsFixture, SUBS_BINDING] },
+    });
+
+    const subsCase = (
+      metricsOverride: Partial<OperatorPerformanceSnapshot["metrics"]>,
+      subsOutcome: Record<string, unknown>,
+    ) => {
+      const snapshot = operatorPerformanceSnapshotFixture({
+        metrics: { ...operatorPerformanceSnapshotFixture().metrics, ...metricsOverride },
+      });
+      const baseFixture = channelVideoPerformanceResultFixture();
+      const result = channelVideoPerformanceResultFixture({
+        measuredSnapshot: snapshot,
+        performanceScope: upstreamWithSubs.scope,
+        kpiHypothesisOutcomes: [
+          ...baseFixture.kpiHypothesisOutcomes,
+          {
+            binding: SUBS_BINDING,
+            metricObserved: "NONE",
+            observedValue: null,
+            observedUnit: "NONE",
+            comparisonBasis: "NO_BASELINE_QUALITATIVE",
+            baselineValue: null,
+            verdict: "NOT_ENOUGH_DATA",
+            interpretation: "Net subscriber adjudication for this window.",
+            confidence: "low",
+            caveats: [],
+            ...subsOutcome,
+          },
+        ],
+      });
+      return new Set(
+        deterministicVideoPerformanceValidation(result, upstreamWithSubs, snapshot, MAX)
+          .filter((f) => f.severity === "error").map((f) => f.code),
+      );
+    };
+
+    it("derives the correct net value when both components are present", () => {
+      const codes = subsCase(
+        { subscribersGained: 80, subscribersLost: 10 },
+        { metricObserved: "NET_SUBSCRIBERS", observedValue: 70, observedUnit: "COUNT", verdict: "INCONCLUSIVE" },
+      );
+      expect(codes.has("OBSERVED_VALUE_NOT_FROM_SNAPSHOT")).toBe(false);
+      expect(codes.has("HYPOTHESIS_OVERSTATED_WITHOUT_DATA")).toBe(false);
+    });
+
+    it("does not derive a net value when subscribersLost is missing", () => {
+      const codes = subsCase(
+        { subscribersGained: 80, subscribersLost: null },
+        { metricObserved: "NET_SUBSCRIBERS", observedValue: 80, observedUnit: "COUNT", verdict: "SUPPORTED" },
+      );
+      expect(codes).toContain("OBSERVED_VALUE_NOT_FROM_SNAPSHOT");
+      expect(codes).toContain("HYPOTHESIS_OVERSTATED_WITHOUT_DATA");
+    });
+
+    it("does not derive a net value when subscribersGained is missing", () => {
+      const codes = subsCase(
+        { subscribersGained: null, subscribersLost: 10 },
+        { metricObserved: "NET_SUBSCRIBERS", observedValue: -10, observedUnit: "COUNT", verdict: "REFUTED" },
+      );
+      expect(codes).toContain("OBSERVED_VALUE_NOT_FROM_SNAPSHOT");
+    });
+
+    it("does not manufacture a synthetic zero when both components are missing", () => {
+      const codes = subsCase(
+        { subscribersGained: null, subscribersLost: null },
+        { metricObserved: "NET_SUBSCRIBERS", observedValue: 0, observedUnit: "COUNT", verdict: "SUPPORTED" },
+      );
+      expect(codes).toContain("OBSERVED_VALUE_NOT_FROM_SNAPSHOT");
+    });
+
+    it("cannot carry a SUPPORTED verdict on partial subscriber data", () => {
+      const codes = subsCase(
+        { subscribersGained: 80, subscribersLost: null },
+        { metricObserved: "NET_SUBSCRIBERS", observedValue: 80, observedUnit: "COUNT", verdict: "SUPPORTED" },
+      );
+      expect(codes).toContain("HYPOTHESIS_OVERSTATED_WITHOUT_DATA");
+    });
   });
 });
