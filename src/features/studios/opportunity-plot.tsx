@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { registerScene } from "./scroll-engine";
+import { ACID, LUME, easeOut, monoFamily, ramp } from "./instrument";
 
 /**
  * Department 01's instrument, read as a five-beat story rather than an
@@ -20,9 +21,6 @@ import { registerScene } from "./scroll-engine";
  */
 
 const MAX_POINTS = 300;
-
-const LUME = "242, 239, 230";
-const ACID = "216, 255, 62";
 
 /** Deterministic RNG so the field is identical on every load and every device. */
 function mulberry32(seed: number) {
@@ -44,15 +42,17 @@ type Cluster = {
   survives: boolean;
   /** The one opportunity the room commits to. */
   selected?: boolean;
+  /** Named only where the room has a candidate to argue about. */
+  label?: string;
 };
 
 /** x = audience demand, y = competitive saturation (low is better). */
 const CLUSTERS: Cluster[] = [
   { x: 0.16, y: 0.68, spread: 0.11, weight: 0.17, survives: false },
-  { x: 0.37, y: 0.31, spread: 0.10, weight: 0.16, survives: true },
+  { x: 0.37, y: 0.31, spread: 0.10, weight: 0.16, survives: true, label: "BUDGET BUILDS" },
   { x: 0.52, y: 0.74, spread: 0.09, weight: 0.13, survives: false },
-  { x: 0.66, y: 0.46, spread: 0.08, weight: 0.13, survives: true },
-  { x: 0.79, y: 0.22, spread: 0.062, weight: 0.16, survives: true, selected: true },
+  { x: 0.66, y: 0.46, spread: 0.08, weight: 0.13, survives: true, label: "FIRST-RIG SETUP" },
+  { x: 0.79, y: 0.22, spread: 0.062, weight: 0.16, survives: true, selected: true, label: "HONEST COST TESTS" },
   /* Unclustered signal. Evidence does not arrive in tidy blobs. */
   { x: 0.5, y: 0.5, spread: 0.6, weight: 0.25, survives: false },
 ];
@@ -110,19 +110,6 @@ function buildField(count: number): Point[] {
   return points;
 }
 
-function clamp01(value: number) {
-  return value < 0 ? 0 : value > 1 ? 1 : value;
-}
-
-function ramp(value: number, from: number, to: number) {
-  return clamp01((value - from) / (to - from));
-}
-
-function easeOut(value: number) {
-  const t = clamp01(value);
-  return 1 - (1 - t) ** 3;
-}
-
 export function OpportunityPlot() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -141,6 +128,9 @@ export function OpportunityPlot() {
     let height = 0;
     let progress = 0;
     let painted = -1;
+    let mono = "monospace";
+
+    const type = (size: number) => `${size}px ${mono}`;
 
     const paint = () => {
       if (width === 0 || height === 0) return;
@@ -161,6 +151,22 @@ export function OpportunityPlot() {
       const unrest = 1 - cluster;
 
       context.clearRect(0, 0, width, height);
+      context.lineWidth = 1;
+
+      // A faint measurement grid, so the field reads as a plot being measured
+      // rather than a particle effect. It arrives with the cluster beat: there
+      // is nothing to measure against while the evidence is still noise.
+      if (cluster > 0.02) {
+        context.strokeStyle = `rgba(${LUME}, ${0.055 * cluster})`;
+        context.beginPath();
+        for (let step = 1; step < 4; step++) {
+          context.moveTo(px(step / 4), inset.top);
+          context.lineTo(px(step / 4), inset.top + plotHeight);
+          context.moveTo(inset.left, py(step / 4));
+          context.lineTo(inset.left + plotWidth, py(step / 4));
+        }
+        context.stroke();
+      }
 
       for (const point of field) {
         const local = easeOut(ramp(cluster, point.delay, 1));
@@ -204,6 +210,17 @@ export function OpportunityPlot() {
             context.lineTo(cx + sx * r - sx * arm, cy + sy * r);
           }
           context.stroke();
+
+          // Named candidates. The assess beat is a comparison between things
+          // the room can argue about, not between anonymous blobs.
+          if (candidate.label) {
+            context.font = type(6.5);
+            context.textBaseline = "middle";
+            context.textAlign = "center";
+            context.fillStyle = `rgba(${chosen && select > 0.15 ? ACID : LUME}, ${(chosen ? 0.7 : 0.4) * fade})`;
+            context.fillText(candidate.label, cx, cy - r - 8);
+            context.textAlign = "left";
+          }
         }
       }
 
@@ -241,6 +258,14 @@ export function OpportunityPlot() {
           context.beginPath();
           context.arc(cx + r + plotWidth * 0.5 * lead, cy, 1.8, 0, Math.PI * 2);
           context.fill();
+          // The commitment, stated on the plot: one candidate, bound to the
+          // evidence count the ledger beneath the plot reports.
+          if (lead > 0.5) {
+            context.font = type(7);
+            context.textBaseline = "middle";
+            context.fillStyle = `rgba(${ACID}, ${(lead - 0.5) * 2})`;
+            context.fillText("SELECTED · 1 OF 3", cx + r + 8, cy - 9);
+          }
         }
       }
     };
@@ -253,6 +278,7 @@ export function OpportunityPlot() {
       canvas.width = Math.round(width * ratio);
       canvas.height = Math.round(height * ratio);
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      mono = monoFamily(canvas);
       painted = -1;
       paint();
     };

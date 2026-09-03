@@ -202,9 +202,9 @@ export const PRODUCTION = {
 export const CONTROL = {
   index: "05",
   department: "Control Room",
-  heading: "Publishing is a decision, not a default — so nothing leaves until one exact package is chosen.",
+  heading: "Publishing is a decision, not a default.",
   body: [
-    "Packaging proposes candidates: several title options and several thumbnail concepts, each judged for its own deception risk against the script it packages, and never a chosen one. The Control Room is where a human selects exactly one title and one thumbnail from that approved set, reconciles the final metadata, sets an intended publish window, and binds the release to the strategy hypothesis it is meant to test. The material-risk options are struck through and kept in the record — never silently dropped.",
+    "Packaging proposes candidates — several titles, several thumbnails, each judged for its own deception risk. Never a chosen one. A human selects exactly one of each, and the material-risk options are struck through and kept in the record.",
   ],
   panelTitle: "Release record",
   panelNote: "Selected",
@@ -216,9 +216,9 @@ export const CONTROL = {
   instrumentTitle: "Release compositor",
   instrumentNote: "Illustrative",
   readout: [
-    { at: 0.08, label: "Candidates drafted", value: "5 titles · 4 thumbnails" },
+    { at: 0.08, label: "Candidates drafted", value: "9" },
     { at: 0.36, label: "Flagged for deception risk", value: "2" },
-    { at: 0.6, label: "Selected", value: "1 title · 1 thumbnail" },
+    { at: 0.6, label: "Title + thumbnail selected", value: "1 + 1" },
     { at: 0.84, label: "Locked at", value: "v1" },
   ],
   verdict: "Release package locked at v1",

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { registerScene } from "./scroll-engine";
+import { ACID, LUME, clamp01, easeOut, monoFamily, ramp } from "./instrument";
 
 /**
  * Department 04's instrument. Where the Script Sequencer resolves a brief
@@ -24,23 +25,11 @@ import { registerScene } from "./scroll-engine";
  * acid is a gate cleared and the version locked.
  */
 
-const LUME = "242, 239, 230";
-const ACID = "216, 255, 62";
-
+/** The six independent checks a master must clear, in the order it meets them. */
 const GATES = ["TECH", "RIGHTS", "CLAIMS", "VISUAL", "AUDIO", "PLATFORM"];
 
-function clamp01(value: number) {
-  return value < 0 ? 0 : value > 1 ? 1 : value;
-}
-
-function ramp(value: number, from: number, to: number) {
-  return clamp01((value - from) / (to - from));
-}
-
-function easeOut(value: number) {
-  const t = clamp01(value);
-  return 1 - (1 - t) ** 3;
-}
+/** What each probe tick confirms, ticked off as the render is measured. */
+const PROBES = ["CONTAINER", "CODECS", "LOUDNESS", "CHECKSUM"];
 
 export function RenderLine() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -57,23 +46,40 @@ export function RenderLine() {
     let height = 0;
     let progress = 0;
     let painted = -1;
+    let mono = "monospace";
+
+    const type = (size: number) => `${size}px ${mono}`;
 
     const paint = () => {
       if (width === 0 || height === 0) return;
-      const inset = { left: 18, right: 66, top: 26, bottom: 30 };
+      const pad = Math.max(12, Math.min(18, width * 0.034));
+      const inset = { left: pad, right: Math.min(Math.max(width * 0.14, 52), 72), top: pad + 20, bottom: pad + 30 };
       const trackLeft = inset.left;
       const trackRight = width - inset.right;
       const trackWidth = trackRight - trackLeft;
-      const rowY = inset.top + (height - inset.top - inset.bottom) * 0.46;
-      const blockSize = (height - inset.top - inset.bottom) * 0.34;
+      const band = height - inset.top - inset.bottom;
+      // The stations span most of the canvas height rather than a strip across
+      // its middle: six gates standing over the line is the picture.
+      const specY = height - inset.bottom + 12;
+      const rowY = inset.top + band * 0.44;
+      const stationReach = band * 0.34;
+      const blockSize = Math.min(band * 0.24, 62);
 
       context.clearRect(0, 0, width, height);
+      context.lineWidth = 1;
 
       const build = easeOut(ramp(progress, 0.04, 0.24));
       const probe = ramp(progress, 0.18, 0.32);
       const travel = ramp(progress, 0.3, 0.76);
       const lock = easeOut(ramp(progress, 0.76, 0.88));
       const handoff = easeOut(ramp(progress, 0.88, 0.99));
+
+      // What the line is running, and how far through its checks it is. The
+      // counter is the instrument's headline: six gates, all of them named.
+      context.font = type(7);
+      context.textBaseline = "middle";
+      context.fillStyle = `rgba(${LUME}, ${0.4 * build})`;
+      context.fillText("MASTER v1 · DETERMINISTIC RENDER", trackLeft, inset.top - 12);
 
       // Baseline rail the packet rides — the line itself.
       context.strokeStyle = `rgba(${LUME}, .22)`;
@@ -94,13 +100,22 @@ export function RenderLine() {
       // The packet's position: idle at the left until built, then travels the
       // full line once probed, clearing each station it passes.
       const packetX = trackLeft + 14 + (trackRight - trackLeft - 28) * travel;
+      const clearedCount = stations.filter((station) => travel > 0 && packetX >= station.x).length;
+
+      context.font = type(7);
+      context.textAlign = "right";
+      context.fillStyle = clearedCount === GATES.length
+        ? `rgba(${ACID}, .85)`
+        : `rgba(${LUME}, ${0.34 + (clearedCount / GATES.length) * 0.3})`;
+      context.fillText(`${clearedCount}/${GATES.length} GATES CLEAR`, trackRight, inset.top - 12);
+      context.textAlign = "left";
 
       stations.forEach((station) => {
         const cleared = travel > 0 && packetX >= station.x;
         const flash = cleared && travel < 1 ? clamp01((packetX - station.x) / 18) : cleared ? 1 : 0;
         const tone = cleared ? ACID : LUME;
-        const barTop = rowY - blockSize * 0.62;
-        const barBottom = rowY + blockSize * 0.62;
+        const barTop = rowY - stationReach;
+        const barBottom = rowY + stationReach;
 
         context.strokeStyle = `rgba(${tone}, ${cleared ? 0.32 + flash * 0.5 : 0.28})`;
         context.lineWidth = cleared ? 1.4 : 1;
@@ -111,10 +126,16 @@ export function RenderLine() {
         context.lineWidth = 1;
 
         if (build > 0.4) {
-          context.fillStyle = `rgba(${tone}, ${cleared ? 0.9 : 0.55})`;
-          context.font = "7px var(--font-mono, monospace)";
           context.textAlign = "center";
-          context.fillText(station.label, station.x, barBottom + 12);
+          context.textBaseline = "middle";
+          context.fillStyle = `rgba(${tone}, ${cleared ? 0.9 : 0.5})`;
+          context.font = type(7);
+          context.fillText(station.label, station.x, barBottom + 11);
+          // Each station reports its own outcome, so a cleared line reads as
+          // six independent passes rather than one bar reaching the end.
+          context.font = type(6.5);
+          context.fillStyle = cleared ? `rgba(${ACID}, ${0.4 + flash * 0.5})` : `rgba(${LUME}, .22)`;
+          context.fillText(cleared ? "PASS" : "HELD", station.x, barBottom + 21);
           context.textAlign = "left";
         }
 
@@ -129,6 +150,8 @@ export function RenderLine() {
       // The rendered master itself: a block that forms at the head of the
       // line, then rides the packet position across every station.
       const size = blockSize * (0.5 + build * 0.5);
+      // Frame marks down its edge, so the object on the line reads as a cut
+      // master rather than a blank tile.
       const bx = build < 1 ? trackLeft + 14 : packetX;
       context.globalAlpha = 0.2 + build * 0.65;
       context.fillStyle = `rgba(${LUME}, 1)`;
@@ -136,15 +159,35 @@ export function RenderLine() {
       context.globalAlpha = 1;
       context.strokeStyle = `rgba(${lock > 0.15 ? ACID : LUME}, ${0.4 + build * 0.4})`;
       context.strokeRect(bx - size / 2, rowY - size / 2, size, size);
+      if (build > 0.5) {
+        context.strokeStyle = `rgba(5, 6, 7, ${0.5 * build})`;
+        context.beginPath();
+        for (let mark = 1; mark < 5; mark++) {
+          const my = rowY - size / 2 + (size * mark) / 5;
+          context.moveTo(bx - size / 2, my);
+          context.lineTo(bx - size / 2 + 4, my);
+          context.moveTo(bx + size / 2 - 4, my);
+          context.lineTo(bx + size / 2, my);
+        }
+        context.stroke();
+      }
 
       // Probe ticks: container, codecs, loudness, checksum — confirmed one
       // by one along the top of the block once it exists.
       if (probe > 0) {
-        const marks = Math.round(4 * probe);
+        const marks = Math.round(PROBES.length * probe);
         for (let m = 0; m < marks; m++) {
-          const tx = bx - size / 2 + 5 + m * 6;
+          const tx = bx - size / 2 + 4 + m * 6;
           context.fillStyle = `rgba(${ACID}, .85)`;
-          context.fillRect(tx, rowY - size / 2 - 7, 3, 3);
+          context.fillRect(tx, rowY - size / 2 - 8, 3, 3);
+        }
+        // Name the confirmation as it lands: four ticks is a pattern, and a
+        // pattern is not evidence until it says what it checked.
+        if (marks > 0 && travel < 0.06) {
+          context.font = type(6.5);
+          context.textBaseline = "middle";
+          context.fillStyle = `rgba(${ACID}, ${0.6 * probe})`;
+          context.fillText(PROBES[Math.min(marks, PROBES.length) - 1], bx + size / 2 + 8, rowY - size / 2 - 6);
         }
       }
 
@@ -158,11 +201,26 @@ export function RenderLine() {
         context.lineWidth = 1;
         if (lock > 0.5) {
           context.fillStyle = `rgba(${ACID}, ${(lock - 0.5) * 2})`;
-          context.font = "8px var(--font-mono, monospace)";
+          context.font = type(7.5);
           context.textAlign = "center";
-          context.fillText("v1 APPROVED", packetX, rowY - lockSize / 2 - 8);
+          context.textBaseline = "middle";
+          context.fillText("v1 APPROVED", packetX, rowY - lockSize / 2 - 9);
           context.textAlign = "left";
         }
+      }
+
+      // What the render actually is, stated at the foot: the probe ticks above
+      // confirm a specification, and a specification the panel never names is
+      // not evidence of anything.
+      if (probe > 0.4) {
+        context.font = type(6.5);
+        context.textBaseline = "middle";
+        context.fillStyle = `rgba(${LUME}, ${0.34 * probe})`;
+        context.fillText("1920×1080 · DETERMINISTIC · CHECKSUM-PROBED", trackLeft, specY);
+        context.textAlign = "right";
+        context.fillStyle = `rgba(${LUME}, ${0.28 * probe})`;
+        context.fillText("NO GATE MAY BE SKIPPED", trackRight, specY);
+        context.textAlign = "left";
       }
 
       // Hand off: the approved master leaves the line toward Control Room.
@@ -180,10 +238,14 @@ export function RenderLine() {
       }
       if (handoff > 0.8) {
         context.fillStyle = `rgba(${ACID}, ${(handoff - 0.8) / 0.2})`;
-        context.font = "9px var(--font-mono, monospace)";
+        // Right-aligned against the canvas edge, so the destination
+        // designation cannot run out of the panel or collide with the lock
+        // stamp at narrow widths.
+        context.font = type(7.5);
+        context.textAlign = "right";
         context.textBaseline = "middle";
-        context.fillText("CONTROL ROOM", trackRight - 78, rowY - 20);
-        context.textBaseline = "alphabetic";
+        context.fillText("CONTROL ROOM", width - 2, rowY - stationReach - 12);
+        context.textAlign = "left";
       }
     };
 
@@ -195,6 +257,7 @@ export function RenderLine() {
       canvas.width = Math.round(width * ratio);
       canvas.height = Math.round(height * ratio);
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      mono = monoFamily(canvas);
       painted = -1;
       paint();
     };

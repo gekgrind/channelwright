@@ -12,6 +12,17 @@
    and pass. Typefaces are the ones already loaded by the root layout.
    ============================================================================ */
 
+/* Lenis' required host styles, kept here rather than imported from the package
+   so smoothing is scoped to the routes that actually mount the journey. The
+   classes are only ever on <html> while the Studios experience is alive. */
+html.lenis, html.lenis body { height: auto; }
+/* Native smooth scrolling would fight the interpolation, so it is off for
+   as long as Lenis is mounted — not only while it reports itself smooth. */
+html.lenis, html.lenis-smooth { scroll-behavior: auto !important; }
+html.lenis-stopped { overflow: hidden; }
+html.lenis-smooth iframe { pointer-events: none; }
+html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
+
 :root:has(.cw-studios) { color-scheme: dark; }
 :root:has(.cw-studios), :root:has(.cw-studios) body { background: #050607; }
 :root:has(.cw-studios) .grain { opacity: .085; mix-blend-mode: screen; }
@@ -356,8 +367,12 @@
   inset: 0;
   content: "";
 }
+/* Two washes rather than one: a cold floor bounce under the hall and a
+   shallower key above it. The room stays dark; it stops being flat. */
 .cw-world__ambient {
-  background: radial-gradient(112% 80% at 50% 74%, rgba(108, 138, 178, .15), transparent 68%);
+  background:
+    radial-gradient(96% 46% at 50% 88%, rgba(122, 152, 190, .13), transparent 70%),
+    radial-gradient(112% 80% at 50% 72%, rgba(108, 138, 178, .17), transparent 68%);
   opacity: var(--wake);
 }
 .cw-world__ambient::before {
@@ -926,12 +941,17 @@
 }
 
 .cw-signal__labels {
+  /* The designation trails the signal, and the signal ends its run near the
+     right edge of the frame — so past the last department it flips to the
+     other side of the object rather than running out of the viewport. */
+  --flip: clamp(0, calc((var(--j) - .68) / .08), 1);
   position: absolute;
   left: 0;
   top: 15px;
   display: grid;
   grid-template-areas: "label";
   white-space: nowrap;
+  translate: calc(var(--flip) * -100% - var(--flip) * 14px) 0;
 }
 .cw-signal__label {
   grid-area: label;
@@ -1104,6 +1124,16 @@
   border-bottom: 1px solid var(--edge);
 }
 
+/* How lit the room is while the signal is inside the instrument. Declared on
+   the scene so both the panel and the light spilling behind it read the same
+   value rather than each recomputing the window. */
+.cw-studios[data-ready="true"] .cw-room {
+  --live: calc(
+    clamp(0, calc((var(--p, 0) - .3) * 8), 1) *
+    clamp(0, calc((.96 - var(--p, 0)) * 7), 1)
+  );
+}
+
 /* --- Level 2: the record ------------------------------------------------ */
 
 /* Quieter than the instrument in every dimension that carries weight — border,
@@ -1157,12 +1187,26 @@
 /* The panel answers the signal while it is being read. Restrained on purpose:
    a border warming is enough to say "this is live". */
 .cw-studios[data-ready="true"] .cw-panel--live {
-  --live: calc(
-    clamp(0, calc((var(--p, 0) - .3) * 8), 1) *
-    clamp(0, calc((.96 - var(--p, 0)) * 7), 1)
-  );
-  border-color: color-mix(in srgb, var(--signal) calc(var(--live) * 34%), var(--edge-2));
-  box-shadow: 0 18px 44px rgba(0, 0, 0, .55), 0 0 calc(var(--live) * 90px) rgba(216, 255, 62, .06);
+  border-color: color-mix(in srgb, var(--signal) calc(var(--live, 0) * 34%), var(--edge-2));
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .55), 0 0 calc(var(--live, 0) * 90px) rgba(216, 255, 62, .06);
+}
+
+/* Local illumination. The instrument is the working light in its half of the
+   room: the wall immediately behind it lifts while the signal is being read,
+   and falls away again afterwards. The facility stays dark — it stops being
+   underexposed at the one place the visitor is asked to look. */
+.cw-studios[data-ready="true"] .cw-instrument::before {
+  content: "";
+  position: absolute;
+  inset: -20% -16%;
+  z-index: -1;
+  pointer-events: none;
+  /* Both washes fall to nothing well inside the box: a clipped gradient edge
+     would draw an ellipse across the room, which is the opposite of a light. */
+  background:
+    radial-gradient(44% 46% at 50% 46%, rgba(216, 255, 62, .05), transparent 62%),
+    radial-gradient(64% 62% at 50% 50%, rgba(124, 156, 196, .085), transparent 66%);
+  opacity: calc(.28 + var(--live, 0) * .72);
 }
 
 /* --- Opportunity plot --------------------------------------------------- */
@@ -1366,7 +1410,7 @@
 
 /* The room's one raised voice, and it is immediately qualified by what was
    rejected. A verified opportunity is a judgement, never a promise. */
-.cw-instrument { display: grid; gap: 16px; align-content: center; }
+.cw-instrument { position: relative; display: grid; gap: 16px; align-content: center; }
 
 .cw-verdict {
   --lit: clamp(0, calc((var(--p, 1) - var(--at)) * 8), 1);
@@ -1623,10 +1667,6 @@
   .cw-heading { font-size: clamp(1.5rem, 7.4vw, 2rem); }
   .cw-lede { font-size: .95rem; }
   .cw-room__grid { align-content: start; padding-top: 36px; }
-  .cw-plot { aspect-ratio: 4 / 3; }
-  .cw-gate { aspect-ratio: 4 / 3; }
-  .cw-line { aspect-ratio: 4 / 3; }
-  .cw-console { aspect-ratio: 4 / 3; }
   .cw-ledger { grid-template-columns: minmax(0, 1fr); }
   .cw-ledger__cell { border-right: 0; border-bottom: 1px solid var(--edge); }
   .cw-ledger__cell:last-child { border-bottom: 0; }
@@ -1636,10 +1676,11 @@
 
 /* Short phones: trim the instrument, never the honest copy beneath it. */
 @media (max-width: 720px) and (max-height: 780px) {
-  .cw-plot { aspect-ratio: 16 / 4.6; }
-  .cw-gate { aspect-ratio: 16 / 4.6; }
-  .cw-line { aspect-ratio: 16 / 4.6; }
-  .cw-console { aspect-ratio: 16 / 4.6; }
+  .cw-plot { aspect-ratio: 16 / 6.4; }
+  .cw-gate { aspect-ratio: 16 / 7; }
+  .cw-sequencer { aspect-ratio: 16 / 6.4; }
+  .cw-line { aspect-ratio: 16 / 6.4; }
+  .cw-console { aspect-ratio: 16 / 7.8; }
   .cw-lede { font-size: .89rem; }
   .cw-room .cw-stage .cw-shell { padding-top: 52px; }
 }
@@ -1654,6 +1695,7 @@
   .cw-room__brief { gap: 13px; }
   .cw-plot { aspect-ratio: 16 / 7.6; }
   .cw-gate { aspect-ratio: 16 / 7.6; }
+  .cw-sequencer { aspect-ratio: 16 / 7.6; }
   .cw-line { aspect-ratio: 16 / 7.6; }
   .cw-console { aspect-ratio: 16 / 7.6; }
   .cw-stream__step { padding: 6px 13px; }
@@ -1710,6 +1752,7 @@
   .cw-stream__digest { display: block; }
   .cw-plot { aspect-ratio: 16 / 7; }
   .cw-gate { aspect-ratio: 16 / 7; }
+  .cw-sequencer { aspect-ratio: 16 / 7; }
   .cw-line { aspect-ratio: 16 / 7; }
   .cw-console { aspect-ratio: 16 / 7; }
   .cw-open__slate { bottom: 130px; }
@@ -1719,15 +1762,23 @@
   .cw-open__slate { bottom: 118px; right: var(--gutter); }
   .cw-open__lede { margin-top: 20px; font-size: .96rem; }
   .cw-open__actions { margin-top: 24px; }
-  .cw-plot { aspect-ratio: 16 / 5.6; }
-  .cw-gate { aspect-ratio: 16 / 5.6; }
-  .cw-line { aspect-ratio: 16 / 5.6; }
-  .cw-console { aspect-ratio: 16 / 5.6; }
+  /* The instruments now carry named rows, measured values and states, and a
+     122px strip cannot hold them without collision. The height is bought back
+     from the brief's record panel below, which the capability register repeats
+     in full further down the page. */
+  .cw-plot { aspect-ratio: 16 / 8; }
+  .cw-gate { aspect-ratio: 16 / 8.6; }
+  .cw-sequencer { aspect-ratio: 16 / 8; }
+  .cw-line { aspect-ratio: 16 / 8; }
+  .cw-console { aspect-ratio: 16 / 9.4; }
   .cw-ledger__value { font-size: 1rem; }
   .cw-ledger__cell { padding: 8px 12px; }
   .cw-ledger__note { font-size: 9.5px; }
-  /* One instrument per viewport: the step digest is carried by the capability
-     register further down the page. */
+  /* One instrument per viewport. The brief's record panel states in words what
+     the instrument states in marks, and the capability register carries it in
+     full below — so on a phone the room shows the instrument and the verdict,
+     and nothing has to be squeezed to fit both. */
   .cw-stream-panel { display: none; }
+  .cw-room__brief > .cw-panel { display: none; }
   .cw-room__brief { gap: 12px; }
 }

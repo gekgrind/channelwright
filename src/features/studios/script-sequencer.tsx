@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { registerScene } from "./scroll-engine";
+import { ACID, LUME, WARN, clamp01, easeOut, fit, monoFamily, ramp } from "./instrument";
 
 /**
  * Department 03's instrument. Where the Version Gate resolves candidates into
@@ -22,16 +23,21 @@ import { registerScene } from "./scroll-engine";
  * QA-cleared and locked, warn is the one section still being corrected.
  */
 
-const LUME = "242, 239, 230";
-const ACID = "216, 255, 62";
-const WARN = "255, 104, 70";
-
 type Section = {
   label: string;
+  /** Share of total runtime. The timeline is a runtime, not a bar chart. */
   weight: number;
   claims: number;
   flagged?: boolean;
 };
+
+/** Illustrative target runtime, stated so the timeline has a declared scale. */
+const RUNTIME_SECONDS = 520;
+
+function timecode(seconds: number) {
+  const whole = Math.round(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+}
 
 const SECTIONS: Section[] = [
   { label: "HOOK", weight: 0.14, claims: 1 },
@@ -40,19 +46,6 @@ const SECTIONS: Section[] = [
   { label: "TURN", weight: 0.22, claims: 3 },
   { label: "PAYOFF", weight: 0.16, claims: 2 },
 ];
-
-function clamp01(value: number) {
-  return value < 0 ? 0 : value > 1 ? 1 : value;
-}
-
-function ramp(value: number, from: number, to: number) {
-  return clamp01((value - from) / (to - from));
-}
-
-function easeOut(value: number) {
-  const t = clamp01(value);
-  return 1 - (1 - t) ** 3;
-}
 
 export function ScriptSequencer() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -69,17 +62,40 @@ export function ScriptSequencer() {
     let height = 0;
     let progress = 0;
     let painted = -1;
+    let mono = "monospace";
+
+    const type = (size: number) => `${size}px ${mono}`;
 
     const flaggedIndex = SECTIONS.findIndex((section) => section.flagged);
 
     const paint = () => {
       if (width === 0 || height === 0) return;
-      const inset = { left: 16, right: 70, top: 26, bottom: 30 };
+      const pad = Math.max(12, Math.min(16, width * 0.032));
+      const inset = { left: pad, right: Math.min(Math.max(width * 0.15, 56), 76), top: pad + 14, bottom: pad + 24 };
       const trackLeft = inset.left;
       const trackRight = width - inset.right;
       const trackWidth = trackRight - trackLeft;
-      const rowY = inset.top + (height - inset.top - inset.bottom) * 0.42;
-      const barHeight = (height - inset.top - inset.bottom) * 0.5;
+      // Three declared lanes: sourced claims above, the sequence itself, then
+      // each section's QA verdict. The instrument fills its canvas because it
+      // has three things to say, not because the bar was made taller.
+      const lanesTop = inset.top;
+      const lanesBottom = height - inset.bottom;
+      // Bottom-up: the runtime ruler anchors the foot, the verdict and label
+      // lanes stack above it, and the sequence itself takes every pixel that
+      // is left. Nothing is capped into a strip with dead canvas beneath it.
+      const scaleY = lanesBottom;
+      const verdictY = scaleY - 18;
+      const labelY = verdictY - 13;
+      const barBottom = labelY - 14;
+      // The timeline stays a strip. The band above it is not padding: it is
+      // where the claims live, one rule per claim, so "11 claims sourced" is a
+      // thing the eye can count rather than a number in the readout below.
+      const barHeight = Math.min(Math.max((barBottom - lanesTop) * 0.34, 26), 78);
+      const barTop = barBottom - barHeight;
+      const rowY = (barTop + barBottom) / 2;
+      const claimsTop = lanesTop + 12;
+      const maxClaims = SECTIONS.reduce((most, section) => Math.max(most, section.claims), 1);
+      const claimGap = Math.max((barTop - 16 - claimsTop) / maxClaims, 7);
 
       context.clearRect(0, 0, width, height);
 
@@ -98,12 +114,23 @@ export function ScriptSequencer() {
       const revise = ramp(progress, 0.58, 0.72);
       const handoff = easeOut(ramp(progress, 0.8, 0.98));
 
+      // Lane headings. Two words of chrome that turn three rows of marks into
+      // a legible instrument.
+      context.font = type(7);
+      context.textBaseline = "middle";
+      context.fillStyle = `rgba(${LUME}, .34)`;
+      context.fillText("SOURCED CLAIMS", trackLeft, lanesTop);
+      context.textAlign = "right";
+      context.fillStyle = `rgba(${LUME}, .3)`;
+      context.fillText(`RUNTIME ${timecode(RUNTIME_SECONDS)}`, trackRight, lanesTop);
+      context.textAlign = "left";
+
       // Baseline rail the sections sit on, so the row reads as one sequence.
       context.strokeStyle = `rgba(${LUME}, .22)`;
       context.lineWidth = 1;
       context.beginPath();
-      context.moveTo(trackLeft, rowY + barHeight / 2 + 6);
-      context.lineTo(trackRight, rowY + barHeight / 2 + 6);
+      context.moveTo(trackLeft, barBottom + 4);
+      context.lineTo(trackRight, barBottom + 4);
       context.stroke();
 
       slots.forEach((slot, index) => {
@@ -134,15 +161,27 @@ export function ScriptSequencer() {
           context.strokeRect(slot.xStart + 2, rowY - barH / 2, Math.max(slot.segWidth - 4, 1), barH);
         }
 
-        // Claims: ticks accumulating along the top of the section as its
-        // sources bind, so "sourced" is something the eye can count.
+        // Claims: one rule per claim, stacked above its own section and each
+        // pinned to a source. They bind in order as the section is sourced.
         if (source > 0) {
           const shown = Math.round(slot.claims * source);
+          const claimWidth = Math.max(slot.segWidth - 12, 10);
+          // A hairline from the section up through its own claims, so the
+          // stack is visibly attached to the section that carries it.
+          context.strokeStyle = `rgba(${LUME}, ${0.1 * source})`;
+          context.beginPath();
+          context.moveTo(slot.xStart + 4.5, claimsTop);
+          context.lineTo(slot.xStart + 4.5, barTop);
+          context.stroke();
           for (let c = 0; c < shown; c++) {
-            const tx = slot.xStart + 8 + c * 7;
-            if (tx > slot.xStart + slot.segWidth - 6) break;
-            context.fillStyle = `rgba(${ACID}, .85)`;
-            context.fillRect(tx, rowY - barH / 2 - 7, 3, 3);
+            const cy = claimsTop + c * claimGap;
+            if (cy > barTop - 10) break;
+            const bound = clamp01(slot.claims * source - c);
+            context.fillStyle = `rgba(${LUME}, ${0.3 * bound})`;
+            context.fillRect(slot.xStart + 8, cy, claimWidth * bound, 1);
+            // The source pip: a claim without one is not sourced.
+            context.fillStyle = `rgba(${ACID}, ${0.8 * bound})`;
+            context.fillRect(slot.xStart + 3, cy - 1.5, 3, 3);
           }
         }
 
@@ -158,12 +197,32 @@ export function ScriptSequencer() {
           context.lineWidth = 1;
         }
 
-        // Section label, legible once drafted.
+        // Section label and its share of runtime: the timeline states what it
+        // is measuring rather than leaving the widths to be inferred.
         if (draft > 0.3) {
-          context.fillStyle = `rgba(${tone}, ${Math.min(draft, 1) * 0.75})`;
-          context.font = "8px var(--font-mono, monospace)";
-          context.textBaseline = "alphabetic";
-          context.fillText(slot.label, slot.xStart + 4, rowY + barHeight / 2 + 20);
+          context.textBaseline = "middle";
+          context.fillStyle = `rgba(${tone}, ${Math.min(draft, 1) * 0.8})`;
+          context.font = type(7.5);
+          context.fillText(fit(context, slot.label, slot.segWidth - 30), slot.xStart + 3, labelY);
+          if (slot.segWidth > 40) {
+            context.font = type(6.5);
+            context.fillStyle = `rgba(${LUME}, ${Math.min(draft, 1) * 0.34})`;
+            context.textAlign = "right";
+            context.fillText(timecode(RUNTIME_SECONDS * slot.weight), slot.xStart + slot.segWidth - 4, labelY);
+            context.textAlign = "left";
+          }
+        }
+
+        // QA verdict lane: every section carries its own outcome, so the pass
+        // reads as five judgements rather than one sweeping line.
+        if (scanned) {
+          const passed = lock > 0.2 && cleared;
+          context.font = type(6.5);
+          context.textBaseline = "middle";
+          context.fillStyle = warnOn
+            ? `rgba(${WARN}, .9)`
+            : `rgba(${ACID}, ${passed ? 0.8 : 0.3})`;
+          context.fillText(warnOn ? "REVISE" : passed ? "PASS" : "···", slot.xStart + 3, verdictY);
         }
       });
 
@@ -178,20 +237,28 @@ export function ScriptSequencer() {
         context.lineWidth = 1;
       }
 
-      // Flag mark on the section under correction.
-      if (flaggedIndex >= 0) {
-        const flagged = slots[flaggedIndex];
-        const flaggedWarn = scanX > flagged.xStart + flagged.segWidth * 0.4 && revise < 0.55 && revise > 0;
-        const flaggedShown = scanX > flagged.xStart + flagged.segWidth * 0.4 && revise < 0.9;
-        if (flaggedShown) {
-          const alpha = flaggedWarn ? 0.85 : 0.85 * (1 - clamp01((revise - 0.55) / 0.35));
-          if (alpha > 0.02) {
-            context.fillStyle = `rgba(${WARN}, ${alpha})`;
-            context.font = "8px var(--font-mono, monospace)";
-            context.fillText("REVISE", flagged.xStart + 2, rowY - barHeight / 2 - 16);
-          }
-        }
+      // Runtime ruler. The section widths are minutes, so the foot of the
+      // instrument carries the scale that makes them readable as minutes.
+      context.strokeStyle = `rgba(${LUME}, .16)`;
+      context.beginPath();
+      context.moveTo(trackLeft, scaleY - 6);
+      context.lineTo(trackRight, scaleY - 6);
+      let boundary = trackLeft;
+      for (const slot of slots) {
+        boundary += slot.segWidth;
+        context.moveTo(boundary, scaleY - 6);
+        context.lineTo(boundary, scaleY - 1);
       }
+      context.stroke();
+      context.font = type(6.5);
+      context.textBaseline = "middle";
+      context.fillStyle = `rgba(${LUME}, .32)`;
+      context.fillText("0:00", trackLeft, scaleY + 4);
+      context.textAlign = "center";
+      context.fillText(timecode(RUNTIME_SECONDS / 2), trackLeft + trackWidth / 2, scaleY + 4);
+      context.textAlign = "right";
+      context.fillText(timecode(RUNTIME_SECONDS), trackRight, scaleY + 4);
+      context.textAlign = "left";
 
       // Handoff: the locked sequence travels off the right edge toward
       // Production once every section is stamped.
@@ -208,10 +275,14 @@ export function ScriptSequencer() {
         context.fill();
       }
       if (handoff > 0.8) {
+        // Right-aligned against the canvas edge: the destination designation
+        // must not be able to run out of the panel at any width.
         context.fillStyle = `rgba(${ACID}, ${(handoff - 0.8) / 0.2})`;
-        context.font = "9px var(--font-mono, monospace)";
+        context.font = type(7.5);
+        context.textAlign = "right";
         context.textBaseline = "middle";
-        context.fillText("PRODUCTION", trackRight - 60, rowY - 20);
+        context.fillText("PRODUCTION", width - 2, barTop - 8);
+        context.textAlign = "left";
       }
     };
 
@@ -223,6 +294,7 @@ export function ScriptSequencer() {
       canvas.width = Math.round(width * ratio);
       canvas.height = Math.round(height * ratio);
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      mono = monoFamily(canvas);
       painted = -1;
       paint();
     };

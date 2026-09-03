@@ -7,6 +7,7 @@ import { StudiosWorld } from "./world";
 import { HallFar, HallNear } from "./facility";
 import { useReducedMotion } from "./scene";
 import { refreshScenes } from "./scroll-engine";
+import { scrollToScene, useSmoothScroll } from "./smooth-scroll";
 import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL, type CapabilityStatus } from "./capabilities";
 import { CONTROL, FOOTER, INTELLIGENCE, NEXT_UP, OPEN, PRODUCTION, REGISTER, STRATEGY, WRITERS } from "./copy";
 import "./studios.css";
@@ -86,7 +87,7 @@ function DepartmentRail({ current }: { current: string | null }) {
             disabled={!built}
             aria-disabled={!built}
             title={built ? department.name : `${department.name} — in construction`}
-            onClick={() => document.getElementById(department.id)?.scrollIntoView({ behavior: "smooth" })}
+            onClick={() => scrollToScene(department.id)}
           >
             <span className="cw-rail__name">{department.name}</span>
             <span className="cw-rail__tick" aria-hidden="true" />
@@ -384,6 +385,9 @@ function StaticNarrative() {
 export default function StudiosExperience() {
   const reduced = useReducedMotion();
   const stageScene = useStageScene();
+  // Smoothing belongs to the cinematic path only: static mode is a document,
+  // and a reduced-motion visitor has asked for the platform's own scrolling.
+  useSmoothScroll(!reduced);
   const root = useRef<HTMLDivElement>(null);
 
   // `data-ready` is written straight to the DOM rather than held in state: it
