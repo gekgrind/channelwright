@@ -67,6 +67,7 @@ export const WORLD = {
   dept02: { index: "02", name: "Strategy Room", note: "Positioning \u00b7 Versioned decisions" },
   dept03: { index: "03", name: "Writers' Room", note: "Brief \u00b7 Script \u00b7 Sourced claims" },
   dept04: { index: "04", name: "Production Floor", note: "Render \u00b7 QA gates \u00b7 Master" },
+  dept05: { index: "05", name: "Control Room", note: "Packaging \u00b7 Selection \u00b7 Release lock" },
 } as const;
 
 /**
@@ -75,19 +76,20 @@ export const WORLD = {
  * see `./capabilities.ts`. No state may promise a downstream outcome.
  *
  * Ranges are fractions of the whole journey's `--j`, so they were rescaled
- * when Department 03 extended the building, and again when Department 04
- * did \u2014 see `LANDMARK` in `./world.tsx` for the same rescale applied to the
- * fixed props (ratio ~.7887 for this pass).
+ * when Department 03 extended the building, again when Department 04 did,
+ * and again for Department 05 \u2014 see `LANDMARK` in `./world.tsx` for the
+ * same rescale applied to the fixed props (ratio ~.8276 for this pass).
  */
 export const SIGNAL = {
   states: [
-    { from: -0.0315, to: 0.1735, label: "Raw signal \u00b7 unverified" },
-    { from: 0.1577, to: 0.3076, label: "In research \u00b7 retrieving evidence" },
-    { from: 0.2918, to: 0.3944, label: "Claims bound to sources \u00b7 QA passed" },
-    { from: 0.3865, to: 0.4969, label: "Approved research \u00b7 ranked backlog" },
-    { from: 0.489, to: 0.6389, label: "Strategy input \u00b7 awaiting decision" },
-    { from: 0.6231, to: 0.7808, label: "Script structured \u00b7 locked at QA" },
-    { from: 0.78, to: 0.98, label: "Master validated \u00b7 queued for release" },
+    { from: -0.0261, to: 0.1436, label: "Raw signal \u00b7 unverified" },
+    { from: 0.1305, to: 0.2546, label: "In research \u00b7 retrieving evidence" },
+    { from: 0.2416, to: 0.3264, label: "Claims bound to sources \u00b7 QA passed" },
+    { from: 0.32, to: 0.4113, label: "Approved research \u00b7 ranked backlog" },
+    { from: 0.4047, to: 0.5288, label: "Strategy input \u00b7 awaiting decision" },
+    { from: 0.5157, to: 0.6463, label: "Script structured \u00b7 locked at QA" },
+    { from: 0.6455, to: 0.811, label: "Master validated \u00b7 queued for release" },
+    { from: 0.803, to: 0.99, label: "Release package \u00b7 locked at exact version" },
   ],
 } as const;
 
@@ -189,6 +191,40 @@ export const PRODUCTION = {
   arrival: "Department 04 · arriving",
 } as const;
 
+/**
+ * Department 05, built to the standard set by 01–04. Where the Production
+ * Floor resolves a script into a master it can release, the Control Room
+ * resolves that master's packaging — title candidates and thumbnail
+ * concepts, each carrying its own deception-risk judgement — into the one
+ * exact release package a human locks and hands off.
+ */
+export const CONTROL = {
+  index: "05",
+  department: "Control Room",
+  heading: "Publishing is a decision, not a default — so nothing leaves until one exact package is chosen.",
+  body: [
+    "Packaging proposes candidates: several title options and several thumbnail concepts, each judged for its own deception risk against the script it packages, and never a chosen one. The Control Room is where a human selects exactly one title and one thumbnail from that approved set, reconciles the final metadata, sets an intended publish window, and binds the release to the strategy hypothesis it is meant to test. The material-risk options are struck through and kept in the record — never silently dropped.",
+  ],
+  panelTitle: "Release record",
+  panelNote: "Selected",
+  rows: [
+    { key: "candidates", label: "Packaging candidates", value: "Title options and thumbnail concepts, each risk-scored" },
+    { key: "selection", label: "Release selection", value: "Exact title + thumbnail, chosen from the approved set" },
+    { key: "binding", label: "Hypothesis binding", value: "Bound to the strategy KPI this release is meant to test" },
+  ],
+  instrumentTitle: "Release compositor",
+  instrumentNote: "Illustrative",
+  readout: [
+    { at: 0.08, label: "Candidates drafted", value: "5 titles · 4 thumbnails" },
+    { at: 0.36, label: "Flagged for deception risk", value: "2" },
+    { at: 0.6, label: "Selected", value: "1 title · 1 thumbnail" },
+    { at: 0.84, label: "Locked at", value: "v1" },
+  ],
+  verdict: "Release package locked at v1",
+  rejected: "2 rejected — material deception risk (overstated comparison, shock framing)",
+  arrival: "Department 05 · arriving",
+} as const;
+
 export const REGISTER = {
   kicker: "Capability register",
   heading: "What is built, what is proven, and what is not.",
@@ -202,8 +238,8 @@ export const REGISTER = {
 
 export const NEXT_UP = {
   kicker: "Under construction",
-  heading: "Two rooms still dark.",
-  body: "The Control Room and Analytics Command are staged into this experience but not yet built into it. They are being made to the standard set by the Intelligence, Strategy, Writers' and Production rooms, not generated to fill the page \u2014 a statement about this site, not about the product. Each department's real status is in the register above.",
+  heading: "One room still dark.",
+  body: "Analytics Command is staged into this experience but not yet built into it. It is being made to the standard set by the Intelligence, Strategy, Writers', Production and Control rooms, not generated to fill the page \u2014 a statement about this site, not about the product. Each department's real status is in the register above.",
 } as const;
 
 export const FOOTER = {

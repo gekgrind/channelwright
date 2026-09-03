@@ -2,18 +2,18 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ColdOpen, IntelligenceRoom, IntelligenceCapabilities, StrategyRoom, WritersRoom, ProductionFloor } from "./acts";
+import { ColdOpen, IntelligenceRoom, IntelligenceCapabilities, StrategyRoom, WritersRoom, ProductionFloor, ControlRoom } from "./acts";
 import { StudiosWorld } from "./world";
 import { HallFar, HallNear } from "./facility";
 import { useReducedMotion } from "./scene";
 import { refreshScenes } from "./scroll-engine";
 import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL, type CapabilityStatus } from "./capabilities";
-import { FOOTER, INTELLIGENCE, NEXT_UP, OPEN, PRODUCTION, REGISTER, STRATEGY, WRITERS } from "./copy";
+import { CONTROL, FOOTER, INTELLIGENCE, NEXT_UP, OPEN, PRODUCTION, REGISTER, STRATEGY, WRITERS } from "./copy";
 import "./studios.css";
 
 /** Departments this experience has actually staged. The rail must not offer
  *  a destination that does not exist yet. */
-const BUILT_DEPARTMENTS = new Set(["intelligence", "strategy", "writers", "production"]);
+const BUILT_DEPARTMENTS = new Set(["intelligence", "strategy", "writers", "production", "control"]);
 
 /** Wrapper whose scroll span drives the persistent facility. */
 const JOURNEY_ID = "cw-journey";
@@ -347,6 +347,30 @@ function StaticNarrative() {
           </dl>
         </div>
       </section>
+
+      <section id="control" className="cw-static__act">
+        <p className="cw-mono">Department {CONTROL.index} — {CONTROL.department}</p>
+        <h2 className="cw-heading" style={{ marginTop: 16 }}>{CONTROL.heading}</h2>
+        <div className="cw-static__body">
+          {CONTROL.body.map((paragraph) => (
+            <p key={paragraph} className="cw-lede">{paragraph}</p>
+          ))}
+        </div>
+        <div className="cw-panel cw-static__panel">
+          <div className="cw-panel__bar">
+            <span className="cw-mono">{CONTROL.panelTitle}</span>
+            <span className="cw-mono">{CONTROL.panelNote}</span>
+          </div>
+          <dl className="cw-record">
+            {CONTROL.rows.map((row) => (
+              <div key={row.key} className="cw-record__row">
+                <dt>{row.label}</dt>
+                <dd>{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
     </div>
   );
 }
@@ -390,6 +414,7 @@ export default function StudiosExperience() {
             <StrategyRoom />
             <WritersRoom />
             <ProductionFloor />
+            <ControlRoom />
           </div>
         )}
         {reduced ? (

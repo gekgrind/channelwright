@@ -7,7 +7,8 @@ import { OpportunityPlot } from "./opportunity-plot";
 import { VersionGate } from "./version-gate";
 import { ScriptSequencer } from "./script-sequencer";
 import { RenderLine } from "./render-line";
-import { INTELLIGENCE, OPEN, PRODUCTION, STRATEGY, WRITERS } from "./copy";
+import { ReleaseCompositor } from "./control-room";
+import { CONTROL, INTELLIGENCE, OPEN, PRODUCTION, STRATEGY, WRITERS } from "./copy";
 import { CAPABILITIES, STATUS_LABEL } from "./capabilities";
 
 /**
@@ -483,6 +484,103 @@ export function ProductionFloor() {
                   <span className="cw-verdict__mark" aria-hidden="true" />
                   <span className="cw-verdict__line">{PRODUCTION.verdict}</span>
                   <span className="cw-verdict__note">{PRODUCTION.rejected}</span>
+                </div>
+              </Cue>
+            </div>
+          </div>
+        </Cue>
+      </div>
+    </Scene>
+  );
+}
+
+/* ---------------------------------------------------------------- ACT 05 -- */
+
+const CONTROL_CAPABILITIES = CAPABILITIES.filter((capability) => capability.department === "05");
+
+/**
+ * Department 05, built to the standard set by 01–04. Where the Production
+ * Floor resolves a script into a master it can release, the Control Room
+ * resolves that master's packaging into the one exact release package a
+ * human locks — an authoritative selection, not another QA conveyor.
+ */
+export function ControlRoom() {
+  const lightweight = useLightweightMode();
+
+  return (
+    <Scene id="control" travel={4} className="cw-room cw-room--05 cw-scene--overlap" label="Department 05: Control Room">
+      <div className="cw-layer cw-layer--copy">
+        <Cue from={0.88} to={1} className="cw-exit">
+          <div className="cw-shell">
+            <div className="cw-room__grid cw-room__grid--05">
+              <div className="cw-room__brief">
+                <Cue from={0} to={0.08} as="p" className="cw-mono cw-rise cw-room__kicker">
+                  Department {CONTROL.index} — {CONTROL.department}
+                </Cue>
+                <h2 className="cw-heading">
+                  <Cue from={0.03} to={0.18} as="span" className="cw-rise cw-room__heading-line">
+                    {CONTROL.heading}
+                  </Cue>
+                </h2>
+                <Cue from={0.1} to={0.28} as="p" className="cw-lede cw-rise">
+                  {CONTROL.body[0]}
+                </Cue>
+
+                <Cue from={0.18} to={0.36} className="cw-panel cw-rise">
+                  <div className="cw-panel__bar">
+                    <span className="cw-mono">{CONTROL.panelTitle}</span>
+                    <span className="cw-mono">{CONTROL.panelNote}</span>
+                  </div>
+                  <dl className="cw-record">
+                    {CONTROL.rows.map((row, index) => (
+                      <div key={row.key} className="cw-record__row" style={{ "--at": 0.3 + index * 0.07 } as CSSProperties}>
+                        <dt>{row.label}</dt>
+                        <dd>{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <div className="cw-record__foot">
+                    {CONTROL_CAPABILITIES.map((capability) => (
+                      <span key={capability.id} className="cw-status" data-status={capability.status}>
+                        {STATUS_LABEL[capability.status]}
+                      </span>
+                    ))}
+                  </div>
+                </Cue>
+              </div>
+
+              <Cue from={0.08} to={0.24} className="cw-instrument cw-rise">
+                {/* The panel brightens while candidates are assessed and the
+                    release package is being composited and locked. */}
+                <div className="cw-panel cw-panel--live">
+                  <div className="cw-panel__bar">
+                    <span className="cw-mono">{CONTROL.instrumentTitle}</span>
+                    <span className="cw-mono">{CONTROL.instrumentNote}</span>
+                  </div>
+                  <div className="cw-console">
+                    {lightweight ? <span className="cw-console__static" /> : <ReleaseCompositor />}
+                  </div>
+
+                  <div className="cw-readout">
+                    {CONTROL.readout.map((cell) => (
+                      <div
+                        key={cell.label}
+                        className="cw-readout__cell"
+                        data-terminal={cell.at > 0.6 ? "true" : undefined}
+                        style={{ "--at": cell.at } as CSSProperties}
+                      >
+                        <span className="cw-readout__value">{cell.value}</span>
+                        <span className="cw-readout__label">{cell.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Verdict, in the same register as Departments 01–04. */}
+                <div className="cw-verdict" style={{ "--at": 0.82 } as CSSProperties}>
+                  <span className="cw-verdict__mark" aria-hidden="true" />
+                  <span className="cw-verdict__line">{CONTROL.verdict}</span>
+                  <span className="cw-verdict__note">{CONTROL.rejected}</span>
                 </div>
               </Cue>
             </div>

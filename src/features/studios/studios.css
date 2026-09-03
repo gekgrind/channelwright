@@ -615,6 +615,7 @@
 .cw-fixture[data-kind="decision"] { grid-template-columns: repeat(4, 1fr); }
 .cw-fixture[data-kind="writers"] { grid-template-columns: repeat(6, 1fr); }
 .cw-fixture[data-kind="production"] { grid-template-columns: repeat(6, 1fr); }
+.cw-fixture[data-kind="control"] { grid-template-columns: repeat(10, 1fr); }
 .cw-fixture__cell {
   position: relative;
   aspect-ratio: 4 / 3;
@@ -647,6 +648,15 @@
 }
 .cw-fixture[data-kind="production"] .cw-fixture__cell:nth-child(3n + 1) {
   background: linear-gradient(160deg, rgba(216, 255, 62, .08), rgba(216, 255, 62, .015));
+}
+/* A tighter, narrower bank than the production floor's — a light table of
+   candidates rather than a machine hall — with an amber pick tint marking
+   the cells the room has already resolved to a decision. */
+.cw-fixture[data-kind="control"] .cw-fixture__cell {
+  background: linear-gradient(160deg, rgba(242, 239, 230, .09), rgba(242, 239, 230, .015));
+}
+.cw-fixture[data-kind="control"] .cw-fixture__cell:nth-child(5n + 1) {
+  background: linear-gradient(160deg, rgba(216, 255, 62, .1), rgba(216, 255, 62, .02));
 }
 .cw-fixture__cell::after {
   content: "";
@@ -984,6 +994,24 @@
     linear-gradient(90deg, transparent 0 78%, var(--signal-dim) 78% 82%, transparent 82% 100%) 0 46% / 100% 2px no-repeat,
     repeating-linear-gradient(90deg, rgba(216, 255, 62, .22) 0 2px, transparent 2px calc(100% / 6)) 6% 20% / 88% 62% no-repeat;
   border-bottom: 1px solid var(--edge);
+}
+
+/* --- Release compositor --------------------------------------------------- */
+
+.cw-console { position: relative; aspect-ratio: 16 / 9; width: 100%; }
+.cw-console canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* Static fallback: two candidate racks — title, thumbnail — one row in each
+   lit and beamed to a locked compositor frame at the right edge, the rest
+   held dim in the record — the same claim the animation makes, held still. */
+.cw-console__static {
+  position: absolute;
+  inset: 18px 78px 18px 18px;
+  background:
+    linear-gradient(90deg, rgba(242, 239, 230, .14) 0 42%, transparent 42% 100%) 0 22% / 66% 5px no-repeat,
+    linear-gradient(90deg, var(--signal-dim) 0 30%, transparent 30% 100%) 0 38% / 66% 5px no-repeat,
+    linear-gradient(90deg, rgba(242, 239, 230, .14) 0 54%, transparent 54% 100%) 0 68% / 66% 5px no-repeat,
+    linear-gradient(90deg, var(--signal-dim) 0 26%, transparent 26% 100%) 0 84% / 66% 5px no-repeat;
+  border-right: 1px solid var(--edge);
 }
 
 /* --- Research stream ---------------------------------------------------- */
@@ -1328,6 +1356,7 @@
   .cw-plot { aspect-ratio: 4 / 3; }
   .cw-gate { aspect-ratio: 4 / 3; }
   .cw-line { aspect-ratio: 4 / 3; }
+  .cw-console { aspect-ratio: 4 / 3; }
   .cw-ledger { grid-template-columns: minmax(0, 1fr); }
   .cw-ledger__cell { border-right: 0; border-bottom: 1px solid var(--edge); }
   .cw-ledger__cell:last-child { border-bottom: 0; }
@@ -1340,6 +1369,7 @@
   .cw-plot { aspect-ratio: 16 / 4.6; }
   .cw-gate { aspect-ratio: 16 / 4.6; }
   .cw-line { aspect-ratio: 16 / 4.6; }
+  .cw-console { aspect-ratio: 16 / 4.6; }
   .cw-lede { font-size: .89rem; }
   .cw-room .cw-stage .cw-shell { padding-top: 52px; }
 }
@@ -1355,6 +1385,7 @@
   .cw-plot { aspect-ratio: 16 / 7.6; }
   .cw-gate { aspect-ratio: 16 / 7.6; }
   .cw-line { aspect-ratio: 16 / 7.6; }
+  .cw-console { aspect-ratio: 16 / 7.6; }
   .cw-stream__step { padding: 6px 13px; }
   .cw-readout__cell { padding: 7px 12px; }
   .cw-ledger__cell { padding: 9px 13px; }
@@ -1404,6 +1435,7 @@
   .cw-plot { aspect-ratio: 16 / 7; }
   .cw-gate { aspect-ratio: 16 / 7; }
   .cw-line { aspect-ratio: 16 / 7; }
+  .cw-console { aspect-ratio: 16 / 7; }
   .cw-open__slate { bottom: 130px; }
 }
 
@@ -1414,6 +1446,7 @@
   .cw-plot { aspect-ratio: 16 / 5.6; }
   .cw-gate { aspect-ratio: 16 / 5.6; }
   .cw-line { aspect-ratio: 16 / 5.6; }
+  .cw-console { aspect-ratio: 16 / 5.6; }
   .cw-ledger__value { font-size: 1rem; }
   .cw-ledger__cell { padding: 8px 12px; }
   .cw-ledger__note { font-size: 9.5px; }
