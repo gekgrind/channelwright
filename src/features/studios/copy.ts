@@ -203,7 +203,8 @@ export const CONTROL = {
   department: "Control Room",
   heading: "Publishing is a decision, not a default — so nothing leaves until one exact package is chosen.",
   body: [
-    "Packaging proposes candidates: several title options and several thumbnail concepts, each judged for its own deception risk against the script it packages, and never a chosen one. The Control Room is where a human selects exactly one title and one thumbnail from that approved set, reconciles the final metadata, sets an intended publish window, and binds the release to the strategy hypothesis it is meant to test. The material-risk options are struck through and kept in the record — never silently dropped.",
+    "Packaging proposes candidates: several title options and several thumbnail concepts, each judged for its own deception risk against the script it packages, and never a chosen one.",
+    "The Control Room is where a human selects exactly one title and one thumbnail from that approved set, reconciles the final metadata, sets an intended publish window, and binds the release to the strategy hypothesis it is meant to test. The material-risk options are struck through and kept in the record — never silently dropped.",
   ],
   panelTitle: "Release record",
   panelNote: "Selected",

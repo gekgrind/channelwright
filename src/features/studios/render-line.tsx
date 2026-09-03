@@ -130,11 +130,12 @@ export function RenderLine() {
       // line, then rides the packet position across every station.
       const size = blockSize * (0.5 + build * 0.5);
       const bx = build < 1 ? trackLeft + 14 : packetX;
-      context.globalAlpha = 0.2 + build * 0.65;
+      context.globalAlpha = 0.09 + build * 0.21;
       context.fillStyle = `rgba(${LUME}, 1)`;
       context.fillRect(bx - size / 2, rowY - size / 2, size, size);
       context.globalAlpha = 1;
-      context.strokeStyle = `rgba(${lock > 0.15 ? ACID : LUME}, ${0.4 + build * 0.4})`;
+      // The edge carries the master's state; the face stays a surface.
+      context.strokeStyle = `rgba(${lock > 0.15 ? ACID : LUME}, ${0.5 + build * 0.45})`;
       context.strokeRect(bx - size / 2, rowY - size / 2, size, size);
 
       // Probe ticks: container, codecs, loudness, checksum — confirmed one

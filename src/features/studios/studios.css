@@ -120,7 +120,26 @@
   inset: 0;
   pointer-events: none;
   opacity: var(--scrim, 1);
-  background: radial-gradient(104% 96% at 2% 58%, rgba(5, 6, 7, .9), rgba(5, 6, 7, .5) 30%, rgba(5, 6, 7, .1) 52%, transparent 66%);
+  /* The negative space the typography stands in. A wide column of near-void
+     across the left of the frame, feathered out before the instrument: the
+     facility keeps its geometry, it just stops running underneath the words. */
+  background:
+    linear-gradient(97deg, rgba(5, 6, 7, .95) 0%, rgba(5, 6, 7, .92) 26%, rgba(5, 6, 7, .66) 43%, rgba(5, 6, 7, .22) 55%, transparent 66%),
+    radial-gradient(66% 74% at 20% 60%, rgba(5, 6, 7, .72), transparent 72%);
+}
+
+/* Leaving a room takes its light with it. Without this the copy layer fades by
+   opacity alone, which turns every instrument panel translucent at the handoff
+   and lets the hall read straight through it — the single largest source of
+   "webpage layered over a diagram" in the previous pass. */
+.cw-studios[data-ready="true"] .cw-room .cw-layer--copy::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background: var(--void);
+  opacity: calc(clamp(0, calc((var(--p, 0) - .86) * 7.1), 1) * .88);
 }
 
 /* A department overlaps its predecessor by one viewport, so its stage pins at
@@ -143,9 +162,13 @@
 /* Content is fully legible until the engine confirms it is driving. */
 .cw-studios[data-ready="true"] .cw-fade { opacity: var(--t); }
 .cw-studios[data-ready="true"] .cw-hold { opacity: calc(1 - var(--t)); }
+/* Entrances move, they do not dissolve. Opacity resolves in the first third of
+   the cue while the position keeps settling for the whole of it: an instrument
+   panel that fades in from zero is see-through for most of its arrival, which
+   is what made equipment read as a translucent card laid over the hall. */
 .cw-studios[data-ready="true"] .cw-rise {
-  opacity: var(--t);
-  transform: translate3d(0, calc((1 - var(--te)) * 34px), 0);
+  opacity: clamp(0, calc(var(--t) * 3), 1);
+  transform: translate3d(0, calc((1 - var(--te)) * 20px), 0);
 }
 .cw-studios[data-ready="true"] .cw-wipe {
   clip-path: inset(0 calc((1 - var(--te)) * 101%) 0 0);
@@ -190,7 +213,13 @@
 .cw-topbar__mark b { font-weight: 700; }
 .cw-topbar__mark span { color: var(--lume-3); font-weight: 500; letter-spacing: .22em; font-size: 10.5px; }
 .cw-topbar__right { display: flex; align-items: center; gap: 18px; }
-.cw-studios[data-phase="open"] .cw-topbar { opacity: 0; visibility: hidden; }
+/* The first frame must answer "where am I". The wordmark holds through the
+   cold open at a whisper; only the actions stand down until there is somewhere
+   to go. */
+.cw-studios[data-phase="open"] .cw-topbar { background: none; }
+.cw-studios[data-phase="open"] .cw-topbar__mark { opacity: .72; }
+.cw-studios[data-phase="open"] .cw-topbar__right { opacity: 0; visibility: hidden; }
+.cw-topbar__mark, .cw-topbar__right { transition: opacity .55s var(--ease), visibility .55s var(--ease); }
 
 .cw-cta {
   display: inline-flex;
@@ -299,7 +328,7 @@
 .cw-world {
   --j: 0;
   /* Facility wake-up. Nothing in the building is lit before the spark. */
-  --wake: clamp(0, calc((var(--j) - .03) / .17), 1);
+  --wake: clamp(0, calc((var(--j) - .006) / .18), 1);
   /* Which department's light is in the room. Both ramps start well before
      arrival, so the next room is already bleeding into this one. */
   --l1: clamp(0, calc((var(--j) - .22) / .16), 1);
@@ -333,7 +362,12 @@
   content: "";
 }
 .cw-world__ambient {
-  background: radial-gradient(112% 80% at 50% 74%, rgba(108, 138, 178, .15), transparent 68%);
+  /* Two statements: a hall-wide fill, and a tighter pool over the operating
+     plane. The pool is what makes the active room lighter than the building
+     around it, so darkness has structure instead of being uniform. */
+  background:
+    radial-gradient(54% 42% at 50% 64%, rgba(126, 156, 196, .17), transparent 74%),
+    radial-gradient(112% 80% at 50% 74%, rgba(108, 138, 178, .1), transparent 68%);
   opacity: var(--wake);
 }
 .cw-world__ambient::before {
@@ -375,13 +409,20 @@
 
 /* Three travel rates. The ratios (roughly 1 : 2.4 : 4) are what turn a sliding
    drawing into a hall with depth. */
-.cw-plane--far { opacity: calc(var(--wake) * .32); }
+/* Atmospheric falloff. Each plane dissolves where it would otherwise cross
+   into the band the next hierarchy level owns: the rig never reaches the
+   headline, the back wall never resolves at the frame edges. */
+.cw-plane--near { mask-image: linear-gradient(to bottom, #000 0 42%, rgba(0, 0, 0, .5) 74%, transparent 100%); }
+.cw-plane--mid { mask-image: linear-gradient(to bottom, transparent 0, #000 26%, #000 72%, transparent 100%); }
+.cw-plane--far { mask-image: radial-gradient(84% 90% at 52% 46%, #000 32%, transparent 96%); }
+
+.cw-plane--far { opacity: calc((.1 + var(--wake) * .9) * .18); }
 .cw-plane--far svg { transform: translate3d(min(0px, calc(var(--j) * (100vw - 260vh))), 0, 0); }
 
-.cw-plane--mid { opacity: calc(var(--wake) * .46); }
+.cw-plane--mid { opacity: calc((.1 + var(--wake) * .9) * .3); }
 .cw-plane--mid svg { transform: translate3d(min(0px, calc(var(--j) * (100vw - 340vh))), 0, 0); }
 
-.cw-plane--near { opacity: calc(var(--wake) * .5); }
+.cw-plane--near { opacity: calc((.14 + var(--wake) * .86) * .26); }
 .cw-plane--near svg { transform: translate3d(min(0px, calc(var(--j) * (100vw - 460vh))), 0, 0); }
 
 /* Background equipment reads as switched on. Deliberately unreadable at this
@@ -415,7 +456,7 @@
   transform-origin: 50% 0;
   will-change: transform;
   mask-image: radial-gradient(62% 80% at 50% 4%, #000 0%, transparent 78%);
-  opacity: calc(var(--wake) * .52);
+  opacity: calc((.12 + var(--wake) * .88) * .3);
 }
 
 /* The route the artifact travels. Held at one height through every department,
@@ -426,7 +467,7 @@
   right: -20vw;
   overflow: hidden;
   top: 91%;
-  opacity: calc(clamp(0, calc((var(--j) - .2) / .13), 1) * .9);
+  opacity: calc(clamp(0, calc((var(--j) - .2) / .13), 1) * .5);
 }
 .cw-conveyance__rail {
   display: block;
@@ -467,38 +508,44 @@
    the right while the visitor is still working in 01 — and 01's is still
    behind them once they arrive. That is what gives the run spatial memory. */
 .cw-sign {
-  --rate: 78;
-  --reach: .46;
-  top: 30%;
+  /* Passed, not hovered. A short reach and a fast rate mean exactly one
+     department marking is ever legible: the room you are arriving at. The
+     previous reach kept three numerals live at once, at display scale,
+     directly behind the headline they were competing with. */
+  --rate: 210;
+  --reach: .155;
+  top: 27%;
   display: grid;
   justify-items: center;
   gap: 6px;
   text-align: center;
   white-space: nowrap;
-  /* Bright while it is still ahead, then holding at a residual once the room's
-     own copy is up — a sign you have read, not a caption competing with it.
-     The residual is what keeps 01 present behind you when you reach 02. */
+  /* Bright while it is still ahead, then all but gone once the room's own copy
+     is up: a sign you have read on the way in, not a caption competing with the
+     headline. Continuity is carried by the truss, floor and route, which are
+     continuous — it does not need three numerals lit at once to say so. */
   opacity: calc(
-    clamp(0, calc((var(--reach) - var(--ad)) * 3.4), 1) *
-    (.22 + .78 * clamp(0, calc(var(--d) * 11), 1))
+    var(--wake) *
+    clamp(0, calc((var(--reach) - var(--ad)) * 9), 1) *
+    (.04 + .96 * clamp(0, calc(var(--d) * 16), 1))
   );
   transform: translate3d(calc(var(--d) * var(--rate) * 1vw), 0, 0) scale(calc(1 - var(--ad) * .5));
 }
 .cw-sign__index {
   font-family: var(--font-display), sans-serif;
-  font-size: clamp(4rem, 13vh, 9rem);
+  font-size: clamp(2.8rem, 8.4vh, 5.6rem);
   font-weight: 700;
   line-height: .8;
   letter-spacing: -.04em;
   color: transparent;
-  -webkit-text-stroke: 1px rgba(242, 239, 230, .46);
+  -webkit-text-stroke: 1px rgba(242, 239, 230, .3);
 }
 .cw-sign__name {
   font-family: var(--font-mono), monospace;
   font-size: clamp(11px, 1.5vh, 15px);
   letter-spacing: .42em;
   text-transform: uppercase;
-  color: var(--lume-3);
+  color: var(--lume-4);
   padding-left: .42em;
 }
 .cw-sign__note {
@@ -520,8 +567,8 @@
   /* Held at full strength right up to the crossing, then gone in one beat —
      the camera is through it, so it should leave like a doorway leaves. */
   opacity: calc(
-    clamp(0, calc((.19 - var(--d)) * 10), 1) *
-    clamp(0, calc((var(--d) + .05) * 20), 1)
+    clamp(0, calc((.15 - var(--d)) * 13), 1) *
+    clamp(0, calc((var(--d) + .006) * 150), 1)
   );
   transform:
     translate3d(calc(var(--d) * var(--rate) * 1vw), -50%, 0)
@@ -572,8 +619,8 @@
   transform:
     translate3d(calc(var(--d) * var(--rate) * 1vw), 0, 0)
     scale(calc(.62 + (.22 - clamp(0, var(--d), .22)) * 3.2));
-  border-top: 2px solid rgba(242, 239, 230, .34);
-  border-bottom: 1px solid rgba(242, 239, 230, .2);
+  border-top: 2px solid rgba(242, 239, 230, .2);
+  border-bottom: 1px solid rgba(242, 239, 230, .12);
 }
 /* A pane you can see through, but not quite cleanly. */
 .cw-partition__glass {
@@ -608,7 +655,9 @@
   width: min(78vw, 92vh);
   display: grid;
   gap: 5px;
-  opacity: calc(clamp(0, calc((.34 - var(--ad)) * 4.4), 1) * .8);
+  /* Level 3. A department's equipment tells the rooms apart at a glance and
+     then gets out of the way of the instrument doing the work. */
+  opacity: calc(var(--wake) * clamp(0, calc((.22 - var(--ad)) * 7), 1) * .4);
   transform: translate3d(calc(var(--d) * var(--rate) * 1vw), 0, 0) scale(calc(1 - var(--ad) * .5));
 }
 .cw-fixture[data-kind="research"] { grid-template-columns: repeat(8, 1fr); }
@@ -662,7 +711,7 @@
   content: "";
   position: absolute;
   inset: 4px;
-  background: repeating-linear-gradient(to bottom, rgba(220, 235, 255, .1) 0 1px, transparent 1px 6px);
+  background: repeating-linear-gradient(to bottom, rgba(220, 235, 255, .06) 0 1px, transparent 1px 6px);
 }
 
 /* --- The signal --------------------------------------------------------- */
@@ -804,14 +853,14 @@
 .cw-world__haze {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to right, rgba(5, 6, 7, .34), transparent 20%, transparent 78%, rgba(5, 6, 7, .42));
+  background: linear-gradient(to right, rgba(5, 6, 7, .62), rgba(5, 6, 7, .2) 22%, transparent 40%, transparent 72%, rgba(5, 6, 7, .66));
 }
 .cw-world__vignette {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(132% 100% at 50% 46%, transparent 52%, rgba(5, 6, 7, .56) 100%),
-    linear-gradient(to bottom, rgba(5, 6, 7, .38), transparent 20%, transparent 78%, rgba(5, 6, 7, .5));
+    radial-gradient(112% 92% at 50% 48%, transparent 34%, rgba(5, 6, 7, .82) 100%),
+    linear-gradient(to bottom, rgba(5, 6, 7, .52), transparent 22%, transparent 74%, rgba(5, 6, 7, .68));
 }
 
 /* ============================================================================
@@ -869,6 +918,9 @@
   width: 100%;
 }
 .cw-room__brief { display: grid; gap: 20px; align-content: center; }
+/* The brief column is a fixed measure. A department whose narrative runs long
+   splits it rather than growing until it pushes its own record off the stage. */
+.cw-room__brief .cw-lede { max-width: 42ch; }
 .cw-room__kicker { display: flex; align-items: center; gap: 12px; }
 .cw-room__kicker::after { content: ""; height: 1px; flex: 1; background: var(--edge); }
 
@@ -880,8 +932,14 @@
   /* Near-opaque on purpose: a panel you can see the building through reads as
      a translucent web card sitting on a photo, which is exactly the failure
      this pass is correcting. */
-  background: linear-gradient(168deg, rgba(20, 24, 31, .965), rgba(8, 10, 14, .975));
-  box-shadow: 0 24px 70px rgba(0, 0, 0, .5);
+  background: linear-gradient(168deg, rgba(20, 24, 31, .975), rgba(8, 10, 14, .985));
+  /* Installed, not pasted on: a lit top edge where the rig catches it, a dark
+     underside, and a contact shadow dropped onto the surface beneath. */
+  box-shadow:
+    0 34px 64px -22px rgba(0, 0, 0, .92),
+    0 3px 0 -1px rgba(0, 0, 0, .7),
+    inset 0 1px 0 rgba(242, 239, 230, .07),
+    inset 0 -1px 0 rgba(0, 0, 0, .55);
   backdrop-filter: none;
 }
 .cw-panel::before, .cw-panel::after {
@@ -1048,6 +1106,9 @@
   color: color-mix(in srgb, var(--signal) calc(var(--lit) * 92%), var(--lume-4));
 }
 .cw-stream__tag { font-size: 9px; letter-spacing: .16em; color: var(--lume-4); }
+/* Static mode has no scroll ramp to light the sequence, so the steps must not
+   be left sitting at the unlit tone the ramp starts from. */
+.cw-studios[data-ready="false"] .cw-stream__step { color: var(--lume-2); }
 
 /* --- Evidence ledger ---------------------------------------------------- */
 
@@ -1113,7 +1174,19 @@
 
 /* The room's one raised voice, and it is immediately qualified by what was
    rejected. A verified opportunity is a judgement, never a promise. */
-.cw-instrument { display: grid; gap: 16px; align-content: center; }
+/* The rail the instrument is hung from. It runs past the panel on both sides,
+   so the equipment reads as mounted into the bay rather than floating in it. */
+.cw-instrument { position: relative; display: grid; gap: 16px; align-content: center; }
+.cw-instrument::before {
+  content: "";
+  position: absolute;
+  left: -5vw;
+  right: -5vw;
+  top: -15px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--edge) 14%, var(--edge-2) 40%, var(--edge-2) 72%, transparent);
+  pointer-events: none;
+}
 
 .cw-verdict {
   --lit: clamp(0, calc((var(--p, 1) - var(--at)) * 8), 1);

@@ -120,13 +120,16 @@ export function ScriptSequencer() {
         const tone = lock > 0.15 && cleared ? ACID : warnOn ? WARN : LUME;
         const barH = barHeight * draft * (isFlagged ? 1 - Math.min(revise, 0.3) * 0.25 : 1);
 
-        context.globalAlpha = 0.16 + draft * 0.6;
+        // Material, not paint: a low fill carrying the state colour under a
+        // lit edge. A section rendered as a solid acid slab reads as a graphic
+        // filling the panel rather than as a section of script sitting in it.
+        context.globalAlpha = 0.07 + draft * 0.19;
         context.fillStyle = `rgba(${tone}, 1)`;
         context.fillRect(slot.xStart + 2, rowY - barH / 2, Math.max(slot.segWidth - 4, 1), barH);
         context.globalAlpha = 1;
 
         if (draft > 0.15) {
-          context.strokeStyle = `rgba(${tone}, ${0.3 + lock * 0.4})`;
+          context.strokeStyle = `rgba(${tone}, ${0.45 + lock * 0.5})`;
           context.strokeRect(slot.xStart + 2, rowY - barH / 2, Math.max(slot.segWidth - 4, 1), barH);
         }
 
