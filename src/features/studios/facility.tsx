@@ -64,7 +64,7 @@ export function HallMid() {
     <svg viewBox="0 470 3400 340" preserveAspectRatio="xMinYMid meet" aria-hidden="true" fill="none" stroke={STROKE} strokeWidth="1.6">
       {/* Continuous floor datum + wall base. Crossing this line between
           departments is what makes them read as one room. */}
-      <path d="M0 806 H3400" opacity="0.55" />
+      <path d="M0 806 H3400" opacity="0.4" />
 
       {stations.map((x, index) => {
         const tall = index % 2 === 0;
@@ -72,14 +72,17 @@ export function HallMid() {
         return (
           <g key={x}>
             {/* Monitor bank: three screens on a shared yoke */}
-            <g opacity="0.9">
+            <g opacity="0.55">
               <rect x={x} y={top} width={188} height={112} fill={GLASS} />
               <rect x={x + 200} y={top + 14} width={146} height={92} fill={GLASS} />
               <rect x={x + 358} y={top + 26} width={110} height={72} fill={GLASS} />
               <path d={`M${x + 94} ${top + 112} V${top + 152} M${x + 40} ${top + 152} H${x + 148}`} opacity="0.7" />
             </g>
 
-            {/* Telemetry inside the near screen: a trace, not an interface. */}
+            {/* Telemetry inside the near screen: a trace, not an interface.
+                One per station — the scatter map that used to sit beside it
+                added texture inside the copy band and described nothing the
+                visitor is ever asked to read. */}
             <path
               className="cw-hall__trace"
               style={{ animationDelay: `${(index % 4) * -1.7}s` }}
@@ -87,12 +90,6 @@ export function HallMid() {
               strokeWidth="1.3"
               opacity="0.6"
             />
-            {/* Signal map on the mid screen: a sparse scatter, no axes. */}
-            <g opacity="0.4">
-              {[24, 58, 92, 46, 108, 74].map((o, dot) => (
-                <circle key={o} cx={x + 214 + o} cy={top + 34 + ((dot * 23) % 62)} r="2.4" fill={STROKE} stroke="none" />
-              ))}
-            </g>
             {/* Rack of status lights beside the desk */}
             <g>
               <path d={`M${x + 520} 560 H${x + 596} V806 H${x + 520} Z`} fill={CASE} opacity="0.7" />
@@ -128,36 +125,37 @@ export function HallMid() {
 export function HallNear() {
   const bays = 12;
   const pitch = 400;
-  /* Four web panels per bay rather than two: shallow diagonals over a long
-     span read as a decorative zigzag, which is what pass 1 produced. */
-  const web = pitch / 4;
+  /* Two web panels per bay. Four read as a continuous zigzag at viewing
+     distance — density that costs attention without describing structure. */
+  const web = pitch / 2;
   return (
-    <svg viewBox="0 62 4600 380" preserveAspectRatio="xMinYMid meet" aria-hidden="true" fill="none" stroke={STROKE} strokeWidth="2">
-      {/* Truss chords. Two rails plus diagonal webbing between them: read as a
-          structural member carrying load, not a decorative zigzag. */}
+    <svg viewBox="0 62 4600 380" preserveAspectRatio="xMinYMid meet" aria-hidden="true" fill="none" stroke={STROKE} strokeWidth="1.5">
+      {/* The truss as mass first, linework second: a filled chord depth so the
+          member occludes what is behind it, with the rails drawn on top. */}
+      <rect x="0" y="96" width="4600" height="72" fill="rgba(10, 12, 16, .55)" stroke="none" />
       <path d="M0 96 H4600 M0 168 H4600" />
-      <path d="M0 62 H4600" opacity="0.45" />
-      {Array.from({ length: bays * 4 }, (_, i) => {
+      <path d="M0 62 H4600" opacity="0.32" />
+      {Array.from({ length: bays * 2 }, (_, i) => {
         const x = i * web;
         const up = i % 2 === 0;
         return (
           <path
             key={`web-${x}`}
             d={up ? `M${x} 168 L${x + web} 96` : `M${x} 96 L${x + web} 168`}
-            opacity="0.72"
+            opacity="0.5"
           />
         );
       })}
       {/* Verticals at every bay: gives the truss a repeat, and therefore a
           measurable speed as it passes overhead. */}
       {Array.from({ length: bays }, (_, i) => (
-        <path key={`post-${i}`} d={`M${i * pitch} 62 V168`} opacity="0.6" />
+        <path key={`post-${i}`} d={`M${i * pitch} 62 V168`} opacity="0.42" />
       ))}
 
       {/* Cable tray slung below the truss, running the length of the hall. */}
-      <path d="M0 236 H4600 M0 272 H4600" opacity="0.5" />
-      {Array.from({ length: bays * 2 }, (_, i) => (
-        <path key={`tray-${i}`} d={`M${i * (pitch / 2) + 60} 236 V272`} opacity="0.28" strokeWidth="1.2" />
+      <path d="M0 236 H4600 M0 272 H4600" opacity="0.3" />
+      {Array.from({ length: bays }, (_, i) => (
+        <path key={`tray-${i}`} d={`M${i * pitch + 60} 236 V272`} opacity="0.16" strokeWidth="1.2" />
       ))}
 
       {/* Pendant fixtures on drop rods, alternating pitch so the rhythm is not
@@ -167,9 +165,14 @@ export function HallNear() {
         const drop = i % 2 === 0 ? 372 : 316;
         return (
           <g key={`lamp-${i}`}>
-            <path d={`M${x} 272 V${drop}`} strokeWidth="1.4" opacity="0.6" />
-            <path d={`M${x - 46} ${drop} H${x + 46} L${x + 28} ${drop + 62} H${x - 28} Z`} fill="rgba(242, 239, 230, .04)" />
-            <path d={`M${x - 22} ${drop + 60} H${x + 22}`} strokeWidth="4" opacity={i % 4 === 1 ? 0.4 : 0.85} />
+            <path d={`M${x} 272 V${drop}`} strokeWidth="1.2" opacity="0.3" />
+            <path
+              d={`M${x - 46} ${drop} H${x + 46} L${x + 28} ${drop + 62} H${x - 28} Z`}
+              fill="rgba(10, 12, 16, .5)"
+              opacity="0.55"
+            />
+            {/* The filament, not the housing, is what should read from here. */}
+            <path d={`M${x - 22} ${drop + 60} H${x + 22}`} strokeWidth="4" opacity={i % 4 === 1 ? 0.3 : 0.7} />
           </g>
         );
       })}
