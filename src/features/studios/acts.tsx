@@ -8,7 +8,7 @@ import { VersionGate } from "./version-gate";
 import { ScriptSequencer } from "./script-sequencer";
 import { RenderLine } from "./render-line";
 import { ReleaseCompositor } from "./control-room";
-import { CONTROL, INTELLIGENCE, OPEN, PRODUCTION, STRATEGY, WRITERS } from "./copy";
+import { CONTROL, INTELLIGENCE, OPEN, PRODUCTION, STRATEGY, WORLD, WRITERS } from "./copy";
 import { CAPABILITIES, STATUS_LABEL } from "./capabilities";
 
 /**
@@ -106,21 +106,23 @@ export function IntelligenceRoom() {
           <div className="cw-shell">
             <div className="cw-room__grid">
               <div className="cw-room__brief">
-                <Cue from={0} to={0.05} as="p" className="cw-mono cw-rise cw-room__kicker">
-                  Department {INTELLIGENCE.index} — {INTELLIGENCE.department}
+                <Cue from={0} to={0.05} className="cw-rise cw-room__plate">
+                  <span className="cw-room__plate-index">{INTELLIGENCE.index}</span>
+                  <span className="cw-room__plate-name">{INTELLIGENCE.department}</span>
+                  <span className="cw-room__plate-note">{WORLD.dept01.note}</span>
                 </Cue>
                 <h2 className="cw-heading">
                   {/* Rise, not wipe: an inset clip across wrapped lines cuts the
                       first line mid-word while later lines are already whole. */}
-                  <Cue from={0.02} to={0.14} as="span" className="cw-rise cw-room__heading-line">
+                  <Cue from={0.04} to={0.15} as="span" className="cw-rise cw-room__heading-line">
                     {INTELLIGENCE.heading}
                   </Cue>
                 </h2>
-                <Cue from={0.04} to={0.18} as="p" className="cw-lede cw-rise">
+                <Cue from={0.12} to={0.24} as="p" className="cw-lede cw-rise">
                   {INTELLIGENCE.body[0]}
                 </Cue>
 
-                <Cue from={0.14} to={0.28} className="cw-panel cw-rise cw-stream-panel">
+                <Cue from={0.36} to={0.48} className="cw-panel cw-panel--record cw-rise--solid cw-stream-panel">
                   <div className="cw-panel__bar">
                     <span className="cw-mono">{INTELLIGENCE.streamTitle}</span>
                     <span className="cw-mono">{INTELLIGENCE.streamNote}</span>
@@ -131,7 +133,7 @@ export function IntelligenceRoom() {
                         key={step.key}
                         className="cw-stream__step"
                         data-role={"role" in step ? step.role : undefined}
-                        style={{ "--at": 0.3 + index * 0.055 } as CSSProperties}
+                        style={{ "--at": 0.5 + index * 0.045 } as CSSProperties}
                       >
                         <span className="cw-stream__pip" aria-hidden="true" />
                         <span>{step.label}</span>
@@ -145,7 +147,7 @@ export function IntelligenceRoom() {
                 </Cue>
               </div>
 
-              <Cue from={0.06} to={0.2} className="cw-instrument cw-rise">
+              <Cue from={0.2} to={0.32} className="cw-instrument cw-rise--solid">
                 {/* The panel brightens while the signal is inside it. */}
                 <div className="cw-panel cw-panel--live">
                   <div className="cw-panel__bar">
@@ -221,26 +223,28 @@ export function StrategyRoom() {
           <div className="cw-shell">
             <div className="cw-room__grid cw-room__grid--02">
               <div className="cw-room__brief">
-                <Cue from={0} to={0.1} as="p" className="cw-mono cw-rise cw-room__kicker">
-                  Department {STRATEGY.index} — {STRATEGY.department}
+                <Cue from={0} to={0.05} className="cw-rise cw-room__plate">
+                  <span className="cw-room__plate-index">{STRATEGY.index}</span>
+                  <span className="cw-room__plate-name">{STRATEGY.department}</span>
+                  <span className="cw-room__plate-note">{WORLD.dept02.note}</span>
                 </Cue>
                 <h2 className="cw-heading">
-                  <Cue from={0.03} to={0.2} as="span" className="cw-rise cw-room__heading-line">
+                  <Cue from={0.04} to={0.15} as="span" className="cw-rise cw-room__heading-line">
                     {STRATEGY.heading}
                   </Cue>
                 </h2>
-                <Cue from={0.12} to={0.32} as="p" className="cw-lede cw-rise">
+                <Cue from={0.12} to={0.24} as="p" className="cw-lede cw-rise">
                   {STRATEGY.body[0]}
                 </Cue>
 
-                <Cue from={0.2} to={0.4} className="cw-panel cw-rise">
+                <Cue from={0.36} to={0.48} className="cw-panel cw-panel--record cw-rise--solid">
                   <div className="cw-panel__bar">
                     <span className="cw-mono">{STRATEGY.panelTitle}</span>
                     <span className="cw-mono">{STRATEGY.panelNote}</span>
                   </div>
                   <dl className="cw-record">
                     {STRATEGY.rows.map((row, index) => (
-                      <div key={row.key} className="cw-record__row" style={{ "--at": 0.34 + index * 0.07 } as CSSProperties}>
+                      <div key={row.key} className="cw-record__row" style={{ "--at": 0.5 + index * 0.05 } as CSSProperties}>
                         <dt>{row.label}</dt>
                         <dd>{row.value}</dd>
                       </div>
@@ -256,7 +260,7 @@ export function StrategyRoom() {
                 </Cue>
               </div>
 
-              <Cue from={0.1} to={0.26} className="cw-instrument cw-rise">
+              <Cue from={0.2} to={0.32} className="cw-instrument cw-rise--solid">
                 {/* The panel brightens while the approved signal is passing
                     through the gate. */}
                 <div className="cw-panel cw-panel--live">
@@ -319,26 +323,28 @@ export function WritersRoom() {
           <div className="cw-shell">
             <div className="cw-room__grid cw-room__grid--03">
               <div className="cw-room__brief">
-                <Cue from={0} to={0.08} as="p" className="cw-mono cw-rise cw-room__kicker">
-                  Department {WRITERS.index} — {WRITERS.department}
+                <Cue from={0} to={0.05} className="cw-rise cw-room__plate">
+                  <span className="cw-room__plate-index">{WRITERS.index}</span>
+                  <span className="cw-room__plate-name">{WRITERS.department}</span>
+                  <span className="cw-room__plate-note">{WORLD.dept03.note}</span>
                 </Cue>
                 <h2 className="cw-heading">
-                  <Cue from={0.03} to={0.18} as="span" className="cw-rise cw-room__heading-line">
+                  <Cue from={0.04} to={0.15} as="span" className="cw-rise cw-room__heading-line">
                     {WRITERS.heading}
                   </Cue>
                 </h2>
-                <Cue from={0.1} to={0.28} as="p" className="cw-lede cw-rise">
+                <Cue from={0.12} to={0.24} as="p" className="cw-lede cw-rise">
                   {WRITERS.body[0]}
                 </Cue>
 
-                <Cue from={0.18} to={0.36} className="cw-panel cw-rise">
+                <Cue from={0.36} to={0.48} className="cw-panel cw-panel--record cw-rise--solid">
                   <div className="cw-panel__bar">
                     <span className="cw-mono">{WRITERS.panelTitle}</span>
                     <span className="cw-mono">{WRITERS.panelNote}</span>
                   </div>
                   <dl className="cw-record">
                     {WRITERS.rows.map((row, index) => (
-                      <div key={row.key} className="cw-record__row" style={{ "--at": 0.3 + index * 0.07 } as CSSProperties}>
+                      <div key={row.key} className="cw-record__row" style={{ "--at": 0.5 + index * 0.05 } as CSSProperties}>
                         <dt>{row.label}</dt>
                         <dd>{row.value}</dd>
                       </div>
@@ -354,7 +360,7 @@ export function WritersRoom() {
                 </Cue>
               </div>
 
-              <Cue from={0.08} to={0.24} className="cw-instrument cw-rise">
+              <Cue from={0.2} to={0.32} className="cw-instrument cw-rise--solid">
                 {/* The panel brightens while the sequence is being assembled
                     and checked. */}
                 <div className="cw-panel cw-panel--live">
@@ -417,26 +423,28 @@ export function ProductionFloor() {
           <div className="cw-shell">
             <div className="cw-room__grid cw-room__grid--04">
               <div className="cw-room__brief">
-                <Cue from={0} to={0.08} as="p" className="cw-mono cw-rise cw-room__kicker">
-                  Department {PRODUCTION.index} — {PRODUCTION.department}
+                <Cue from={0} to={0.05} className="cw-rise cw-room__plate">
+                  <span className="cw-room__plate-index">{PRODUCTION.index}</span>
+                  <span className="cw-room__plate-name">{PRODUCTION.department}</span>
+                  <span className="cw-room__plate-note">{WORLD.dept04.note}</span>
                 </Cue>
                 <h2 className="cw-heading">
-                  <Cue from={0.03} to={0.18} as="span" className="cw-rise cw-room__heading-line">
+                  <Cue from={0.04} to={0.15} as="span" className="cw-rise cw-room__heading-line">
                     {PRODUCTION.heading}
                   </Cue>
                 </h2>
-                <Cue from={0.1} to={0.28} as="p" className="cw-lede cw-rise">
+                <Cue from={0.12} to={0.24} as="p" className="cw-lede cw-rise">
                   {PRODUCTION.body[0]}
                 </Cue>
 
-                <Cue from={0.18} to={0.36} className="cw-panel cw-rise">
+                <Cue from={0.36} to={0.48} className="cw-panel cw-panel--record cw-rise--solid">
                   <div className="cw-panel__bar">
                     <span className="cw-mono">{PRODUCTION.panelTitle}</span>
                     <span className="cw-mono">{PRODUCTION.panelNote}</span>
                   </div>
                   <dl className="cw-record">
                     {PRODUCTION.rows.map((row, index) => (
-                      <div key={row.key} className="cw-record__row" style={{ "--at": 0.3 + index * 0.07 } as CSSProperties}>
+                      <div key={row.key} className="cw-record__row" style={{ "--at": 0.5 + index * 0.05 } as CSSProperties}>
                         <dt>{row.label}</dt>
                         <dd>{row.value}</dd>
                       </div>
@@ -452,7 +460,7 @@ export function ProductionFloor() {
                 </Cue>
               </div>
 
-              <Cue from={0.08} to={0.24} className="cw-instrument cw-rise">
+              <Cue from={0.2} to={0.32} className="cw-instrument cw-rise--solid">
                 {/* The panel brightens while the master is being rendered
                     and swept through the gates. */}
                 <div className="cw-panel cw-panel--live">
@@ -514,26 +522,28 @@ export function ControlRoom() {
           <div className="cw-shell">
             <div className="cw-room__grid cw-room__grid--05">
               <div className="cw-room__brief">
-                <Cue from={0} to={0.08} as="p" className="cw-mono cw-rise cw-room__kicker">
-                  Department {CONTROL.index} — {CONTROL.department}
+                <Cue from={0} to={0.05} className="cw-rise cw-room__plate">
+                  <span className="cw-room__plate-index">{CONTROL.index}</span>
+                  <span className="cw-room__plate-name">{CONTROL.department}</span>
+                  <span className="cw-room__plate-note">{WORLD.dept05.note}</span>
                 </Cue>
                 <h2 className="cw-heading">
-                  <Cue from={0.03} to={0.18} as="span" className="cw-rise cw-room__heading-line">
+                  <Cue from={0.04} to={0.15} as="span" className="cw-rise cw-room__heading-line">
                     {CONTROL.heading}
                   </Cue>
                 </h2>
-                <Cue from={0.1} to={0.28} as="p" className="cw-lede cw-rise">
+                <Cue from={0.12} to={0.24} as="p" className="cw-lede cw-rise">
                   {CONTROL.body[0]}
                 </Cue>
 
-                <Cue from={0.18} to={0.36} className="cw-panel cw-rise">
+                <Cue from={0.36} to={0.48} className="cw-panel cw-panel--record cw-rise--solid">
                   <div className="cw-panel__bar">
                     <span className="cw-mono">{CONTROL.panelTitle}</span>
                     <span className="cw-mono">{CONTROL.panelNote}</span>
                   </div>
                   <dl className="cw-record">
                     {CONTROL.rows.map((row, index) => (
-                      <div key={row.key} className="cw-record__row" style={{ "--at": 0.3 + index * 0.07 } as CSSProperties}>
+                      <div key={row.key} className="cw-record__row" style={{ "--at": 0.5 + index * 0.05 } as CSSProperties}>
                         <dt>{row.label}</dt>
                         <dd>{row.value}</dd>
                       </div>
@@ -549,7 +559,7 @@ export function ControlRoom() {
                 </Cue>
               </div>
 
-              <Cue from={0.08} to={0.24} className="cw-instrument cw-rise">
+              <Cue from={0.2} to={0.32} className="cw-instrument cw-rise--solid">
                 {/* The panel brightens while candidates are assessed and the
                     release package is being composited and locked. */}
                 <div className="cw-panel cw-panel--live">

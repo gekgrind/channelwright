@@ -62,6 +62,7 @@ export const INTELLIGENCE = {
  * rendering can reuse the same words as headings where it needs them.
  */
 export const WORLD = {
+  facility: "Channelwright Studios",
   thresholdLabel: "Operating floor \u00b7 Authorised",
   dept01: { index: "01", name: "Intelligence Room", note: "Research \u00b7 Evidence \u00b7 Ranking" },
   dept02: { index: "02", name: "Strategy Room", note: "Positioning \u00b7 Versioned decisions" },

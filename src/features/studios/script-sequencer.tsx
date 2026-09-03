@@ -120,13 +120,17 @@ export function ScriptSequencer() {
         const tone = lock > 0.15 && cleared ? ACID : warnOn ? WARN : LUME;
         const barH = barHeight * draft * (isFlagged ? 1 - Math.min(revise, 0.3) * 0.25 : 1);
 
-        context.globalAlpha = 0.16 + draft * 0.6;
+        // Status is carried by a lit edge over a low fill, not by a saturated
+        // block. Five solid rectangles of acid and warn out-shouted the room's
+        // headline; the section still reads as drafted, flagged or locked, but
+        // it no longer competes with Level 1 for the eye.
+        context.globalAlpha = 0.1 + draft * 0.26;
         context.fillStyle = `rgba(${tone}, 1)`;
         context.fillRect(slot.xStart + 2, rowY - barH / 2, Math.max(slot.segWidth - 4, 1), barH);
         context.globalAlpha = 1;
 
         if (draft > 0.15) {
-          context.strokeStyle = `rgba(${tone}, ${0.3 + lock * 0.4})`;
+          context.strokeStyle = `rgba(${tone}, ${0.42 + lock * 0.48})`;
           context.strokeRect(slot.xStart + 2, rowY - barH / 2, Math.max(slot.segWidth - 4, 1), barH);
         }
 

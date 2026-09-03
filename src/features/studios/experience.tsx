@@ -106,11 +106,15 @@ function DepartmentRail({ current }: { current: string | null }) {
 function ArchiveHall() {
   return (
     <div className="cw-archive__hall" aria-hidden="true">
+      <div className="cw-world__ceiling" />
       <div className="cw-plane cw-plane--near"><HallNear /></div>
       <div className="cw-plane cw-plane--far"><HallFar /></div>
       <div className="cw-archive__wash" />
       <div className="cw-world__haze" />
       <div className="cw-archive__floor" />
+      {/* Same shell as the departments: the records room is one more room in
+          the building, so it is framed by the same jambs. */}
+      <div className="cw-world__jambs" />
     </div>
   );
 }
@@ -248,7 +252,7 @@ function StaticNarrative() {
             <p key={paragraph} className="cw-lede">{paragraph}</p>
           ))}
         </div>
-        <div className="cw-panel cw-static__panel">
+        <div className="cw-panel cw-panel--record cw-static__panel">
           <div className="cw-panel__bar">
             <span className="cw-mono">{INTELLIGENCE.streamTitle}</span>
             <span className="cw-mono">{INTELLIGENCE.streamNote}</span>
@@ -284,7 +288,7 @@ function StaticNarrative() {
             <p key={paragraph} className="cw-lede">{paragraph}</p>
           ))}
         </div>
-        <div className="cw-panel cw-static__panel">
+        <div className="cw-panel cw-panel--record cw-static__panel">
           <div className="cw-panel__bar">
             <span className="cw-mono">{STRATEGY.panelTitle}</span>
             <span className="cw-mono">{STRATEGY.panelNote}</span>
@@ -308,7 +312,7 @@ function StaticNarrative() {
             <p key={paragraph} className="cw-lede">{paragraph}</p>
           ))}
         </div>
-        <div className="cw-panel cw-static__panel">
+        <div className="cw-panel cw-panel--record cw-static__panel">
           <div className="cw-panel__bar">
             <span className="cw-mono">{WRITERS.panelTitle}</span>
             <span className="cw-mono">{WRITERS.panelNote}</span>
@@ -332,7 +336,7 @@ function StaticNarrative() {
             <p key={paragraph} className="cw-lede">{paragraph}</p>
           ))}
         </div>
-        <div className="cw-panel cw-static__panel">
+        <div className="cw-panel cw-panel--record cw-static__panel">
           <div className="cw-panel__bar">
             <span className="cw-mono">{PRODUCTION.panelTitle}</span>
             <span className="cw-mono">{PRODUCTION.panelNote}</span>
@@ -356,7 +360,7 @@ function StaticNarrative() {
             <p key={paragraph} className="cw-lede">{paragraph}</p>
           ))}
         </div>
-        <div className="cw-panel cw-static__panel">
+        <div className="cw-panel cw-panel--record cw-static__panel">
           <div className="cw-panel__bar">
             <span className="cw-mono">{CONTROL.panelTitle}</span>
             <span className="cw-mono">{CONTROL.panelNote}</span>

@@ -23,27 +23,36 @@ const CASE = "rgba(242, 239, 230, .035)";
 export function HallFar() {
   const bays = [0, 800, 1600];
   return (
-    <svg viewBox="0 250 2600 450" preserveAspectRatio="xMinYMid meet" aria-hidden="true" fill="none" stroke={STROKE} strokeWidth="1.4">
+    <svg viewBox="0 250 2600 450" preserveAspectRatio="xMinYMid meet" aria-hidden="true" fill="none" stroke={STROKE} strokeWidth="1.3">
+      {/* The wall itself, as a surface. Pass 2's back wall was drawn entirely
+          in outline, so the far end of the hall read as a wireframe hanging in
+          void; a filled plane behind the glazing is what lets the eye place a
+          boundary at the end of the room. */}
+      <rect x="0" y="250" width="2600" height="450" fill="rgba(8, 10, 14, .82)" stroke="none" />
+
       {/* Datum lines: one continuous horizon reading across the whole hall. */}
-      <path d="M0 372 H2600" opacity="0.5" />
-      <path d="M0 700 H2600" opacity="0.32" />
+      <path d="M0 372 H2600" opacity="0.34" />
+      <path d="M0 700 H2600" opacity="0.24" />
 
       {bays.map((x) => (
         <g key={x}>
-          {/* Structural pier between bays */}
-          <path d={`M${x + 8} 250 V700 M${x + 44} 250 V700 M${x + 8} 250 H${x + 44} M${x + 8} 700 H${x + 44}`} opacity="0.6" />
-          {/* Glazed partition: mullions only, so the wall reads as glass. */}
-          <g opacity="0.34">
-            <path d={`M${x + 44} 372 H${x + 800} M${x + 44} 470 H${x + 800} M${x + 44} 596 H${x + 800}`} />
-            {[160, 320, 480, 640].map((o) => (
+          {/* Structural pier between bays, as a mass rather than four lines. */}
+          <rect x={x + 8} y={250} width={36} height={450} fill="rgba(18, 21, 27, .95)" stroke="none" />
+          <path d={`M${x + 8} 250 V700`} opacity="0.34" />
+          {/* Glazed partition. One transom and two mullions per bay: enough to
+              say "glass", far short of the four-over-three grid that made this
+              wall the densest object in the frame. */}
+          <g opacity="0.16">
+            <path d={`M${x + 44} 470 H${x + 800}`} />
+            {[266, 532].map((o) => (
               <path key={o} d={`M${x + 44 + o} 372 V700`} />
             ))}
           </g>
           {/* Equipment gallery seen through the glass */}
-          <g opacity="0.44">
-            <rect x={x + 120} y={488} width={186} height={104} fill={GLASS} />
-            <rect x={x + 330} y={504} width={130} height={88} fill={GLASS} />
-            <rect x={x + 512} y={496} width={158} height={96} fill={GLASS} />
+          <g opacity="0.3">
+            <rect x={x + 120} y={488} width={186} height={104} fill={GLASS} stroke="none" />
+            <rect x={x + 330} y={504} width={130} height={88} fill={GLASS} stroke="none" />
+            <rect x={x + 512} y={496} width={158} height={96} fill={GLASS} stroke="none" />
           </g>
         </g>
       ))}
@@ -72,11 +81,11 @@ export function HallMid() {
         return (
           <g key={x}>
             {/* Monitor bank: three screens on a shared yoke */}
-            <g opacity="0.9">
+            <g opacity="0.6">
               <rect x={x} y={top} width={188} height={112} fill={GLASS} />
               <rect x={x + 200} y={top + 14} width={146} height={92} fill={GLASS} />
               <rect x={x + 358} y={top + 26} width={110} height={72} fill={GLASS} />
-              <path d={`M${x + 94} ${top + 112} V${top + 152} M${x + 40} ${top + 152} H${x + 148}`} opacity="0.7" />
+              <path d={`M${x + 94} ${top + 112} V${top + 152} M${x + 40} ${top + 152} H${x + 148}`} opacity="0.5" />
             </g>
 
             {/* Telemetry inside the near screen: a trace, not an interface. */}
@@ -109,8 +118,12 @@ export function HallMid() {
                 />
               ))}
             </g>
-            {/* Desk in profile, seated at the floor datum */}
-            <path d={`M${x - 30} 700 H${x + 470} L${x + 494} 806 H${x - 54} Z`} fill={CASE} opacity="0.5" />
+            {/* Desk in profile, seated at the floor datum. Filled dark rather
+                than outlined: casework in a dim room reads as a solid that
+                occludes what is behind it, which is what gives the operating
+                floor a midground at all. */}
+            <path d={`M${x - 30} 700 H${x + 470} L${x + 494} 806 H${x - 54} Z`} fill="rgba(11, 13, 18, .9)" stroke="none" />
+            <path d={`M${x - 30} 700 H${x + 470}`} opacity="0.34" />
           </g>
         );
       })}
@@ -132,11 +145,12 @@ export function HallNear() {
      span read as a decorative zigzag, which is what pass 1 produced. */
   const web = pitch / 4;
   return (
-    <svg viewBox="0 62 4600 380" preserveAspectRatio="xMinYMid meet" aria-hidden="true" fill="none" stroke={STROKE} strokeWidth="2">
+    <svg viewBox="0 62 4600 380" preserveAspectRatio="xMinYMid meet" aria-hidden="true" fill="none" stroke={STROKE} strokeWidth="1.5">
       {/* Truss chords. Two rails plus diagonal webbing between them: read as a
-          structural member carrying load, not a decorative zigzag. */}
-      <path d="M0 96 H4600 M0 168 H4600" />
-      <path d="M0 62 H4600" opacity="0.45" />
+          structural member carrying load, not a decorative zigzag. The webbing
+          is deliberately the quietest part — it describes the member, it is
+          not meant to be looked at. */}
+      <path d="M0 96 H4600 M0 168 H4600" opacity="0.5" />
       {Array.from({ length: bays * 4 }, (_, i) => {
         const x = i * web;
         const up = i % 2 === 0;
@@ -144,32 +158,34 @@ export function HallNear() {
           <path
             key={`web-${x}`}
             d={up ? `M${x} 168 L${x + web} 96` : `M${x} 96 L${x + web} 168`}
-            opacity="0.72"
+            opacity="0.2"
+            strokeWidth="1.1"
           />
         );
       })}
       {/* Verticals at every bay: gives the truss a repeat, and therefore a
           measurable speed as it passes overhead. */}
       {Array.from({ length: bays }, (_, i) => (
-        <path key={`post-${i}`} d={`M${i * pitch} 62 V168`} opacity="0.6" />
+        <path key={`post-${i}`} d={`M${i * pitch} 62 V168`} opacity="0.3" />
       ))}
 
-      {/* Cable tray slung below the truss, running the length of the hall. */}
-      <path d="M0 236 H4600 M0 272 H4600" opacity="0.5" />
-      {Array.from({ length: bays * 2 }, (_, i) => (
-        <path key={`tray-${i}`} d={`M${i * (pitch / 2) + 60} 236 V272`} opacity="0.28" strokeWidth="1.2" />
-      ))}
+      {/* Cable tray slung below the truss, running the length of the hall.
+          Two rails and nothing else — the per-bay tick marks it used to carry
+          added density without adding information. */}
+      <path d="M0 236 H4600 M0 268 H4600" opacity="0.22" strokeWidth="1.1" />
 
       {/* Pendant fixtures on drop rods, alternating pitch so the rhythm is not
-          metronomic. Filaments carry the light rather than a glow filter. */}
+          metronomic. Filaments carry the light rather than a glow filter, and
+          they sit well below full strength: a lit lamp two rooms away must not
+          out-contrast the headline in the room the visitor is standing in. */}
       {Array.from({ length: bays }, (_, i) => {
         const x = i * pitch + (i % 3 === 0 ? 140 : 60);
         const drop = i % 2 === 0 ? 372 : 316;
         return (
           <g key={`lamp-${i}`}>
-            <path d={`M${x} 272 V${drop}`} strokeWidth="1.4" opacity="0.6" />
-            <path d={`M${x - 46} ${drop} H${x + 46} L${x + 28} ${drop + 62} H${x - 28} Z`} fill="rgba(242, 239, 230, .04)" />
-            <path d={`M${x - 22} ${drop + 60} H${x + 22}`} strokeWidth="4" opacity={i % 4 === 1 ? 0.4 : 0.85} />
+            <path d={`M${x} 268 V${drop}`} strokeWidth="1.2" opacity="0.3" />
+            <path d={`M${x - 46} ${drop} H${x + 46} L${x + 28} ${drop + 62} H${x - 28} Z`} fill="rgba(12, 14, 19, .8)" opacity="0.9" stroke="rgba(242, 239, 230, .16)" />
+            <path d={`M${x - 22} ${drop + 60} H${x + 22}`} strokeWidth="3.4" opacity={i % 4 === 1 ? 0.22 : 0.46} />
           </g>
         );
       })}

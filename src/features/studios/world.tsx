@@ -76,6 +76,11 @@ function Threshold({ at, label }: { at: number; label: string }) {
   return (
     <div className="cw-prop cw-threshold" style={prop(at)}>
       <span className="cw-threshold__frame" />
+      {/* The building names itself on its own lintel. The cold open used to
+          resolve out of an unlabelled rectangle in the dark, which read as
+          unfinished rather than withheld — the visitor should know what they
+          are walking into before the first department arrives. */}
+      <span className="cw-threshold__mark">{WORLD.facility}</span>
       <span className="cw-threshold__label">{label}</span>
     </div>
   );
@@ -194,6 +199,10 @@ export function StudiosWorld({ scope }: { scope: string }) {
       <div className="cw-world__ambient" />
       <div className="cw-world__beam" />
 
+      {/* Room shell. Ceiling first, so every plane below is read against a
+          surface rather than against void. */}
+      <div className="cw-world__ceiling" />
+
       {/* Depth planes, slowest first. */}
       <div className="cw-plane cw-plane--far"><HallFar /></div>
 
@@ -212,6 +221,11 @@ export function StudiosWorld({ scope }: { scope: string }) {
       <div className="cw-plane cw-plane--mid"><HallMid /></div>
 
       <div className="cw-world__floor" />
+      {/* Deck: the near half of the floor as a solid, with one lit leading
+          edge. It occludes the bottom of the operating floor, which is what
+          separates "midground" from "the plane I am standing on" — depth the
+          floor grid alone could only imply. */}
+      <div className="cw-world__deck" />
       <ConveyanceLine />
       <Signal />
 
@@ -221,6 +235,12 @@ export function StudiosWorld({ scope }: { scope: string }) {
       <Partition at={LANDMARK.partition04to05} />
       <div className="cw-plane cw-plane--near"><HallNear /></div>
       <Threshold at={LANDMARK.threshold} label={WORLD.thresholdLabel} />
+
+      {/* Foreground jambs: unlit structure the visitor is standing between.
+          Nothing is drawn on them — their whole job is to occlude the room's
+          edges, so the eye reads a near plane, a room plane and a far plane
+          instead of one flat field of linework. */}
+      <div className="cw-world__jambs" />
 
       {/* Depth haze: the far end of the hall is never fully resolved, which is
           what keeps the building feeling longer than the page. */}
