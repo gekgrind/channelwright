@@ -402,6 +402,36 @@ describe("video performance executor — bounded revision", () => {
     await executor.execute(step("bounded-video-performance-revision", withQa({ findings: [{ severity: "error", code: "SNAPSHOT_COVERAGE_OVERSTATED", message: "Overstated coverage.", evidenceIds: [] }] })));
     expect(m.reviseRecord).toHaveBeenCalledTimes(1);
   });
+
+  it("fails an immutable-snapshot contradiction before any revision reservation (real deterministic path)", async () => {
+    // Server-stamped snapshot with average view duration longer than the video —
+    // a contradiction no revision of the model-authored record can repair.
+    const badSnapshot = operatorPerformanceSnapshotFixture({
+      videoDurationSeconds: 120,
+      metrics: { ...operatorPerformanceSnapshotFixture().metrics, averageViewDurationSeconds: 240 },
+    });
+    const badDraft = () => channelVideoPerformanceResultFixture({ measuredSnapshot: badSnapshot });
+    const withSnapshot = (s: ClaimedWorkflowStep) =>
+      ({ ...s, input: { ...(s.input as Record<string, unknown>), performanceSnapshot: badSnapshot } }) as ClaimedWorkflowStep;
+
+    const usageMeter = meter();
+    const m = model();
+    const executor = new ChannelVideoPerformanceExecutor(resolver(), m, usageMeter);
+
+    const initial = await executor.execute(withSnapshot(step("initial-video-performance-qa", {
+      "validate-approved-release": approvedVideoReleaseArtifactFixture,
+      "draft-video-performance": { result: badDraft(), modelUsage: usage },
+    }))) as unknown as { qa: { findings: Array<{ code: string }> } };
+    expect(initial.qa.findings.map((f) => f.code)).toContain("SNAPSHOT_AVD_EXCEEDS_DURATION");
+
+    await expect(executor.execute(withSnapshot(step("bounded-video-performance-revision", {
+      "validate-approved-release": approvedVideoReleaseArtifactFixture,
+      "draft-video-performance": { result: badDraft(), modelUsage: usage },
+      "initial-video-performance-qa": initial,
+    })))).rejects.toThrow(/cannot be resolved by automated revision/);
+    expect(m.reviseRecord).not.toHaveBeenCalled();
+    expect(usageMeter.calls).not.toContain("reserve:video-performance:automated-revision");
+  });
 });
 
 // ---------------------------------------------------------------------------

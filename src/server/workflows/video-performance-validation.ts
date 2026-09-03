@@ -80,10 +80,33 @@ function transitiveStrategyRunId(upstream: ApprovedVideoReleaseArtifact) {
   return upstream.reference.upstreamVideoPackaging.upstreamVideoScript.upstreamVideoBrief.upstreamContentIntelligence.upstreamStrategy.strategyRunId;
 }
 
-const CLOSE = 1e-6;
-const near = (left: number, right: number) => Math.abs(left - right) <= CLOSE + Math.abs(right) * 1e-4;
-
 const COVERAGE_RANK: Record<"RICH" | "PARTIAL" | "SPARSE", number> = { SPARSE: 0, PARTIAL: 1, RICH: 2 };
+
+/**
+ * Canonical measurement unit for a release KPI metric — the single source of
+ * truth for both the observed-value probe below and operator-baseline unit
+ * compatibility. Channel- or funnel-level metrics a per-video snapshot cannot
+ * express have no canonical unit (null).
+ */
+function canonicalKpiMetricUnit(
+  metric: ReleasedVideoKpiBindingIdentity["metric"],
+): "COUNT" | "PERCENT" | "SECONDS" | "USD" | null {
+  switch (metric) {
+    case "IMPRESSIONS":
+    case "SUBSCRIBERS":
+      return "COUNT";
+    case "CLICK_THROUGH_RATE":
+    case "AUDIENCE_RETENTION":
+    case "RETURNING_VIEWERS":
+      return "PERCENT";
+    case "AVERAGE_VIEW_DURATION":
+      return "SECONDS";
+    case "REVENUE_INDICATOR":
+      return "USD";
+    default:
+      return null;
+  }
+}
 
 /** Which snapshot value a release KPI is measured against, and the observed-metric enum + unit it must be reported under. */
 function metricProbe(metric: ReleasedVideoKpiBindingIdentity["metric"], snapshot: OperatorPerformanceSnapshot): {
@@ -92,15 +115,16 @@ function metricProbe(metric: ReleasedVideoKpiBindingIdentity["metric"], snapshot
   value: number | null;
 } {
   const m = snapshot.metrics;
+  const unit = canonicalKpiMetricUnit(metric) ?? "NONE";
   switch (metric) {
-    case "IMPRESSIONS": return { observed: "IMPRESSIONS", unit: "COUNT", value: m.impressions };
-    case "CLICK_THROUGH_RATE": return { observed: "CLICK_THROUGH_RATE", unit: "PERCENT", value: m.clickThroughRatePct };
-    case "AVERAGE_VIEW_DURATION": return { observed: "AVERAGE_VIEW_DURATION", unit: "SECONDS", value: m.averageViewDurationSeconds };
-    case "AUDIENCE_RETENTION": return { observed: "AUDIENCE_RETENTION", unit: "PERCENT", value: m.averagePercentageViewedPct };
-    case "RETURNING_VIEWERS": return { observed: "RETURNING_VIEWERS", unit: "PERCENT", value: m.returningViewersPct };
+    case "IMPRESSIONS": return { observed: "IMPRESSIONS", unit, value: m.impressions };
+    case "CLICK_THROUGH_RATE": return { observed: "CLICK_THROUGH_RATE", unit, value: m.clickThroughRatePct };
+    case "AVERAGE_VIEW_DURATION": return { observed: "AVERAGE_VIEW_DURATION", unit, value: m.averageViewDurationSeconds };
+    case "AUDIENCE_RETENTION": return { observed: "AUDIENCE_RETENTION", unit, value: m.averagePercentageViewedPct };
+    case "RETURNING_VIEWERS": return { observed: "RETURNING_VIEWERS", unit, value: m.returningViewersPct };
     case "SUBSCRIBERS":
-      return { observed: "NET_SUBSCRIBERS", unit: "COUNT", value: m.subscribersGained === null ? null : m.subscribersGained - (m.subscribersLost ?? 0) };
-    case "REVENUE_INDICATOR": return { observed: "REVENUE_INDICATOR", unit: "USD", value: m.estimatedRevenueUsdIndicator };
+      return { observed: "NET_SUBSCRIBERS", unit, value: m.subscribersGained === null ? null : m.subscribersGained - (m.subscribersLost ?? 0) };
+    case "REVENUE_INDICATOR": return { observed: "REVENUE_INDICATOR", unit, value: m.estimatedRevenueUsdIndicator };
     // Channel-level or funnel-level KPIs a per-video snapshot cannot answer.
     case "PUBLISHING_CONSISTENCY":
     case "CONVERSION_INDICATOR":
@@ -170,10 +194,10 @@ export function deterministicVideoPerformanceValidation(
   // --- Snapshot internal consistency -----------------------------------
   const m = result.measuredSnapshot.metrics;
   const consistencyBroken: string[] = [];
-  if (m.views !== null && m.impressions !== null && m.views > m.impressions) {
-    consistencyBroken.push("views exceed impressions");
-    add("error", "SNAPSHOT_VIEWS_EXCEED_IMPRESSIONS", "The snapshot reports more views than impressions.");
-  }
+  // NOTE: views may legitimately exceed thumbnail impressions — YouTube
+  // impressions exclude view-producing surfaces (external sites, notifications,
+  // and other non-registered sources), so views > impressions is NOT a valid
+  // deterministic contradiction and is not checked here.
   if (m.averageViewDurationSeconds !== null && m.averageViewDurationSeconds > result.measuredSnapshot.videoDurationSeconds) {
     consistencyBroken.push("average view duration exceeds video length");
     add("error", "SNAPSHOT_AVD_EXCEEDS_DURATION", "The snapshot's average view duration is longer than the video.");
@@ -219,7 +243,9 @@ export function deterministicVideoPerformanceValidation(
         add("error", "OBSERVED_VALUE_NOT_FROM_SNAPSHOT", `${outcome.binding.label} reports an observed metric the snapshot does not contain.`);
       }
     } else {
-      if (outcome.metricObserved !== probe.observed || outcome.observedUnit !== probe.unit || outcome.observedValue === null || !near(outcome.observedValue, probe.value as number)) {
+      // Authoritative snapshot numbers are preserved verbatim: exact equality,
+      // never a floating tolerance that could let the model perturb the value.
+      if (outcome.metricObserved !== probe.observed || outcome.observedUnit !== probe.unit || outcome.observedValue !== probe.value) {
         add("error", "OBSERVED_VALUE_NOT_FROM_SNAPSHOT", `${outcome.binding.label} does not report the snapshot's ${probe.observed} value (${probe.value}) verbatim.`);
       }
     }
@@ -242,8 +268,18 @@ export function deterministicVideoPerformanceValidation(
       const baseline = result.measuredSnapshot.operatorBaselines.find((entry) => entry.metric === outcome.binding.metric);
       if (!baseline) {
         add("error", "BASELINE_NOT_OPERATOR_SUPPLIED", `${outcome.binding.label} cites an operator-supplied baseline, but the snapshot has no operator baseline for ${outcome.binding.metric}.`);
-      } else if (outcome.baselineValue === null || !near(outcome.baselineValue, baseline.value)) {
-        add("error", "BASELINE_NOT_OPERATOR_SUPPLIED", `${outcome.binding.label} does not cite the operator baseline value (${baseline.value}) verbatim.`);
+      } else {
+        // Authoritative operator baselines are preserved verbatim: exact equality.
+        if (outcome.baselineValue === null || outcome.baselineValue !== baseline.value) {
+          add("error", "BASELINE_NOT_OPERATOR_SUPPLIED", `${outcome.binding.label} does not cite the operator baseline value (${baseline.value}) verbatim.`);
+        }
+        // The operator baseline must be expressed in the metric's canonical unit,
+        // so a numeric value cannot be pinned to the wrong metric/unit identity
+        // (e.g. a CLICK_THROUGH_RATE baseline entered as a COUNT).
+        const expectedUnit = canonicalKpiMetricUnit(outcome.binding.metric);
+        if (expectedUnit !== null && baseline.unit !== expectedUnit) {
+          add("error", "BASELINE_UNIT_INCOMPATIBLE", `${outcome.binding.label} cites an operator baseline in ${baseline.unit}, but ${outcome.binding.metric} is measured in ${expectedUnit}.`);
+        }
       }
     }
 
@@ -371,8 +407,11 @@ export function mergeVideoPerformanceQA(
  * the release did not bind, which calls a hypothesis SUPPORTED without a
  * baseline, which fabricates a benchmark or prediction, or which tries to ingest
  * data or mutate the release must fail closed rather than be rewritten into
- * apparent compliance. Weak viewer value or an overstated confidence, by
- * contrast, is exactly what one bounded revision is for.
+ * apparent compliance. A contradiction inside the server-stamped, immutable
+ * operator snapshot is likewise unrevisable: no revision of the model-authored
+ * PERFORMANCE record can repair the snapshot itself. Weak viewer value or an
+ * overstated confidence, by contrast, is exactly what one bounded revision is
+ * for.
  */
 export const UNREVISABLE_VIDEO_PERFORMANCE_CODES = new Set([
   "UPSTREAM_RELEASE_REFERENCE_CHANGED",
@@ -382,11 +421,18 @@ export const UNREVISABLE_VIDEO_PERFORMANCE_CODES = new Set([
   "CONTENT_INTEGRITY_BLOCKING_RISK",
   "KPI_STRATEGY_IDENTITY_MISMATCH",
   "SNAPSHOT_ECHO_ALTERED",
+  // Contradictions inside the immutable, server-stamped operator snapshot.
+  "SNAPSHOT_AVD_EXCEEDS_DURATION",
+  "SNAPSHOT_WINDOW_INVERTED",
+  "SNAPSHOT_RETENTION_INCONSISTENT",
   "HYPOTHESIS_NOT_FROM_RELEASE",
   "HYPOTHESIS_OVERSTATED_WITHOUT_DATA",
   "VERDICT_WITHOUT_BASELINE",
   "QUALITATIVE_VERDICT_OVERSTATED",
   "BASELINE_NOT_OPERATOR_SUPPLIED",
+  // The cited operator baseline's unit is incompatible with its metric; the
+  // operator baseline set is immutable at this stage.
+  "BASELINE_UNIT_INCOMPATIBLE",
   "FABRICATED_BENCHMARK",
   "FABRICATED_SEARCH_VOLUME",
   "FABRICATED_REVENUE_PREDICTION",

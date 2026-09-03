@@ -42,13 +42,19 @@ describe("deterministic video performance validation", () => {
     expect(errors(result)).toContain("SNAPSHOT_ECHO_ALTERED");
   });
 
-  it("rejects a snapshot reporting more views than impressions", () => {
-    const { snapshot, result } = withMetrics({ views: 999_999 });
-    expect(errors(result, snapshot)).toContain("SNAPSHOT_VIEWS_EXCEED_IMPRESSIONS");
+  it("accepts a valid snapshot where views exceed thumbnail impressions", () => {
+    // YouTube impressions exclude view-producing surfaces (external, notifications,
+    // etc.), so views > impressions is not a deterministic contradiction.
+    const { snapshot, result } = withMetrics({ impressions: 5_000, views: 6_000 });
+    expect([...errors(result, snapshot)]).toEqual([]);
   });
 
   it("flags an integrity claim that deterministic checks contradict", () => {
-    const { snapshot, result } = withMetrics({ views: 999_999 });
+    const base = operatorPerformanceSnapshotFixture();
+    const { snapshot, result } = paired({
+      observationWindow: { ...base.observationWindow, start: "2026-09-20T00:00:00.000Z", end: "2026-09-01T00:00:00.000Z" },
+    });
+    // fixture declares internallyConsistent: true, but the window is inverted
     expect(errors(result, snapshot)).toContain("SNAPSHOT_INTEGRITY_UNDERSTATED");
   });
 
@@ -174,5 +180,82 @@ describe("deterministic video performance validation", () => {
 
   it("rejects a record that serializes above the durable-output margin", () => {
     expect(errors(channelVideoPerformanceResultFixture(), operatorPerformanceSnapshotFixture(), 2_000)).toContain("RESULT_PAYLOAD_TOO_LARGE");
+  });
+
+  // --- Authoritative numbers are preserved verbatim (no float tolerance) -----
+
+  it("accepts an observed value that echoes the snapshot exactly", () => {
+    const result = channelVideoPerformanceResultFixture();
+    expect(errors(result).has("OBSERVED_VALUE_NOT_FROM_SNAPSHOT")).toBe(false);
+  });
+
+  it("rejects an observed value perturbed below the old relative tolerance (12 -> 12.001)", () => {
+    const base = channelVideoPerformanceResultFixture();
+    const result = channelVideoPerformanceResultFixture({
+      kpiHypothesisOutcomes: base.kpiHypothesisOutcomes.map((o, i) => (i === 0 ? { ...o, observedValue: 12.001 } : o)),
+    });
+    expect(errors(result)).toContain("OBSERVED_VALUE_NOT_FROM_SNAPSHOT");
+  });
+
+  // --- Operator baseline: verbatim value + metric/unit compatibility --------
+
+  /** outcome[0] (CLICK_THROUGH_RATE) adjudicated against an operator baseline. */
+  const withCtrBaseline = (
+    baselineOverrides: Partial<OperatorPerformanceSnapshot["operatorBaselines"][number]> = {},
+    outcomeOverrides: Record<string, unknown> = {},
+  ) => {
+    const baseFixture = channelVideoPerformanceResultFixture();
+    const snapshot = operatorPerformanceSnapshotFixture({
+      operatorBaselines: [{
+        metric: "CLICK_THROUGH_RATE",
+        label: "Channel CTR baseline",
+        value: 8,
+        unit: "PERCENT",
+        basisNote: "Trailing 10-video median from the operator's own Studio export.",
+        ...baselineOverrides,
+      }],
+    });
+    const result = channelVideoPerformanceResultFixture({
+      measuredSnapshot: snapshot,
+      kpiHypothesisOutcomes: baseFixture.kpiHypothesisOutcomes.map((o, i) => (i === 0
+        ? { ...o, comparisonBasis: "OPERATOR_SUPPLIED_BASELINE", baselineValue: 8, verdict: "SUPPORTED", ...outcomeOverrides }
+        : o)),
+    });
+    return { snapshot, result };
+  };
+
+  it("accepts a definitive verdict resting on an operator baseline in the metric's canonical unit", () => {
+    const { snapshot, result } = withCtrBaseline();
+    expect([...errors(result, snapshot)]).toEqual([]);
+  });
+
+  it("rejects a baseline value perturbed below the old relative tolerance (8 -> 8.0005)", () => {
+    const { snapshot, result } = withCtrBaseline({}, { baselineValue: 8.0005 });
+    expect(errors(result, snapshot)).toContain("BASELINE_NOT_OPERATOR_SUPPLIED");
+  });
+
+  it("rejects CLICK_THROUGH_RATE adjudicated against a baseline entered as COUNT", () => {
+    const { snapshot, result } = withCtrBaseline({ unit: "COUNT" });
+    expect(errors(result, snapshot)).toContain("BASELINE_UNIT_INCOMPATIBLE");
+  });
+
+  it("rejects AUDIENCE_RETENTION adjudicated against a baseline entered as SECONDS", () => {
+    const baseFixture = channelVideoPerformanceResultFixture();
+    const snapshot = operatorPerformanceSnapshotFixture({
+      operatorBaselines: [{
+        metric: "AUDIENCE_RETENTION",
+        label: "Channel retention baseline",
+        value: 35,
+        unit: "SECONDS",
+        basisNote: "Trailing median average-percentage-viewed from the operator's Studio export.",
+      }],
+    });
+    const result = channelVideoPerformanceResultFixture({
+      measuredSnapshot: snapshot,
+      kpiHypothesisOutcomes: baseFixture.kpiHypothesisOutcomes.map((o, i) => (i === 1
+        ? { ...o, comparisonBasis: "OPERATOR_SUPPLIED_BASELINE", baselineValue: 35, verdict: "SUPPORTED" }
+        : o)),
+    });
+    expect(errors(result, snapshot)).toContain("BASELINE_UNIT_INCOMPATIBLE");
   });
 });
