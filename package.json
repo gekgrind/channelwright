@@ -32,7 +32,8 @@
     "gate:videoscript:disposable-pg": "tsx scripts/channel-video-script-disposable-pg.ts",
     "gate:videopackaging:disposable-pg": "tsx scripts/channel-video-packaging-disposable-pg.ts",
     "gate:videorelease:disposable-pg": "tsx scripts/channel-video-release-disposable-pg.ts",
-    "gate:videoperformance:disposable-pg": "tsx scripts/channel-video-performance-disposable-pg.ts"
+    "gate:videoperformance:disposable-pg": "tsx scripts/channel-video-performance-disposable-pg.ts",
+    "gate:videodiagnosis:disposable-pg": "tsx scripts/channel-video-diagnosis-disposable-pg.ts"
   },
   "dependencies": {
     "@remotion/bundler": "4.0.500",

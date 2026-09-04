@@ -7,7 +7,7 @@ import type { ChannelResearchBudget } from "./research-config";
 type WorkflowUsageBudget = Pick<ChannelResearchBudget,
   | "maxAggregateProviderRequests" | "maxAggregateProviderQuotaUnits" | "maxAggregateSearches"
   | "maxAggregateSynthesisCalls" | "maxAggregateQaCalls" | "maxAggregateRevisionCalls"
-  | "maxAggregateInputTokens" | "maxAggregateOutputTokens" | "maxAggregateTotalTokens">;
+  | "maxAggregateInputTokens" | "maxAggregateOutputTokens" | "maxAggregateTotalTokens"> & { maxAutomatedRevisions?: number };
 
 export type ResearchUsageCounters = Partial<{
   providerRequests: number;
@@ -67,7 +67,7 @@ export interface ResearchUsageMeter {
 }
 
 export class ResearchBudgetError extends Error {
-  readonly code: "RESEARCH_RESOURCE_BUDGET_EXHAUSTED" | "STRATEGY_RESOURCE_BUDGET_EXHAUSTED" | "CONTENT_RESOURCE_BUDGET_EXHAUSTED" | "VIDEO_BRIEF_RESOURCE_BUDGET_EXHAUSTED" | "VIDEO_SCRIPT_RESOURCE_BUDGET_EXHAUSTED" | "VIDEO_PACKAGING_RESOURCE_BUDGET_EXHAUSTED" | "VIDEO_RELEASE_RESOURCE_BUDGET_EXHAUSTED" | "VIDEO_PERFORMANCE_RESOURCE_BUDGET_EXHAUSTED";
+  readonly code: "RESEARCH_RESOURCE_BUDGET_EXHAUSTED" | "STRATEGY_RESOURCE_BUDGET_EXHAUSTED" | "CONTENT_RESOURCE_BUDGET_EXHAUSTED" | "VIDEO_BRIEF_RESOURCE_BUDGET_EXHAUSTED" | "VIDEO_SCRIPT_RESOURCE_BUDGET_EXHAUSTED" | "VIDEO_PACKAGING_RESOURCE_BUDGET_EXHAUSTED" | "VIDEO_RELEASE_RESOURCE_BUDGET_EXHAUSTED" | "VIDEO_PERFORMANCE_RESOURCE_BUDGET_EXHAUSTED" | "VIDEO_DIAGNOSIS_RESOURCE_BUDGET_EXHAUSTED";
   readonly retryable = false;
   constructor(readonly exhaustionCode: string, workflowType: ClaimedWorkflowStep["workflowType"] = "CHANNEL_RESEARCH") {
     super(`The durable ${workflowType} run budget is exhausted (${exhaustionCode}).`);
@@ -78,7 +78,8 @@ export class ResearchBudgetError extends Error {
             : workflowType === "CHANNEL_VIDEO_PACKAGING" ? "VIDEO_PACKAGING_RESOURCE_BUDGET_EXHAUSTED"
               : workflowType === "CHANNEL_VIDEO_RELEASE" ? "VIDEO_RELEASE_RESOURCE_BUDGET_EXHAUSTED"
                 : workflowType === "CHANNEL_VIDEO_PERFORMANCE" ? "VIDEO_PERFORMANCE_RESOURCE_BUDGET_EXHAUSTED"
-                : "RESEARCH_RESOURCE_BUDGET_EXHAUSTED";
+                  : workflowType === "CHANNEL_VIDEO_DIAGNOSIS" ? "VIDEO_DIAGNOSIS_RESOURCE_BUDGET_EXHAUSTED"
+                    : "RESEARCH_RESOURCE_BUDGET_EXHAUSTED";
   }
 }
 
@@ -99,7 +100,7 @@ export function aggregateResearchLimits(budget: WorkflowUsageBudget): ResearchUs
     inputTokens: budget.maxAggregateInputTokens,
     outputTokens: budget.maxAggregateOutputTokens,
     totalTokens: budget.maxAggregateTotalTokens,
-    automatedRevisions: 1,
+    automatedRevisions: budget.maxAutomatedRevisions ?? 1,
   };
 }
 
