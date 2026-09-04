@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { originalContributionKindSchema, viewerNeedKindSchema, viewerValueAssessmentSchema, viewerValueProvenanceSchema } from "./viewer-value";
 
-export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING", "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE"]);
+export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING", "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE", "CHANNEL_VIDEO_DIAGNOSIS"]);
 export type ProductionWorkflowType = z.infer<typeof workflowTypeSchema>;
 
 export const workflowStatusSchema = z.enum(["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL", "BLOCKED", "COMPLETED", "FAILED", "CANCELED"]);
@@ -1964,6 +1964,289 @@ export const videoPerformanceRevisionSchema = z.object({
   modelUsage: researchDraftSchema.shape.modelUsage,
 }).strict();
 
+// ---------------------------------------------------------------------------
+// CHANNEL_VIDEO_DIAGNOSIS
+//
+// The Learning-stage bridge after one exact, approved Performance artifact.
+// Diagnosis describes evidence-supported conditions and uncertainty only. It
+// intentionally has no recommendation, decision, action, or experiment shape.
+// ---------------------------------------------------------------------------
+
+export const approvedVideoPerformanceReferenceSchema = z.object({
+  performanceWorkflowId: z.string().uuid(),
+  performanceRunId: z.string().uuid(),
+  workflowDefinitionVersion: z.number().int().positive(),
+  outputSchemaVersion: z.literal(1),
+  approvalId: z.string().uuid(),
+  approvedBy: z.string().uuid(),
+  approvedAt: z.string().datetime(),
+  finalQaState: z.enum(["accept", "human_review_required"]),
+  finalQaScore: z.number().int().min(0).max(100),
+  performanceArtifactHash: sha256Schema,
+  performanceProvenanceHash: sha256Schema,
+  parentRunId: z.string().uuid().nullable(),
+  rootRunId: z.string().uuid(),
+  upstreamVideoRelease: approvedVideoReleaseReferenceSchema,
+}).strict();
+
+export const videoDiagnosisRequestInputSchema = z.object({
+  videoPerformanceWorkflowId: z.string().uuid(),
+  videoPerformanceRunId: z.string().uuid(),
+}).strict();
+
+export const diagnosisLineageWorkflowTypeSchema = z.enum([
+  "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE",
+  "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING",
+  "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE",
+]);
+
+export const diagnosisArtifactIdentitySchema = z.object({
+  workflowType: diagnosisLineageWorkflowTypeSchema,
+  runId: z.string().uuid(),
+  artifactHash: sha256Schema,
+  schemaVersion: z.number().int().positive(),
+}).strict();
+
+export const diagnosisLineageLocatorSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("STABLE_ID"),
+    entityType: z.enum(["TITLE_CANDIDATE", "THUMBNAIL_CONCEPT", "CHAPTER", "SCRIPT_SECTION", "BRIEF_BEAT", "BRIEF_CLAIM", "EVIDENCE", "TOPIC", "PILLAR"]),
+    id: z.string().min(1).max(200),
+  }).strict(),
+  z.object({
+    kind: z.literal("ARTIFACT_LOCAL"),
+    entityType: z.enum(["STRATEGY_ASSERTION", "STRATEGY_KPI", "STRATEGY_PILLAR", "SINGLETON", "ARRAY_ELEMENT"]),
+    workflowType: diagnosisLineageWorkflowTypeSchema,
+    runId: z.string().uuid(),
+    artifactHash: sha256Schema,
+    schemaVersion: z.number().int().positive(),
+    jsonPointer: z.string().regex(/^\/(?:[^/~]|~0|~1)+(?:\/(?:[^/~]|~0|~1)+)*$/).max(500),
+  }).strict(),
+]);
+
+export const diagnosisLineageEntrySchema = z.object({
+  key: z.string().regex(/^lin:[a-z0-9][a-z0-9:._-]{0,198}$/),
+  locator: diagnosisLineageLocatorSchema,
+  parentKeys: z.array(z.string().regex(/^lin:/)).max(8),
+  label: z.string().min(1).max(300).nullable(),
+}).strict();
+
+export const videoDiagnosisScopeSchema = z.object({
+  artifacts: z.array(diagnosisArtifactIdentitySchema).min(8).max(8),
+  entries: z.array(diagnosisLineageEntrySchema).min(1).max(240),
+  facts: z.array(z.object({
+    key: z.string().regex(/^fact:[a-z0-9][a-z0-9:._-]{0,118}$/),
+    value: z.union([z.string().max(2_000), z.number(), z.boolean(), z.null()]),
+    sourceRef: z.string().min(1).max(300),
+  }).strict()).min(1).max(80),
+}).strict().superRefine((scope, context) => {
+  const requiredArtifactTypes = new Set(diagnosisLineageWorkflowTypeSchema.options);
+  const artifactTypes = new Set(scope.artifacts.map((artifact) => artifact.workflowType));
+  if (artifactTypes.size !== requiredArtifactTypes.size || [...requiredArtifactTypes].some((type) => !artifactTypes.has(type))) {
+    context.addIssue({ code: "custom", path: ["artifacts"], message: "Diagnosis scope must contain exactly one artifact from every approved lineage workflow." });
+  }
+  const keys = new Set<string>();
+  const locatorIdentities = new Set<string>();
+  for (const [index, entry] of scope.entries.entries()) {
+    if (keys.has(entry.key)) context.addIssue({ code: "custom", path: ["entries", index, "key"], message: "Lineage keys must be unique." });
+    keys.add(entry.key);
+    const locatorIdentity = entry.locator.kind === "STABLE_ID"
+      ? `${entry.locator.kind}:${entry.locator.entityType}:${entry.locator.id}`
+      : `${entry.locator.kind}:${entry.locator.workflowType}:${entry.locator.runId}:${entry.locator.artifactHash}:${entry.locator.schemaVersion}:${entry.locator.jsonPointer}`;
+    if (locatorIdentities.has(locatorIdentity)) context.addIssue({ code: "custom", path: ["entries", index, "locator"], message: "Lineage locators must be unique." });
+    locatorIdentities.add(locatorIdentity);
+    if (entry.locator.kind === "ARTIFACT_LOCAL") {
+      const locator = entry.locator;
+      if (!scope.artifacts.some((artifact) => artifact.workflowType === locator.workflowType && artifact.runId === locator.runId && artifact.artifactHash === locator.artifactHash && artifact.schemaVersion === locator.schemaVersion)) {
+        context.addIssue({ code: "custom", path: ["entries", index, "locator"], message: "Artifact-local locator identity must match an authoritative scope artifact." });
+      }
+    }
+  }
+  for (const [index, entry] of scope.entries.entries()) {
+    for (const parent of entry.parentKeys) if (!keys.has(parent)) context.addIssue({ code: "custom", path: ["entries", index, "parentKeys"], message: `Unknown lineage parent ${parent}.` });
+  }
+  const factKeys = new Set<string>();
+  for (const [index, fact] of scope.facts.entries()) {
+    if (factKeys.has(fact.key)) context.addIssue({ code: "custom", path: ["facts", index, "key"], message: "Fact keys must be unique." });
+    factKeys.add(fact.key);
+  }
+});
+
+export const diagnosisCategorySchema = z.enum([
+  "PACKAGING", "OPENING_PROMISE", "RETENTION_STRUCTURE", "DISTRIBUTION",
+  "AUDIENCE_FIT", "CONVERSION_OUTCOME", "VIEWER_VALUE", "LINEAGE_INTEGRITY", "OTHER",
+]);
+
+export const diagnosisCapabilitySchema = z.object({
+  category: diagnosisCategorySchema,
+  availability: z.enum(["AVAILABLE", "UNAVAILABLE"]),
+  reasonCode: z.enum([
+    "AGGREGATE_METRICS_AVAILABLE", "TEXTUAL_ALIGNMENT_AVAILABLE", "APPROVED_KPI_OUTCOME_AVAILABLE",
+    "RETENTION_CURVE_MISSING", "TRAFFIC_SOURCE_DATA_MISSING", "AUDIENCE_SEGMENT_DATA_MISSING",
+    "DOWNSTREAM_ATTRIBUTION_MISSING", "PROVIDER_VIDEO_ID_MISSING", "PUBLISH_TIMESTAMP_MISSING", "OTHER",
+  ]),
+  explanation: z.string().min(1).max(500),
+}).strict();
+
+export const diagnosisObservationSchema = z.object({
+  id: z.string().regex(/^obs:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  kind: z.enum(["OBSERVED", "DERIVED", "APPROVED_UPSTREAM_INTERPRETATION"]),
+  label: z.string().min(1).max(300),
+  value: z.union([z.number(), z.string().max(1_000), z.boolean(), z.null()]),
+  unit: z.enum(["COUNT", "PERCENT", "SECONDS", "HOURS", "USD", "RATIO", "TEXT", "BOOLEAN", "NONE"]),
+  sourceRefs: z.array(z.string().min(1).max(300)).min(1).max(20),
+  derivationRule: z.string().regex(/^DIAG_[A-Z0-9_]+_V1$/).nullable(),
+  sampleAdequacy: z.enum(["sufficient", "insufficient", "unknown"]),
+  coverage: z.enum(["complete", "partial", "sparse"]),
+}).strict().superRefine((observation, context) => {
+  if (observation.kind === "DERIVED" && observation.derivationRule === null) context.addIssue({ code: "custom", path: ["derivationRule"], message: "Derived observations require an allowlisted rule." });
+  if (observation.kind !== "DERIVED" && observation.derivationRule !== null) context.addIssue({ code: "custom", path: ["derivationRule"], message: "Only derived observations may name a derivation rule." });
+});
+
+export const videoDiagnosisFindingSchema = z.object({
+  id: z.string().regex(/^diag:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  category: diagnosisCategorySchema,
+  severity: z.enum(["high", "medium", "low"]),
+  epistemicStatus: z.enum(["SUPPORTED_INFERENCE", "HYPOTHESIS"]),
+  confidence: z.enum(["high", "medium", "low"]),
+  claim: z.string().min(1).max(1_200),
+  observationIds: z.array(z.string().regex(/^obs:/)).min(1).max(20),
+  lineageRefs: z.array(z.string().regex(/^lin:/)).max(20),
+  supportingEvidence: z.array(z.string().min(1).max(600)).min(1).max(12),
+  contradictoryEvidence: z.array(z.string().min(1).max(600)).max(12),
+  alternativeExplanations: z.array(z.string().min(1).max(600)).max(12),
+  additionalEvidenceNeeded: z.array(z.string().min(1).max(600)).max(12),
+}).strict().superRefine((finding, context) => {
+  if (finding.epistemicStatus === "HYPOTHESIS") {
+    if (finding.confidence === "high") context.addIssue({ code: "custom", path: ["confidence"], message: "Hypothesis confidence cannot exceed medium." });
+    if (finding.alternativeExplanations.length === 0) context.addIssue({ code: "custom", path: ["alternativeExplanations"], message: "Hypotheses require alternative explanations." });
+    if (finding.additionalEvidenceNeeded.length === 0) context.addIssue({ code: "custom", path: ["additionalEvidenceNeeded"], message: "Hypotheses require additional evidence needed." });
+  }
+});
+
+export const videoDiagnosisUnknownSchema = z.object({
+  id: z.string().regex(/^unknown:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  type: z.enum(["MISSING_METRIC", "INSUFFICIENT_SAMPLE", "PARTIAL_WINDOW", "CONFLICTING_EVIDENCE", "LINEAGE_GAP", "UNSUPPORTED_CAUSAL_CLAIM", "STALE_INPUT", "OTHER"]),
+  blockedClaim: z.string().min(1).max(800),
+  dataRequired: z.array(z.string().min(1).max(500)).min(1).max(12),
+  affectedCategories: z.array(diagnosisCategorySchema).min(1).max(9),
+}).strict();
+
+export const videoDiagnosisAnalysisSchema = z.object({
+  findings: z.array(videoDiagnosisFindingSchema).max(24),
+  unknowns: z.array(videoDiagnosisUnknownSchema).max(24),
+  viewerValueAnalysis: z.object({
+    state: z.enum(["PRESERVED", "AT_RISK", "UNKNOWN"]),
+    observationIds: z.array(z.string().regex(/^obs:/)).max(20),
+    performanceVersusValue: z.string().min(1).max(900),
+  }).strict(),
+  summary: z.object({
+    outcome: z.enum(["SUPPORTED_FINDINGS", "MIXED", "INCONCLUSIVE", "INSUFFICIENT_EVIDENCE"]),
+    strongestFindingIds: z.array(z.string().regex(/^diag:/)).max(8),
+    unresolvedUnknownIds: z.array(z.string().regex(/^unknown:/)).max(24),
+    overallConfidence: z.enum(["high", "medium", "low"]),
+    narrative: z.string().min(1).max(1_200),
+    decisionDeferred: z.literal(true),
+  }).strict(),
+}).strict().superRefine((analysis, context) => {
+  const findingIds = new Set<string>();
+  for (const [index, finding] of analysis.findings.entries()) {
+    if (findingIds.has(finding.id)) context.addIssue({ code: "custom", path: ["findings", index, "id"], message: "Finding IDs must be unique." });
+    findingIds.add(finding.id);
+  }
+  const unknownIds = new Set<string>();
+  for (const [index, unknown] of analysis.unknowns.entries()) {
+    if (unknownIds.has(unknown.id)) context.addIssue({ code: "custom", path: ["unknowns", index, "id"], message: "Unknown IDs must be unique." });
+    unknownIds.add(unknown.id);
+  }
+  for (const id of analysis.summary.strongestFindingIds) if (!findingIds.has(id)) context.addIssue({ code: "custom", path: ["summary", "strongestFindingIds"], message: `Unknown finding ${id}.` });
+  for (const id of analysis.summary.unresolvedUnknownIds) if (!unknownIds.has(id)) context.addIssue({ code: "custom", path: ["summary", "unresolvedUnknownIds"], message: `Unknown unknown ${id}.` });
+  if (analysis.findings.length === 0 && (analysis.unknowns.length === 0 || !["INCONCLUSIVE", "INSUFFICIENT_EVIDENCE"].includes(analysis.summary.outcome))) {
+    context.addIssue({ code: "custom", path: ["summary", "outcome"], message: "Zero findings require typed unknowns and an inconclusive outcome." });
+  }
+});
+
+export const videoDiagnosisCrossModelReviewSchema = z.object({
+  analyst: modelAttributionSchema,
+  critic: modelAttributionSchema,
+  outcome: z.enum(["AGREED", "CRITIC_RAISED_ISSUE", "HUMAN_REVIEW_REQUIRED"]),
+  safeToFinalize: z.boolean(),
+  findings: z.array(z.object({
+    code: z.string().regex(/^[A-Z][A-Z0-9_]{2,79}$/),
+    severity: z.enum(["error", "warning", "info"]),
+    affectedField: z.string().min(1).max(200),
+    rationale: z.string().min(1).max(900),
+    evidenceRefs: z.array(z.string().min(1).max(200)).max(20),
+  }).strict()).max(20),
+  summary: z.string().min(1).max(2_500),
+}).strict();
+
+export const videoDiagnosisInputSchema = videoDiagnosisRequestInputSchema.extend({
+  approvedVideoPerformanceReference: approvedVideoPerformanceReferenceSchema,
+  humanRevisionNote: z.string().trim().min(1).max(2_000).optional(),
+}).strict();
+
+export const approvedVideoPerformanceArtifactSchema = z.object({
+  reference: approvedVideoPerformanceReferenceSchema,
+  performanceResult: channelVideoPerformanceResultSchema,
+  diagnosisScope: videoDiagnosisScopeSchema,
+}).strict();
+
+export const diagnosisObservationSetSchema = z.object({
+  observations: z.array(diagnosisObservationSchema).min(1).max(80),
+  capabilities: z.array(diagnosisCapabilitySchema).min(7).max(9),
+  deterministicUnknowns: z.array(videoDiagnosisUnknownSchema).max(24),
+}).strict();
+
+export const videoDiagnosisDraftSchema = z.object({
+  analysis: videoDiagnosisAnalysisSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+  analyst: modelAttributionSchema,
+}).strict();
+
+export const videoDiagnosisCritiqueSchema = z.object({
+  safeToFinalize: z.boolean(),
+  summary: z.string().min(1).max(2_500),
+  findings: videoDiagnosisCrossModelReviewSchema.shape.findings,
+}).strict();
+
+export const videoDiagnosisCritiqueStepSchema = z.object({
+  critique: videoDiagnosisCritiqueSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+  critic: modelAttributionSchema,
+}).strict();
+
+export const videoDiagnosisQAResultSchema = researchQAResultSchema;
+export const videoDiagnosisQAStepSchema = z.object({
+  qa: videoDiagnosisQAResultSchema,
+  crossModelReview: videoDiagnosisCrossModelReviewSchema,
+  result: z.unknown(),
+}).strict();
+
+export const channelVideoDiagnosisResultSchema = z.object({
+  schemaVersion: z.literal(1),
+  workflowType: z.literal("CHANNEL_VIDEO_DIAGNOSIS"),
+  diagnosedAt: z.string().datetime(),
+  source: z.object({
+    performanceWorkflowId: z.string().uuid(),
+    performanceRunId: z.string().uuid(),
+    releaseWorkflowId: z.string().uuid(),
+    releaseRunId: z.string().uuid(),
+    topicId: topicIdSchema,
+    pillarId: pillarIdSchema,
+    finalTitle: z.string().min(1).max(100),
+    subjectIdentity: z.string().min(1).max(300),
+  }).strict(),
+  upstreamVideoPerformance: approvedVideoPerformanceReferenceSchema,
+  diagnosisScope: videoDiagnosisScopeSchema,
+  observations: z.array(diagnosisObservationSchema).min(1).max(80),
+  capabilities: z.array(diagnosisCapabilitySchema).min(7).max(9),
+  analysis: videoDiagnosisAnalysisSchema,
+  viewerValueProvenance: viewerValueProvenanceSchema,
+  crossModelReview: videoDiagnosisCrossModelReviewSchema,
+  modelProvenance: z.array(modelAttributionSchema).length(2),
+}).strict();
+
 export const channelConceptValidationInputSchema = z.object({
   proposedConcept: z.string().trim().min(20).max(2_000),
   audienceContext: z.string().trim().min(3).max(2_000).optional(),
@@ -1985,7 +2268,8 @@ export const workflowStartRequestSchema = z.object({
             : request.workflowType === "CHANNEL_VIDEO_PACKAGING" ? videoPackagingRequestInputSchema
               : request.workflowType === "CHANNEL_VIDEO_RELEASE" ? videoReleaseRequestInputSchema
                 : request.workflowType === "CHANNEL_VIDEO_PERFORMANCE" ? videoPerformanceRequestInputSchema
-                  : channelConceptValidationInputSchema;
+                  : request.workflowType === "CHANNEL_VIDEO_DIAGNOSIS" ? videoDiagnosisRequestInputSchema
+                    : channelConceptValidationInputSchema;
   const parsed = schema.safeParse(request.input);
   if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue, path: ["input", ...issue.path] });
 }).transform((request) => request as
@@ -1997,7 +2281,8 @@ export const workflowStartRequestSchema = z.object({
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_SCRIPT"; definitionVersion: 1; input: VideoScriptRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_PACKAGING"; definitionVersion: 1; input: VideoPackagingRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_RELEASE"; definitionVersion: 1; input: VideoReleaseRequestInput }
-  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_PERFORMANCE"; definitionVersion: 1; input: VideoPerformanceRequestInput });
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_PERFORMANCE"; definitionVersion: 1; input: VideoPerformanceRequestInput }
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_DIAGNOSIS"; definitionVersion: 1; input: VideoDiagnosisRequestInput });
 
 export const workflowApprovalDecisionSchema = z.object({
   decision: z.enum(["APPROVE", "REJECT", "REQUEST_REVISION"]),
@@ -2108,6 +2393,19 @@ export type VideoPerformanceInput = z.infer<typeof videoPerformanceInputSchema>;
 export type ChannelVideoPerformanceContent = z.infer<typeof channelVideoPerformanceContentSchema>;
 export type ChannelVideoPerformanceResult = z.infer<typeof channelVideoPerformanceResultSchema>;
 export type VideoPerformanceQAResult = z.infer<typeof videoPerformanceQAResultSchema>;
+export type ApprovedVideoPerformanceReference = z.infer<typeof approvedVideoPerformanceReferenceSchema>;
+export type ApprovedVideoPerformanceArtifact = z.infer<typeof approvedVideoPerformanceArtifactSchema>;
+export type VideoDiagnosisRequestInput = z.infer<typeof videoDiagnosisRequestInputSchema>;
+export type VideoDiagnosisInput = z.infer<typeof videoDiagnosisInputSchema>;
+export type VideoDiagnosisScope = z.infer<typeof videoDiagnosisScopeSchema>;
+export type DiagnosisObservation = z.infer<typeof diagnosisObservationSchema>;
+export type DiagnosisObservationSet = z.infer<typeof diagnosisObservationSetSchema>;
+export type VideoDiagnosisFinding = z.infer<typeof videoDiagnosisFindingSchema>;
+export type VideoDiagnosisUnknown = z.infer<typeof videoDiagnosisUnknownSchema>;
+export type VideoDiagnosisAnalysis = z.infer<typeof videoDiagnosisAnalysisSchema>;
+export type VideoDiagnosisCritique = z.infer<typeof videoDiagnosisCritiqueSchema>;
+export type VideoDiagnosisQAResult = z.infer<typeof videoDiagnosisQAResultSchema>;
+export type ChannelVideoDiagnosisResult = z.infer<typeof channelVideoDiagnosisResultSchema>;
 export type WorkflowStartRequest = z.infer<typeof workflowStartRequestSchema>;
 export type WorkflowApprovalDecision = z.infer<typeof workflowApprovalDecisionSchema>;
 
@@ -2284,6 +2582,23 @@ const channelVideoPerformanceDefinition: WorkflowDefinition<VideoPerformanceRequ
   ],
 };
 
+const channelVideoDiagnosisDefinition: WorkflowDefinition<VideoDiagnosisRequestInput, ChannelVideoDiagnosisResult> = {
+  type: "CHANNEL_VIDEO_DIAGNOSIS",
+  version: 1,
+  objective: "Explain one exact approved CHANNEL_VIDEO_PERFORMANCE artifact using deterministic observations, bounded inference, independent critique, and human approval without recommending actions",
+  inputSchema: videoDiagnosisRequestInputSchema,
+  outputSchema: channelVideoDiagnosisResultSchema,
+  steps: [
+    { key: "validate-approved-performance", kind: "WORKER", capability: "approved-performance-validation", dependsOn: [], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "derive-diagnosis-observations", kind: "WORKER", capability: "deterministic-diagnosis-observation", dependsOn: ["validate-approved-performance"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "draft-video-diagnosis", kind: "WORKER", capability: "video-diagnosis-analysis", dependsOn: ["derive-diagnosis-observations"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "critique-video-diagnosis", kind: "WORKER", capability: "independent-video-diagnosis-critique", dependsOn: ["draft-video-diagnosis"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "final-video-diagnosis-qa", kind: "WORKER", capability: "deterministic-video-diagnosis-qa", dependsOn: ["critique-video-diagnosis"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "finalize-video-diagnosis", kind: "WORKER", capability: "video-diagnosis-finalizer", dependsOn: ["final-video-diagnosis-qa"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "review-video-diagnosis", kind: "APPROVAL", capability: "human", dependsOn: ["finalize-video-diagnosis"], maxAttempts: 1, retryBaseSeconds: 0 },
+  ],
+};
+
 const registry = new Map<string, WorkflowDefinition>([
   [`${channelConceptValidationDefinition.type}:${channelConceptValidationDefinition.version}`, channelConceptValidationDefinition],
   [`${channelResearchDefinition.type}:${channelResearchDefinition.version}`, channelResearchDefinition],
@@ -2294,6 +2609,7 @@ const registry = new Map<string, WorkflowDefinition>([
   [`${channelVideoPackagingDefinition.type}:${channelVideoPackagingDefinition.version}`, channelVideoPackagingDefinition],
   [`${channelVideoReleaseDefinition.type}:${channelVideoReleaseDefinition.version}`, channelVideoReleaseDefinition],
   [`${channelVideoPerformanceDefinition.type}:${channelVideoPerformanceDefinition.version}`, channelVideoPerformanceDefinition],
+  [`${channelVideoDiagnosisDefinition.type}:${channelVideoDiagnosisDefinition.version}`, channelVideoDiagnosisDefinition],
 ]);
 
 /** Canonical finalizer per workflow type; its output becomes the run's durable `output_payload`. */
@@ -2307,6 +2623,7 @@ export const WORKFLOW_FINALIZER_STEP: Record<ProductionWorkflowType, string> = {
   CHANNEL_VIDEO_PACKAGING: "finalize-video-packaging",
   CHANNEL_VIDEO_RELEASE: "finalize-video-release",
   CHANNEL_VIDEO_PERFORMANCE: "finalize-video-performance",
+  CHANNEL_VIDEO_DIAGNOSIS: "finalize-video-diagnosis",
 };
 
 export function getWorkflowDefinition(type: ProductionWorkflowType, version: number) {
