@@ -164,7 +164,7 @@ export const viewerValueAssessmentSchema = z.object({
  * silently changes the promise, the hash no longer matches its source.
  */
 export const viewerValueProvenanceSchema = z.object({
-  originStage: z.enum(["CONTENT_INTELLIGENCE", "VIDEO_BRIEF", "SCRIPT", "PACKAGING", "PRODUCTION", "PUBLISHING"]),
+  originStage: z.enum(["CONTENT_INTELLIGENCE", "VIDEO_BRIEF", "SCRIPT", "PACKAGING", "RELEASE", "PRODUCTION", "PUBLISHING"]),
   originWorkflowType: z.string().min(1).max(80),
   originRunId: z.string().uuid(),
   subjectId: z.string().min(1).max(120),

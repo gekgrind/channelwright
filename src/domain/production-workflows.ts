@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { originalContributionKindSchema, viewerNeedKindSchema, viewerValueAssessmentSchema, viewerValueProvenanceSchema } from "./viewer-value";
 
-export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING", "CHANNEL_VIDEO_RELEASE"]);
+export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING", "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE"]);
 export type ProductionWorkflowType = z.infer<typeof workflowTypeSchema>;
 
 export const workflowStatusSchema = z.enum(["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL", "BLOCKED", "COMPLETED", "FAILED", "CANCELED"]);
@@ -1656,6 +1656,314 @@ export const videoReleaseRevisionSchema = z.object({
   modelUsage: researchDraftSchema.shape.modelUsage,
 }).strict();
 
+// ---------------------------------------------------------------------------
+// CHANNEL_VIDEO_PERFORMANCE
+//
+// The Measurement link after CHANNEL_VIDEO_RELEASE. It turns one exact approved
+// CHANNEL_VIDEO_RELEASE record plus an OPERATOR-SUPPLIED performance snapshot
+// into a human-approved, immutable PERFORMANCE LEARNING RECORD: it adjudicates
+// each KPI/hypothesis the release bound (SUPPORTED / REFUTED / INCONCLUSIVE /
+// NOT_ENOUGH_DATA) against a deterministic rubric, records what the channel
+// business learned, signals whether the result warrants revisiting strategy,
+// and recommends the next business decision.
+//
+// It is a MEASUREMENT-INTERPRETATION and DURABLE-LEARNING system, NOT an
+// analytics ingestion system and NOT a metrics dashboard. It performs zero
+// external retrieval: the numbers are supplied by the operator (manual entry,
+// CSV export, pasted API snapshot), never fetched from a live provider here.
+// Deterministic QA rejects, as scope violations: any attempt to fetch/ingest
+// analytics, fabricated benchmarks or industry averages the operator did not
+// supply, revenue/CPM projections, forward-looking performance predictions,
+// re-publishing / re-uploading / recut / scheduling / media generation, and any
+// change to the approved release record. A hypothesis whose metric is absent
+// from the snapshot is forced to NOT_ENOUGH_DATA; a verdict of SUPPORTED or
+// REFUTED requires an operator-supplied baseline, never a number the model
+// invented.
+//
+// It reasons only over the approved release, its transitive upstream chain, and
+// the operator snapshot. Nothing here widens the database resource ceilings:
+// like strategy/brief/script/packaging/release it declares zero provider
+// requests, quota units, and searches, and only model calls consume budget.
+//
+// Size discipline: the result becomes a durable step output and the run's
+// `output_payload`, both bounded at 64 KiB by the workflow engine. Collection
+// sizes are capped and deterministic QA rejects an oversized payload before
+// persistence so the failure is a typed QA error rather than PAYLOAD_TOO_LARGE.
+// ---------------------------------------------------------------------------
+
+/** Immutable reference to the exact approved video-release artifact. */
+export const approvedVideoReleaseReferenceSchema = z.object({
+  releaseWorkflowId: z.string().uuid(),
+  releaseRunId: z.string().uuid(),
+  workflowDefinitionVersion: z.number().int().positive(),
+  outputSchemaVersion: z.literal(1),
+  approvalId: z.string().uuid(),
+  approvedBy: z.string().uuid(),
+  approvedAt: z.string().datetime(),
+  finalQaState: z.enum(["accept", "human_review_required"]),
+  finalQaScore: z.number().int().min(0).max(100),
+  releaseArtifactHash: sha256Schema,
+  releaseProvenanceHash: sha256Schema,
+  parentRunId: z.string().uuid().nullable(),
+  rootRunId: z.string().uuid(),
+  // Transitive provenance: the release already proved its own upstream video
+  // packaging, which anchors the whole
+  // RESEARCH -> STRATEGY -> CONTENT -> VIDEO_BRIEF -> VIDEO_SCRIPT -> VIDEO_PACKAGING -> VIDEO_RELEASE
+  // chain, including the strategy identity every KPI/hypothesis outcome must
+  // anchor to. One reference therefore carries the entire lineage.
+  upstreamVideoPackaging: approvedVideoPackagingReferenceSchema,
+}).strict();
+
+/** How the operator obtained a measured number, for provenance. Never a live provider call by Channelwright. */
+export const performanceMeasurementSourceSchema = z.enum(["MANUAL_ENTRY", "CSV_EXPORT", "API_SNAPSHOT_PASTED", "OTHER"]);
+
+/** One operator-entered per-video metric snapshot. Every field is nullable: the operator supplies what they have. */
+export const performanceMetricSnapshotSchema = z.object({
+  impressions: z.number().int().min(0).max(100_000_000_000).nullable(),
+  views: z.number().int().min(0).max(100_000_000_000).nullable(),
+  uniqueViewers: z.number().int().min(0).max(100_000_000_000).nullable(),
+  clickThroughRatePct: z.number().min(0).max(100).nullable(),
+  averageViewDurationSeconds: z.number().int().min(0).max(86_400).nullable(),
+  averagePercentageViewedPct: z.number().min(0).max(100).nullable(),
+  watchTimeHours: z.number().min(0).max(1_000_000_000).nullable(),
+  subscribersGained: z.number().int().min(0).max(1_000_000_000).nullable(),
+  subscribersLost: z.number().int().min(0).max(1_000_000_000).nullable(),
+  likes: z.number().int().min(0).max(1_000_000_000).nullable(),
+  comments: z.number().int().min(0).max(1_000_000_000).nullable(),
+  shares: z.number().int().min(0).max(1_000_000_000).nullable(),
+  returningViewersPct: z.number().min(0).max(100).nullable(),
+  /** An operator-entered ACTUAL revenue indicator, never a projection. */
+  estimatedRevenueUsdIndicator: z.number().min(0).max(1_000_000_000).nullable(),
+}).strict();
+
+export const performanceObservationWindowSchema = z.object({
+  start: z.string().datetime(),
+  end: z.string().datetime(),
+  daysSincePublish: z.number().int().min(0).max(3_650),
+}).strict();
+
+/**
+ * An operator-supplied baseline a hypothesis outcome may compare against. A
+ * SUPPORTED or REFUTED verdict requires one of these; the model may never invent
+ * a comparison number.
+ */
+export const operatorPerformanceBaselineSchema = z.object({
+  metric: releaseKpiMetricSchema,
+  label: z.string().min(1).max(200),
+  value: z.number().min(-1_000_000_000).max(100_000_000_000),
+  unit: z.enum(["COUNT", "PERCENT", "SECONDS", "HOURS", "USD", "RATIO"]),
+  basisNote: z.string().min(1).max(400),
+}).strict();
+
+/**
+ * The complete operator-supplied performance snapshot. It travels in the start
+ * request, is re-stamped verbatim into the immutable result by Channelwright
+ * (never taken from model output), and is the durable evidence every outcome
+ * cites.
+ */
+export const operatorPerformanceSnapshotSchema = z.object({
+  measurementSource: performanceMeasurementSourceSchema,
+  sourceNote: z.string().trim().min(1).max(600),
+  capturedAt: z.string().datetime(),
+  observationWindow: performanceObservationWindowSchema,
+  /** The released video's duration, for AVD/retention consistency checks. */
+  videoDurationSeconds: z.number().int().min(1).max(86_400),
+  metrics: performanceMetricSnapshotSchema,
+  operatorBaselines: z.array(operatorPerformanceBaselineSchema).max(16),
+  operatorContext: z.string().trim().min(1).max(1_200).nullable(),
+}).strict();
+
+export const videoPerformanceRequestInputSchema = z.object({
+  videoReleaseWorkflowId: z.string().uuid(),
+  videoReleaseRunId: z.string().uuid(),
+  performanceSnapshot: operatorPerformanceSnapshotSchema,
+}).strict();
+
+export const videoPerformanceInputSchema = videoPerformanceRequestInputSchema.extend({
+  approvedVideoReleaseReference: approvedVideoReleaseReferenceSchema,
+  humanRevisionNote: z.string().trim().min(1).max(2_000).optional(),
+}).strict();
+
+/** Identity of one KPI/hypothesis the approved release bound. The measurement record must adjudicate every one, exactly once. */
+export const releasedVideoKpiBindingIdentitySchema = z.object({
+  metric: releaseKpiMetricSchema,
+  label: z.string().min(1).max(300),
+  hypothesis: z.string().min(1).max(600),
+  strategyRunId: z.string().uuid(),
+}).strict();
+
+/**
+ * Which release this measurement is for, carried from authoritative resolver
+ * state. `kpiBindings` is the authoritative set of hypotheses to adjudicate, so
+ * the DB — not the caller — decides what must be measured. The inherited Viewer
+ * Value provenance is lifted unchanged from the approved release's own scope.
+ */
+export const selectedVideoReleaseScopeSchema = z.object({
+  releaseTopicId: topicIdSchema,
+  pillarId: pillarIdSchema,
+  releasePromise: z.string().min(20).max(600),
+  finalTitle: z.string().min(1).max(100),
+  strategyRunId: z.string().uuid(),
+  kpiBindings: z.array(releasedVideoKpiBindingIdentitySchema).min(1).max(8),
+  inheritedViewerValueProvenance: viewerValueProvenanceSchema,
+}).strict();
+
+/** Resolver output: the authoritative approved release and its inherited evidence. */
+export const approvedVideoReleaseArtifactSchema = z.object({
+  reference: approvedVideoReleaseReferenceSchema,
+  releaseResult: channelVideoReleaseResultSchema,
+  discoveryBundle: topicDiscoveryBundleSchema,
+  scope: selectedVideoReleaseScopeSchema,
+}).strict();
+
+export const hypothesisVerdictSchema = z.enum(["SUPPORTED", "REFUTED", "INCONCLUSIVE", "NOT_ENOUGH_DATA"]);
+
+/**
+ * The comparison a verdict rests on. `OPERATOR_SUPPLIED_BASELINE` is the only
+ * basis that can carry a SUPPORTED or REFUTED verdict. `NO_BASELINE_QUALITATIVE`
+ * is honest about having no number to compare against and may only be
+ * INCONCLUSIVE or NOT_ENOUGH_DATA. `UPSTREAM_STRATEGY_TARGET` is reserved for a
+ * future strategy KPI that carries a numeric target; the current strategy schema
+ * carries none, so deterministic QA rejects a SUPPORTED/REFUTED verdict on it.
+ */
+export const hypothesisComparisonBasisSchema = z.enum(["OPERATOR_SUPPLIED_BASELINE", "UPSTREAM_STRATEGY_TARGET", "NO_BASELINE_QUALITATIVE"]);
+
+/** The observed metric a hypothesis outcome reads from the snapshot. `NONE` when the snapshot carries nothing for this KPI. */
+export const observedPerformanceMetricSchema = z.enum([
+  "IMPRESSIONS", "VIEWS", "CLICK_THROUGH_RATE", "AVERAGE_VIEW_DURATION", "AUDIENCE_RETENTION",
+  "RETURNING_VIEWERS", "NET_SUBSCRIBERS", "REVENUE_INDICATOR", "NONE",
+]);
+
+/**
+ * One adjudicated KPI/hypothesis. `binding` must be an EXACT member of the
+ * release's bound hypotheses. `observedValue` must equal the snapshot value
+ * verbatim (or null when `metricObserved` is NONE). `verdict` is bounded by the
+ * deterministic rubric: absent data forces NOT_ENOUGH_DATA, a qualitative basis
+ * forbids SUPPORTED/REFUTED.
+ */
+export const kpiHypothesisOutcomeSchema = z.object({
+  binding: releasedVideoKpiBindingIdentitySchema,
+  metricObserved: observedPerformanceMetricSchema,
+  observedValue: z.number().nullable(),
+  observedUnit: z.enum(["COUNT", "PERCENT", "SECONDS", "HOURS", "USD", "RATIO", "NONE"]),
+  comparisonBasis: hypothesisComparisonBasisSchema,
+  baselineValue: z.number().nullable(),
+  verdict: hypothesisVerdictSchema,
+  interpretation: z.string().min(1).max(800),
+  confidence: z.enum(["high", "medium", "low"]),
+  caveats: z.array(z.string().min(1).max(400)).max(6),
+}).strict();
+
+/** One durable learning the channel business retains from this result. */
+export const performanceLearningEntrySchema = z.object({
+  category: z.enum([
+    "PACKAGING", "TITLE", "THUMBNAIL", "TOPIC", "FORMAT", "AUDIENCE", "DISTRIBUTION",
+    "TIMING", "RETENTION_SHAPE", "MONETIZATION_SIGNAL", "OTHER",
+  ]),
+  observation: z.string().min(1).max(600),
+  evidenceBasis: z.enum(["OBSERVED_METRIC", "OPERATOR_CONTEXT", "HYPOTHESIS_OUTCOME"]),
+  changesAnAssumption: z.boolean(),
+  priorAssumption: z.string().min(1).max(400).nullable(),
+  updatedUnderstanding: z.string().min(1).max(400),
+  confidence: z.enum(["high", "medium", "low"]),
+}).strict();
+
+/**
+ * Whether this result should change strategy. It is a RECOMMENDATION the
+ * operator acts on, never an executed change: `executionDeferred` is a fixed
+ * literal and `strategyRunId` must equal the transitive upstream strategy
+ * identity.
+ */
+export const strategyRevisitSignalSchema = z.object({
+  recommendation: z.enum(["NO_CHANGE", "MONITOR", "REVISIT_STRATEGY", "REVISIT_PILLAR", "REVISIT_FORMAT"]),
+  rationale: z.string().min(1).max(600),
+  strategyRunId: z.string().uuid(),
+  executionDeferred: z.literal(true),
+}).strict();
+
+/** The next business decision this measurement supports. A recommendation only. */
+export const performanceNextDecisionSchema = z.object({
+  decision: z.string().min(1).max(400),
+  rationale: z.string().min(1).max(800),
+  supportingOutcomes: z.array(z.string().min(1).max(300)).min(1).max(8),
+  confidence: z.enum(["high", "medium", "low"]),
+  isRecommendationOnly: z.literal(true),
+}).strict();
+
+export const channelVideoPerformanceContentSchema = z.object({
+  schemaVersion: z.literal(1),
+  workflowType: z.literal("CHANNEL_VIDEO_PERFORMANCE"),
+  source: z.object({
+    releaseTopicId: topicIdSchema,
+    pillarId: pillarIdSchema,
+    pillarName: z.string().min(1).max(300),
+    workingConcept: z.string().min(1).max(400),
+    finalTitle: z.string().min(1).max(100),
+    /** The promise the measured video kept; must match the approved release's promise verbatim. */
+    releasePromise: z.string().min(20).max(600),
+  }).strict(),
+  snapshotIntegrity: z.object({
+    internallyConsistent: z.boolean(),
+    consistencyNotes: z.array(z.string().min(1).max(400)).max(10),
+    coverage: z.enum(["RICH", "PARTIAL", "SPARSE"]),
+  }).strict(),
+  kpiHypothesisOutcomes: z.array(kpiHypothesisOutcomeSchema).min(1).max(8),
+  performanceSummary: z.string().min(1).max(1_200),
+  learnings: z.array(performanceLearningEntrySchema).min(1).max(12),
+  strategyRevisitSignal: strategyRevisitSignalSchema,
+  nextDecision: performanceNextDecisionSchema,
+  /** This stage's own Viewer Value judgement, under the same shared doctrine. */
+  viewerValue: viewerValueAssessmentSchema,
+  measurementIntegrity: z.object({
+    /** The fabrication / no-ingestion guard is re-run at interpretation time. */
+    fabricationGuardRerun: z.literal(true),
+    fabricationGuardOutcome: z.enum(["PASS", "FAIL"]),
+    noExternalRetrieval: z.literal(true),
+    summary: z.string().min(1).max(600),
+  }).strict(),
+  risks: z.array(z.object({
+    risk: z.string().min(1).max(500),
+    severity: z.enum(["high", "medium", "low"]),
+    mitigation: z.string().min(1).max(500).nullable(),
+  }).strict()).min(1).max(10),
+  assumptions: z.array(z.string().min(1).max(400)).min(1).max(12),
+  openQuestions: z.array(z.string().min(1).max(400)).min(1).max(12),
+  recommendedNextAction: z.string().min(1).max(500),
+}).strict();
+
+export const channelVideoPerformanceResultSchema = channelVideoPerformanceContentSchema.extend({
+  // The operator snapshot, stamped verbatim by Channelwright from the start
+  // request — never accepted from model output.
+  measuredSnapshot: operatorPerformanceSnapshotSchema,
+  upstreamVideoRelease: approvedVideoReleaseReferenceSchema,
+  performanceScope: selectedVideoReleaseScopeSchema,
+  crossModelReview: crossModelReviewSchema.nullable(),
+  // A finalized measurement record is always model-generated: the synthesis step
+  // stamps at least the generator's attribution. An empty trail would mean a
+  // record with no accountable author, which must never persist.
+  modelProvenance: z.array(modelAttributionSchema).min(1).max(8),
+}).strict();
+
+export const videoPerformanceQAFindingSchema = researchQAFindingSchema;
+export const videoPerformanceQAResultSchema = researchQAResultSchema;
+
+export const videoPerformanceDraftSchema = z.object({
+  result: channelVideoPerformanceResultSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+}).strict();
+
+export const videoPerformanceQAStepSchema = z.object({
+  qa: videoPerformanceQAResultSchema,
+  crossModelReview: crossModelReviewSchema,
+}).strict();
+
+export const videoPerformanceRevisionSchema = z.object({
+  attempted: z.boolean(),
+  reason: z.string().min(1).max(1_000),
+  result: channelVideoPerformanceResultSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+}).strict();
+
 export const channelConceptValidationInputSchema = z.object({
   proposedConcept: z.string().trim().min(20).max(2_000),
   audienceContext: z.string().trim().min(3).max(2_000).optional(),
@@ -1676,7 +1984,8 @@ export const workflowStartRequestSchema = z.object({
           : request.workflowType === "CHANNEL_VIDEO_SCRIPT" ? videoScriptRequestInputSchema
             : request.workflowType === "CHANNEL_VIDEO_PACKAGING" ? videoPackagingRequestInputSchema
               : request.workflowType === "CHANNEL_VIDEO_RELEASE" ? videoReleaseRequestInputSchema
-                : channelConceptValidationInputSchema;
+                : request.workflowType === "CHANNEL_VIDEO_PERFORMANCE" ? videoPerformanceRequestInputSchema
+                  : channelConceptValidationInputSchema;
   const parsed = schema.safeParse(request.input);
   if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue, path: ["input", ...issue.path] });
 }).transform((request) => request as
@@ -1687,7 +1996,8 @@ export const workflowStartRequestSchema = z.object({
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_BRIEF"; definitionVersion: 1; input: VideoBriefRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_SCRIPT"; definitionVersion: 1; input: VideoScriptRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_PACKAGING"; definitionVersion: 1; input: VideoPackagingRequestInput }
-  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_RELEASE"; definitionVersion: 1; input: VideoReleaseRequestInput });
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_RELEASE"; definitionVersion: 1; input: VideoReleaseRequestInput }
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_PERFORMANCE"; definitionVersion: 1; input: VideoPerformanceRequestInput });
 
 export const workflowApprovalDecisionSchema = z.object({
   decision: z.enum(["APPROVE", "REJECT", "REQUEST_REVISION"]),
@@ -1786,6 +2096,18 @@ export type VideoReleaseQAResult = z.infer<typeof videoReleaseQAResultSchema>;
 export type ReleaseKpiHypothesisBinding = z.infer<typeof releaseKpiHypothesisBindingSchema>;
 export type ReleaseTitleDecision = z.infer<typeof releaseTitleDecisionSchema>;
 export type ReleaseThumbnailDecision = z.infer<typeof releaseThumbnailDecisionSchema>;
+export type ApprovedVideoReleaseReference = z.infer<typeof approvedVideoReleaseReferenceSchema>;
+export type ApprovedVideoReleaseArtifact = z.infer<typeof approvedVideoReleaseArtifactSchema>;
+export type SelectedVideoReleaseScope = z.infer<typeof selectedVideoReleaseScopeSchema>;
+export type OperatorPerformanceSnapshot = z.infer<typeof operatorPerformanceSnapshotSchema>;
+export type ReleasedVideoKpiBindingIdentity = z.infer<typeof releasedVideoKpiBindingIdentitySchema>;
+export type KpiHypothesisOutcome = z.infer<typeof kpiHypothesisOutcomeSchema>;
+export type PerformanceLearningEntry = z.infer<typeof performanceLearningEntrySchema>;
+export type VideoPerformanceRequestInput = z.infer<typeof videoPerformanceRequestInputSchema>;
+export type VideoPerformanceInput = z.infer<typeof videoPerformanceInputSchema>;
+export type ChannelVideoPerformanceContent = z.infer<typeof channelVideoPerformanceContentSchema>;
+export type ChannelVideoPerformanceResult = z.infer<typeof channelVideoPerformanceResultSchema>;
+export type VideoPerformanceQAResult = z.infer<typeof videoPerformanceQAResultSchema>;
 export type WorkflowStartRequest = z.infer<typeof workflowStartRequestSchema>;
 export type WorkflowApprovalDecision = z.infer<typeof workflowApprovalDecisionSchema>;
 
@@ -1945,6 +2267,23 @@ const channelVideoReleaseDefinition: WorkflowDefinition<VideoReleaseRequestInput
   ],
 };
 
+const channelVideoPerformanceDefinition: WorkflowDefinition<VideoPerformanceRequestInput, ChannelVideoPerformanceResult> = {
+  type: "CHANNEL_VIDEO_PERFORMANCE",
+  version: 1,
+  objective: "Turn one exact approved CHANNEL_VIDEO_RELEASE plus an operator-supplied performance snapshot into a viewer-value-gated, evidence-disciplined, independently critiqued, human-approved immutable performance learning record for a single video",
+  inputSchema: videoPerformanceRequestInputSchema,
+  outputSchema: channelVideoPerformanceResultSchema,
+  steps: [
+    { key: "validate-approved-release", kind: "WORKER", capability: "approved-release-validation", dependsOn: [], maxAttempts: 2, retryBaseSeconds: 5 },
+    { key: "draft-video-performance", kind: "WORKER", capability: "video-performance-synthesis", dependsOn: ["validate-approved-release"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "initial-video-performance-qa", kind: "WORKER", capability: "independent-video-performance-qa", dependsOn: ["draft-video-performance"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "bounded-video-performance-revision", kind: "WORKER", capability: "video-performance-revision", dependsOn: ["initial-video-performance-qa"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "final-video-performance-qa", kind: "WORKER", capability: "independent-video-performance-qa", dependsOn: ["bounded-video-performance-revision"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "finalize-video-performance", kind: "WORKER", capability: "video-performance-finalizer", dependsOn: ["final-video-performance-qa"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "review-video-performance", kind: "APPROVAL", capability: "human", dependsOn: ["finalize-video-performance"], maxAttempts: 1, retryBaseSeconds: 0 },
+  ],
+};
+
 const registry = new Map<string, WorkflowDefinition>([
   [`${channelConceptValidationDefinition.type}:${channelConceptValidationDefinition.version}`, channelConceptValidationDefinition],
   [`${channelResearchDefinition.type}:${channelResearchDefinition.version}`, channelResearchDefinition],
@@ -1954,6 +2293,7 @@ const registry = new Map<string, WorkflowDefinition>([
   [`${channelVideoScriptDefinition.type}:${channelVideoScriptDefinition.version}`, channelVideoScriptDefinition],
   [`${channelVideoPackagingDefinition.type}:${channelVideoPackagingDefinition.version}`, channelVideoPackagingDefinition],
   [`${channelVideoReleaseDefinition.type}:${channelVideoReleaseDefinition.version}`, channelVideoReleaseDefinition],
+  [`${channelVideoPerformanceDefinition.type}:${channelVideoPerformanceDefinition.version}`, channelVideoPerformanceDefinition],
 ]);
 
 /** Canonical finalizer per workflow type; its output becomes the run's durable `output_payload`. */
@@ -1966,6 +2306,7 @@ export const WORKFLOW_FINALIZER_STEP: Record<ProductionWorkflowType, string> = {
   CHANNEL_VIDEO_SCRIPT: "finalize-video-script",
   CHANNEL_VIDEO_PACKAGING: "finalize-video-packaging",
   CHANNEL_VIDEO_RELEASE: "finalize-video-release",
+  CHANNEL_VIDEO_PERFORMANCE: "finalize-video-performance",
 };
 
 export function getWorkflowDefinition(type: ProductionWorkflowType, version: number) {
