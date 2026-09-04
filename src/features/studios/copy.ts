@@ -20,7 +20,7 @@ export const OPEN = {
 export const INTELLIGENCE = {
   index: "01",
   department: "Intelligence Room",
-  heading: "Find the opportunity before you make the video.",
+  heading: "People want this. Just not the way you were going to make it.",
   body: [
     "Most tools begin at the script. Channelwright begins three decisions earlier — retrieving YouTube evidence, handing it to an independent critic, and running a bounded revision pass before anyone is asked to approve a thing.",
     "What leaves this room is not a topic. It is a set of claims you can open, argue with, and trace back to where they came from.",
@@ -46,7 +46,7 @@ export const INTELLIGENCE = {
     { value: "Contradictions", note: "Held in the record, not smoothed away.", tone: "warn" as const },
     { value: "Unknowns", note: "Declared rather than guessed at.", tone: "plain" as const },
   ],
-  verdict: "Opportunity verified",
+  verdict: "3 angles rejected",
 } as const;
 
 /**
@@ -74,7 +74,28 @@ export const WORLD = {
  * Later beats rewrite and add to this; the treatment never changes.
  */
 export const ARTIFACT = {
+  /** As it arrives: the kind of vague idea anyone with a channel has had. */
   line: "I want to make videos about mechanical keyboards.",
+  /** What the first room hands back. The point is that it is not what you asked for. */
+  rewritten: "Why cheap keyboards feel better than expensive ones.",
+  /** Who it is now for. Attaches in the second room and never leaves. */
+  audience: "For people who already bought the wrong one",
+  /**
+   * The question this video is meant to answer. It attaches beside the
+   * audience and then stays deliberately dormant — Beat 8 resolves it, and
+   * nothing before Beat 8 may hint at the answer.
+   */
+  hypothesis: "Does honest beat impressive?",
+  /** The shape it takes in the third room. One of these does not survive review. */
+  sections: ["Hook", "Setup", "Evidence", "Turn", "Payoff"],
+  /** Index into `sections` — the part that comes back for another pass. */
+  flagged: 2,
+  /** The names it could have gone out under. Two overstate; one is chosen. */
+  candidates: [
+    { label: "This Beats a $500 Rig", rejected: true },
+    { label: "You're Overspending on This", rejected: true },
+    { label: "The $10 Setup, Tested Honestly", rejected: false },
+  ],
 } as const;
 
 /**
@@ -85,7 +106,7 @@ export const ARTIFACT = {
 export const STRATEGY = {
   index: "02",
   department: "Strategy Room",
-  heading: "A channel is a position, not a playlist.",
+  heading: "Now it belongs to a channel.",
   body: [
     "Approved research does not become a video. It becomes a strategy \u2014 audience, promise, and the hypothesis the next slate is meant to test \u2014 versioned so production can only ever run against a decision someone actually approved.",
   ],
@@ -96,7 +117,7 @@ export const STRATEGY = {
     { key: "supersede", label: "Superseded strategy", value: "Retained in the record" },
     { key: "gate", label: "Stale strategy", value: "Blocks production start" },
   ],
-  verdict: "Gate holds \u2014 only v3 clears",
+  verdict: "2 positions retired",
 } as const;
 
 /**
@@ -107,7 +128,7 @@ export const STRATEGY = {
 export const WRITERS = {
   index: "03",
   department: "Writers' Room",
-  heading: "A brief is not a script until it can defend itself.",
+  heading: "Something checked it before you did.",
   body: [
     "Approved strategy becomes a brief — audience, promise, and the slot it earns — before a line is written. The brief becomes a script: a hook and timed sections, each claim bound to a researched source, checked by an independent QA pass, and revised only within a bound before a human approves an exact version.",
   ],
@@ -118,7 +139,7 @@ export const WRITERS = {
     { key: "structure", label: "Script structure", value: "Hook and timed sections" },
     { key: "revision", label: "Failed QA", value: "Bounded revision, not infinite" },
   ],
-  verdict: "Script approved at v2",
+  verdict: "1 section sent back",
 } as const;
 
 /**
@@ -131,7 +152,7 @@ export const WRITERS = {
 export const PRODUCTION = {
   index: "04",
   department: "Production Floor",
-  heading: "A script does not leave as a video until it can pass every gate.",
+  heading: "Finished is not the same as cleared.",
   body: [
     "The approved script becomes a composition, rendered once to a deterministic 1920×1080 master and probed for its own container, codecs, loudness and checksum. Nothing clears the floor until six independent QA gates — technical, rights, claims, visual, subjective-audio and platform — each report a pass, and a human approves the exact version that did.",
   ],
@@ -142,7 +163,7 @@ export const PRODUCTION = {
     { key: "gates", label: "QA gates", value: "Technical, rights, claims, visual, audio, platform" },
     { key: "approval", label: "Human approval", value: "Exact version, before it can leave the floor" },
   ],
-  verdict: "Master approved for release",
+  verdict: "Held at the gate",
 } as const;
 
 /**
@@ -155,7 +176,7 @@ export const PRODUCTION = {
 export const CONTROL = {
   index: "05",
   department: "Control Room",
-  heading: "Publishing is a decision, not a default.",
+  heading: "Publishing is a decision. Someone makes it.",
   body: [
     "Packaging proposes candidates — several titles, several thumbnails, each judged for its own deception risk. Never a chosen one. A human selects exactly one of each, and the material-risk options are struck through and kept in the record.",
   ],
@@ -166,7 +187,7 @@ export const CONTROL = {
     { key: "selection", label: "Release selection", value: "Exact title + thumbnail, chosen from the approved set" },
     { key: "binding", label: "Hypothesis binding", value: "Bound to the strategy KPI this release is meant to test" },
   ],
-  verdict: "Release package locked at v1",
+  verdict: "1 of 5 chosen",
 } as const;
 
 export const REGISTER = {

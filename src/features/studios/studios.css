@@ -844,6 +844,118 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   background: repeating-linear-gradient(to bottom, rgba(220, 235, 255, .06) 0 1px, transparent 1px 7px);
 }
 
+/* --- The gate ------------------------------------------------------------ */
+
+/* Beat 6. Two leaves close across the route, a check sweeps the artifact held
+   between them, and the leaves open again. The building stops the object, so
+   the room never has to say that it did.
+
+   Drawn inside the artifact: it is only on screen during the hold, when the
+   artifact is stationary, which is also the only window in which "the gate is
+   where the artifact is" is true. */
+.cw-artifact__gate {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  opacity: calc(var(--held) - var(--cleared));
+}
+.cw-artifact__gate i {
+  position: absolute;
+  /* Tall and wide enough to bracket the whole plate. At the old ±13vw the
+     leaves closed *through* the sentence and read as a border on it rather
+     than as the building stopping the object. */
+  top: -25vh;
+  width: 2px;
+  height: 32vh;
+  background: linear-gradient(to bottom, transparent, var(--lume-3) 16%, var(--lume-3) 84%, transparent);
+}
+.cw-artifact__gate i[data-side="left"] { right: 0; transform: translateX(calc(-34vw + var(--held) * 8vw - var(--cleared) * 8vw)); }
+.cw-artifact__gate i[data-side="right"] { left: 0; transform: translateX(calc(16vw - var(--held) * 8vw + var(--cleared) * 8vw)); }
+
+/* The check itself: one line travelling down the held object. This is what
+   advances while scrolling does not move the artifact. */
+.cw-artifact__gate b {
+  position: absolute;
+  left: -26vw;
+  top: -25vh;
+  width: 42vw;
+  height: 10px;
+  /* A band with a lit leading edge rather than a hairline: a 1px rule crossing
+     the sentence read as a rendering glitch, a band reads as something passing
+     over the object. */
+  background: linear-gradient(to bottom, transparent, rgba(216, 255, 62, .5) 82%, var(--signal) 100%);
+  opacity: .5;
+  transform: translateY(calc(var(--sweep) * 32vh));
+}
+
+/* --- Room atmosphere ---------------------------------------------------- */
+
+/* The department instruments, demoted.
+
+   They used to sit in bordered panels in the right-hand column, at full
+   contrast, competing with the headline and the artifact for the same glance.
+   Here each one fills its room and sits far back in the mix: the visitor
+   registers that the room is working without being asked to parse a diagram.
+   The canvases keep their own beats and their deterministic seeds, so what
+   they show is still true — it is simply no longer the subject. */
+.cw-atmos {
+  display: grid;
+  place-items: center;
+  /* Enveloped on the scene's own progress, not on `--wake`: `--wake` is
+     declared on `.cw-world` and this layer lives inside a scene, so reading it
+     here produced an invalid calc and the instrument rendered at full
+     strength — precisely the failure this demotion exists to fix. */
+  opacity: calc(
+    clamp(0, calc(var(--p, 1) * 8), 1) *
+    clamp(0, calc((1 - var(--p, 0)) * 9), 1) * .18
+  );
+  pointer-events: none;
+}
+.cw-atmos > * {
+  width: min(96vw, 1500px);
+  height: min(58vh, 560px);
+  aspect-ratio: auto;
+}
+.cw-atmos canvas { width: 100%; height: 100%; }
+
+/* --- Room composition ---------------------------------------------------- */
+
+/* Five rooms, five compositions. The old template put the headline in the same
+   place five times, which is most of why the departments blurred together.
+   Each beat now owns a corner of the stage, so a visitor who scrolls past
+   knows they have moved even before they read anything. */
+.cw-room__frame {
+  position: relative;
+  height: 100%;
+  display: grid;
+  align-content: center;
+  gap: 18px;
+}
+.cw-room__headline { max-width: 19ch; }
+
+/* Beat 3 — the rewrite. High and left, well clear of the artifact below. */
+.cw-room__frame[data-beat="b3"] { justify-items: start; align-content: start; padding-top: 13vh; }
+
+/* Beat 4 — attachment. Right-aligned and short: the event is on the artifact,
+   not in the copy, so the copy gets out of its way. */
+.cw-room__frame[data-beat="b4"] { justify-items: end; text-align: right; align-content: start; padding-top: 15vh; }
+.cw-room__frame[data-beat="b4"] .cw-room__headline { max-width: 15ch; }
+
+/* Beat 5 — assembly and criticism. Low and left, close to the shape forming
+   on the plate. */
+.cw-room__frame[data-beat="b5"] { justify-items: start; align-content: end; padding-bottom: 30vh; }
+
+/* Beat 6 — the hold. Centred and alone. This is the sparsest room in the run,
+   because the artifact standing still is the entire statement. */
+.cw-room__frame[data-beat="b6"] { justify-items: center; text-align: center; align-content: start; padding-top: 17vh; }
+.cw-room__frame[data-beat="b6"] .cw-room__headline { max-width: 17ch; }
+
+/* Beat 7 — rejection and choice. High and left again, closing the run where
+   it opened, with the names stacked on the artifact below. */
+.cw-room__frame[data-beat="b7"] { justify-items: start; align-content: start; padding-top: 12vh; }
+
 /* --- The artifact ------------------------------------------------------- */
 
 /* One object for the whole run: the visitor's idea, written down, carried
@@ -966,9 +1078,11 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   translate: min(0px, calc((11 - (var(--ax)) * var(--throw)) * 1vw)) 0;
   padding: 9px 13px 10px;
   border-left: 1px solid var(--signal-dim);
-  background: linear-gradient(96deg, rgba(12, 15, 20, .82), rgba(12, 15, 20, .34));
+  background: linear-gradient(96deg, rgba(9, 11, 15, .93), rgba(9, 11, 15, .62));
   opacity: var(--wake);
 }
+/* Both sentences share one treatment. That is the device: the visitor reads a
+   replacement, not a second object. */
 .cw-artifact__line {
   display: block;
   font-family: var(--font-body), sans-serif;
@@ -977,6 +1091,146 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   letter-spacing: -.005em;
   color: var(--lume);
   text-wrap: pretty;
+}
+
+/* Beat 3 — struck, dimmed, kept. Rejected material is never deleted in this
+   building; the strike is drawn as a rule that wipes across the line so the
+   visitor watches it happen rather than finding it already done. */
+.cw-artifact__line--first {
+  position: relative;
+  width: max-content;
+  max-width: 100%;
+  color: color-mix(in srgb, var(--lume) calc(100% - var(--strike) * 48%), transparent);
+}
+.cw-artifact__line--first::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 52%;
+  height: 1px;
+  width: calc(var(--strike) * 100%);
+  background: var(--warn);
+  opacity: .8;
+}
+.cw-artifact__line--second {
+  /* The sentence the studio hands back. It is what the visitor is meant to
+     read in this frame, so it carries full contrast while the struck original
+     recedes behind it. */
+  font-weight: 500;
+  margin-top: calc(var(--rewrite) * 6px);
+  max-height: calc(var(--rewrite) * 6em);
+  opacity: var(--rewrite);
+  overflow: hidden;
+}
+
+/* Beat 4 — attached to the plate. The audience stays lit; the question it is
+   meant to answer settles back to a trace and waits for Beat 8. */
+.cw-artifact__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: calc(var(--claimed) * 8px);
+  max-height: calc(var(--claimed) * 6em);
+  overflow: hidden;
+}
+.cw-artifact__tag {
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  border: 1px solid var(--edge-2);
+  white-space: nowrap;
+}
+.cw-artifact__tag[data-kind="audience"] {
+  color: color-mix(in srgb, var(--signal) 88%, var(--lume));
+  border-color: var(--signal-dim);
+  opacity: var(--claimed);
+}
+/* Dormant on purpose. It is the only thing on the artifact that has not been
+   resolved, and Beat 8 is where that changes. */
+.cw-artifact__tag[data-kind="asked"] {
+  color: var(--lume-3);
+  opacity: calc(var(--asked) * (1 - var(--asked) * .45));
+}
+
+/* Beat 5 — the shape it takes. One part turns and comes back for another
+   pass; the rest hold. */
+.cw-artifact__shape {
+  display: flex;
+  gap: 3px;
+  margin-top: calc(var(--shaped) * 8px);
+  max-height: calc(var(--shaped) * 4em);
+  overflow: hidden;
+}
+.cw-artifact__shape i {
+  --in: clamp(0, calc((var(--shaped) - var(--i) * .16) * 5), 1);
+  flex: 1;
+  font-family: var(--font-mono), monospace;
+  font-style: normal;
+  font-size: 8px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--lume-4);
+  padding: 4px 5px 3px;
+  border-top: 2px solid var(--lume-4);
+  opacity: var(--in);
+  transform: translateY(calc((1 - var(--in)) * 6px));
+}
+.cw-artifact__shape i[data-flagged="true"] {
+  /* Sent back, then reworked. The colour returns to the group when it does. */
+  color: color-mix(in srgb, var(--warn) calc(var(--sent-back) * 100% - var(--reworked) * 100%), var(--lume-4));
+  border-top-color: color-mix(in srgb, var(--warn) calc(var(--sent-back) * 100% - var(--reworked) * 78%), var(--lume-4));
+  transform: translateY(calc((1 - var(--in)) * 6px + var(--sent-back) * 5px - var(--reworked) * 5px));
+}
+
+/* Beat 7 — the names it could have gone out under. Two overstate and are
+   struck, in the same grammar as Beat 3. */
+.cw-artifact__names {
+  display: grid;
+  gap: 2px;
+  margin-top: calc(var(--named) * 8px);
+  max-height: calc(var(--named) * 8em);
+  overflow: hidden;
+}
+.cw-artifact__names i {
+  --in: clamp(0, calc((var(--named) - var(--i) * .18) * 5), 1);
+  position: relative;
+  width: max-content;
+  max-width: 100%;
+  font-family: var(--font-body), sans-serif;
+  font-style: normal;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--lume-3);
+  opacity: var(--in);
+}
+.cw-artifact__names i[data-rejected="true"] {
+  color: color-mix(in srgb, var(--lume) calc(40% - var(--chosen) * 22%), transparent);
+}
+.cw-artifact__names i[data-rejected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 52%;
+  height: 1px;
+  width: calc(var(--chosen) * 100%);
+  background: var(--warn);
+  opacity: .7;
+}
+/* The one that goes out. */
+.cw-artifact__names i:not([data-rejected])  {
+  color: color-mix(in srgb, var(--signal) calc(var(--chosen) * 100%), var(--lume-3));
+  padding-left: calc(var(--chosen) * 10px);
+}
+.cw-artifact__names i:not([data-rejected])::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: calc(var(--chosen) * 6px);
+  height: 1px;
+  background: var(--signal);
 }
 
 /* --- Atmosphere --------------------------------------------------------- */
@@ -1670,13 +1924,20 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
      artifact's own lateral offset. The object keeps moving; the sentence
      stays legible, which is the invariant that matters. */
   .cw-artifact__plate {
+    /* Solid, not a gradient: pinned across the frame the gradient's tail left
+       the right-hand half of every line sitting on the lit deck with almost no
+       contrast behind it. */
+    background: rgba(9, 11, 15, .93);
+    border-left-color: var(--signal);
     left: calc(-50vw + 18px);
     bottom: 10px;
     max-width: calc(100vw - 36px);
     translate: calc((var(--ax)) * var(--throw) * -1vw) 0;
     padding: 8px 11px 9px;
   }
-  .cw-artifact__line { font-size: 12.5px; }
+  /* The artifact is the protagonist; at 12.5px on a dark ground it read as a
+     caption. */
+  .cw-artifact__line { font-size: 13.5px; line-height: 1.32; }
   .cw-readout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cw-readout__cell:nth-child(2n) { border-right: 0; }
   .cw-readout__cell:nth-child(-n + 2) { border-bottom: 1px solid var(--edge); }

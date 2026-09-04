@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { registerScene } from "./scroll-engine";
-import { ACID, LUME, WARN, easeOut, fit, monoFamily, ramp } from "./instrument";
+import { ACID, LUME, WARN, easeOut, monoFamily, ramp } from "./instrument";
 
 /**
  * Department 05's instrument. Where the Render Line resolves a script into a
@@ -47,18 +47,7 @@ const TITLES: Candidate[] = [
   { label: "Why I Switched Back", risk: "none" },
 ];
 
-const THUMBS: Candidate[] = [
-  { label: "Split-frame · cheap vs. expensive", risk: "none", selected: true },
-  { label: "Shock face · red arrow", risk: "material" },
-  { label: "Product flat-lay · plain text", risk: "none" },
-  { label: "Before/after crop, no context", risk: "low" },
-];
 
-const RISK_LABEL: Record<Candidate["risk"], string> = {
-  none: "CLEAR",
-  low: "LOW",
-  material: "MATERIAL",
-};
 
 function riskTone(risk: Candidate["risk"]) {
   return risk === "material" ? WARN : LUME;
@@ -91,18 +80,14 @@ export function ReleaseCompositor() {
       const rightZone = Math.min(Math.max(width * 0.2, 76), 108);
       const rackRight = width - rightZone - 12;
       const riskRight = rackRight;
-      const riskX = rackRight - Math.min(Math.max(width * 0.11, 38), 52);
-      const labelMax = riskX - pad - 16;
 
-      // Two sheets, not one list: the gap between the racks has to be wider
-      // than the gap between rows or the second heading reads as another row.
-      const split = 26;
-      const usable = height - pad * 2 - 16 - split;
+      // One rack, not two. The room's beat is "several existed, one survived";
+      // a second parallel rack of thumbnail concepts doubled the reading load
+      // to restate the same sentence.
+      const usable = height - pad * 2 - 16;
       const titlesTop = pad + 16;
-      const titlesHeight = usable * (TITLES.length / (TITLES.length + THUMBS.length));
+      const titlesHeight = usable;
       const titleGap = titlesHeight / TITLES.length;
-      const thumbsTop = titlesTop + titlesHeight + split;
-      const thumbGap = (usable - titlesHeight) / THUMBS.length;
 
       const rack = easeOut(ramp(progress, 0.03, 0.22));
       const assess = ramp(progress, 0.16, 0.34);
@@ -123,13 +108,11 @@ export function ReleaseCompositor() {
         context.font = type(7);
         context.textAlign = "left";
         context.fillStyle = `rgba(${LUME}, ${0.42 * rack})`;
-        context.fillText(heading, pad, top - 9);
         // The risk column is headed once, over the first sheet: repeating it
         // reads as two tables rather than one judgement applied twice.
         if (ruled && assess > 0.2) {
           context.textAlign = "right";
           context.fillStyle = `rgba(${LUME}, ${0.34 * assess})`;
-          context.fillText("DECEPTION RISK", riskRight, top - 9);
           context.textAlign = "left";
         }
         context.strokeStyle = `rgba(${LUME}, ${0.12 * rack})`;
@@ -156,7 +139,6 @@ export function ReleaseCompositor() {
 
           context.font = type(7.5);
           context.fillStyle = `rgba(${LUME}, ${(0.3 + rack * 0.48) * live})`;
-          context.fillText(fit(context, candidate.label, labelMax), pad + 6, y);
 
           // The judgement, in words, once the assess beat has run.
           if (assess > 0.1) {
@@ -165,7 +147,6 @@ export function ReleaseCompositor() {
             context.fillStyle = `rgba(${riskTone(candidate.risk)}, ${
               (material ? 0.92 : 0.44) * Math.min(assess * 1.6, 1) * live
             })`;
-            context.fillText(RISK_LABEL[candidate.risk], riskX, y);
           }
 
           // Reject: struck through, held visible rather than removed.
@@ -180,11 +161,10 @@ export function ReleaseCompositor() {
       };
 
       drawRack(TITLES, titlesTop, titleGap, "TITLE CANDIDATES", true);
-      drawRack(THUMBS, thumbsTop, thumbGap, "THUMBNAIL CONCEPTS", false);
 
       /* --- Compositor ----------------------------------------------------- */
 
-      const compositorY = (titlesTop + thumbsTop + usable - titlesHeight) / 2;
+      const compositorY = titlesTop + titlesHeight / 2;
       const size = Math.min(usable * 0.32, rightZone - 14, 56);
       const centreX = rackRight + 12 + (width - pad - rackRight - 12) / 2;
 
@@ -213,9 +193,7 @@ export function ReleaseCompositor() {
       };
 
       const titleIndex = TITLES.findIndex((candidate) => candidate.selected);
-      const thumbIndex = THUMBS.findIndex((candidate) => candidate.selected);
       if (titleIndex >= 0) beam(titlesTop + titleGap * (titleIndex + 0.5));
-      if (thumbIndex >= 0) beam(thumbsTop + thumbGap * (thumbIndex + 0.5));
 
       // Lock: the compositor fills and is stamped at an exact version.
       if (lock > 0.02) {
@@ -228,9 +206,7 @@ export function ReleaseCompositor() {
           context.font = type(7);
           context.textAlign = "center";
           context.fillStyle = `rgba(${ACID}, ${stamped})`;
-          context.fillText("RELEASE v1", centreX, compositorY - size / 2 - 13);
           context.fillStyle = `rgba(${LUME}, ${0.5 * stamped})`;
-          context.fillText("1 TITLE · 1 THUMB", centreX, compositorY + size / 2 + 13);
           context.textAlign = "left";
         }
       }
@@ -256,7 +232,6 @@ export function ReleaseCompositor() {
         context.font = type(7);
         context.textAlign = "right";
         context.fillStyle = `rgba(${ACID}, ${(handoff - 0.72) / 0.28})`;
-        context.fillText("ANALYTICS COMMAND", width - 2, compositorY - 12);
         context.textAlign = "left";
       }
     };

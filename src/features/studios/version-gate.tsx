@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { registerScene } from "./scroll-engine";
-import { ACID, LUME, WARN, clamp01, easeOut, fit, monoFamily, ramp } from "./instrument";
+import { ACID, LUME, WARN, clamp01, easeOut, monoFamily, ramp } from "./instrument";
 
 /**
  * Department 02's instrument. Where the Opportunity Plot resolves noise into
@@ -110,12 +110,9 @@ export function VersionGate() {
       context.font = type(7);
       context.textBaseline = "middle";
       context.fillStyle = `rgba(${LUME}, ${0.42 * file})`;
-      context.fillText("VERSION RECORD", pad, headY);
       context.textAlign = "right";
-      context.fillText("FIT", scoreRight, headY);
       context.textAlign = "left";
       context.fillStyle = `rgba(${LUME}, ${0.42 * Math.max(file, approve)})`;
-      context.fillText("GATE", gateX + 6, headY);
 
       context.strokeStyle = `rgba(${LUME}, ${0.14 * file})`;
       context.beginPath();
@@ -175,10 +172,8 @@ export function VersionGate() {
         context.font = type(9);
         context.textBaseline = "middle";
         context.fillStyle = `rgba(${tone}, ${(0.5 + file * 0.45) * live})`;
-        context.fillText(version.id, pad + 4, y - 4);
         context.font = type(7.5);
         context.fillStyle = `rgba(${LUME}, ${(0.24 + file * 0.34) * live})`;
-        context.fillText(fit(context, version.label, labelWidth - 22), pad + 24, y - 4);
 
         // Fit bar, on a shared track so the three are read against each other.
         context.fillStyle = `rgba(${LUME}, ${0.07 * file})`;
@@ -201,7 +196,6 @@ export function VersionGate() {
           context.font = type(8);
           context.textAlign = "right";
           context.fillStyle = `rgba(${tone}, ${(0.45 + compare * 0.4) * live})`;
-          context.fillText(version.score.toFixed(2).slice(1), scoreRight, y + 6);
           context.textAlign = "left";
         }
 
@@ -214,12 +208,10 @@ export function VersionGate() {
           context.stroke();
           context.font = type(6.5);
           context.fillStyle = `rgba(${LUME}, ${0.42 * supersede})`;
-          context.fillText("SUPERSEDED", tagX, y + 6);
         }
         if (selected) {
           context.font = type(6.5);
           context.fillStyle = `rgba(${ACID}, ${0.92 * approve})`;
-          context.fillText("APPROVED", tagX, y + 6);
         }
       });
 
@@ -239,16 +231,12 @@ export function VersionGate() {
       context.font = type(6.5);
       context.textBaseline = "middle";
       context.fillStyle = `rgba(${LUME}, ${0.34 * file})`;
-      context.fillText("STRATEGY FIT", pad, scaleY - 4);
-      context.fillText("0", barLeft - 1, scaleY + 5);
       context.textAlign = "right";
-      context.fillText("1.0", barLeft + barSpan + 1, scaleY + 5);
       context.textAlign = "left";
       if (supersede > 0.4) {
         // In the left gutter, under the scale's own label: the note about the
         // record must never run into the scale's upper bound.
         context.fillStyle = `rgba(${LUME}, ${0.34 * supersede})`;
-        context.fillText("2 RETAINED IN RECORD", pad, scaleY + 5);
       }
 
       /* --- Production node ------------------------------------------------ */
@@ -282,7 +270,6 @@ export function VersionGate() {
         context.font = type(6.5);
         context.textAlign = "center";
         context.fillStyle = `rgba(${ACID}, ${landed})`;
-        context.fillText("PRODUCTION", nodeX, approvedY - nodeSize / 2 - 8);
         context.textAlign = "left";
       }
 
@@ -311,7 +298,6 @@ export function VersionGate() {
           context.lineWidth = 1;
           context.font = type(6.5);
           context.fillStyle = `rgba(${WARN}, .85)`;
-          context.fillText("BLOCKED", gateX + 8, staleY);
         }
       }
     };

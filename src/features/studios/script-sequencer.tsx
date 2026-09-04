@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { registerScene } from "./scroll-engine";
-import { ACID, LUME, WARN, clamp01, easeOut, fit, monoFamily, ramp } from "./instrument";
+import { ACID, LUME, WARN, clamp01, easeOut, monoFamily, ramp } from "./instrument";
 
 /**
  * Department 03's instrument. Where the Version Gate resolves candidates into
@@ -31,13 +31,7 @@ type Section = {
   flagged?: boolean;
 };
 
-/** Illustrative target runtime, stated so the timeline has a declared scale. */
-const RUNTIME_SECONDS = 520;
 
-function timecode(seconds: number) {
-  const whole = Math.round(seconds);
-  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
-}
 
 const SECTIONS: Section[] = [
   { label: "HOOK", weight: 0.14, claims: 1 },
@@ -119,10 +113,8 @@ export function ScriptSequencer() {
       context.font = type(7);
       context.textBaseline = "middle";
       context.fillStyle = `rgba(${LUME}, .34)`;
-      context.fillText("SOURCED CLAIMS", trackLeft, lanesTop);
       context.textAlign = "right";
       context.fillStyle = `rgba(${LUME}, .3)`;
-      context.fillText(`RUNTIME ${timecode(RUNTIME_SECONDS)}`, trackRight, lanesTop);
       context.textAlign = "left";
 
       // Baseline rail the sections sit on, so the row reads as one sequence.
@@ -203,12 +195,10 @@ export function ScriptSequencer() {
           context.textBaseline = "middle";
           context.fillStyle = `rgba(${tone}, ${Math.min(draft, 1) * 0.8})`;
           context.font = type(7.5);
-          context.fillText(fit(context, slot.label, slot.segWidth - 30), slot.xStart + 3, labelY);
           if (slot.segWidth > 40) {
             context.font = type(6.5);
             context.fillStyle = `rgba(${LUME}, ${Math.min(draft, 1) * 0.34})`;
             context.textAlign = "right";
-            context.fillText(timecode(RUNTIME_SECONDS * slot.weight), slot.xStart + slot.segWidth - 4, labelY);
             context.textAlign = "left";
           }
         }
@@ -222,7 +212,6 @@ export function ScriptSequencer() {
           context.fillStyle = warnOn
             ? `rgba(${WARN}, .9)`
             : `rgba(${ACID}, ${passed ? 0.8 : 0.3})`;
-          context.fillText(warnOn ? "REVISE" : passed ? "PASS" : "···", slot.xStart + 3, verdictY);
         }
       });
 
@@ -253,11 +242,8 @@ export function ScriptSequencer() {
       context.font = type(6.5);
       context.textBaseline = "middle";
       context.fillStyle = `rgba(${LUME}, .32)`;
-      context.fillText("0:00", trackLeft, scaleY + 4);
       context.textAlign = "center";
-      context.fillText(timecode(RUNTIME_SECONDS / 2), trackLeft + trackWidth / 2, scaleY + 4);
       context.textAlign = "right";
-      context.fillText(timecode(RUNTIME_SECONDS), trackRight, scaleY + 4);
       context.textAlign = "left";
 
       // Handoff: the locked sequence travels off the right edge toward
@@ -281,7 +267,6 @@ export function ScriptSequencer() {
         context.font = type(7.5);
         context.textAlign = "right";
         context.textBaseline = "middle";
-        context.fillText("PRODUCTION", width - 2, barTop - 8);
         context.textAlign = "left";
       }
     };

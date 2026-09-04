@@ -102,39 +102,31 @@ export function IntelligenceRoom() {
 
   return (
     <Scene id="intelligence" travel={sceneTravel("intelligence")} className="cw-room cw-scene--overlap" label="Department 01: Intelligence Room">
+      {/* Atmosphere. The room's instrument is evidence the visitor feels
+          rather than reads: full-bleed, behind everything, and never asked to
+          be decoded. It keeps its own beats — the story it tells is true — but
+          it is no longer a panel competing with the artifact. */}
+      <div className="cw-layer cw-atmos" aria-hidden="true">
+        <div className="cw-plot">
+          {lightweight ? <span className="cw-plot__static" /> : <OpportunityPlot />}
+        </div>
+      </div>
+
       <div className="cw-layer cw-layer--copy">
         <Cue from={0.88} to={1} className="cw-exit">
           <div className="cw-shell">
-            <div className="cw-room__grid">
-              <div className="cw-room__brief">
-                <h2 className="cw-heading">
-                  {/* Rise, not wipe: an inset clip across wrapped lines cuts the
-                      first line mid-word while later lines are already whole. */}
-                  <Cue from={0.04} to={0.15} as="span" className="cw-rise cw-room__heading-line">
-                    {INTELLIGENCE.heading}
-                  </Cue>
-                </h2>
+            <div className="cw-room__frame" data-beat="b3">
+              <h2 className="cw-heading cw-room__headline">
+                <Cue from={0.04} to={0.15} as="span" className="cw-rise cw-room__heading-line">
+                  {INTELLIGENCE.heading}
+                </Cue>
+              </h2>
 
+              {/* One raised voice per room, and no caption under it. */}
+              <div className="cw-verdict" style={{ "--at": 0.74 } as CSSProperties}>
+                <span className="cw-verdict__mark" aria-hidden="true" />
+                <span className="cw-verdict__line">{INTELLIGENCE.verdict}</span>
               </div>
-
-              <Cue from={0.2} to={0.32} className="cw-instrument cw-rise--solid">
-                <div className="cw-plot">
-                  {lightweight ? <span className="cw-plot__static" /> : <OpportunityPlot />}
-                  <div className="cw-plot__axes" aria-hidden="true">
-                    <span className="cw-plot__frame" />
-                    <span className="cw-plot__axis cw-plot__axis--y">↑ {INTELLIGENCE.axisY}</span>
-                    <span className="cw-plot__axis cw-plot__axis--x">→ {INTELLIGENCE.axisX}</span>
-                  </div>
-                </div>
-
-
-
-                {/* Verdict. The room's one moment of raised voice. */}
-                <div className="cw-verdict" style={{ "--at": 0.74 } as CSSProperties}>
-                  <span className="cw-verdict__mark" aria-hidden="true" />
-                  <span className="cw-verdict__line">{INTELLIGENCE.verdict}</span>
-                </div>
-              </Cue>
             </div>
           </div>
         </Cue>
@@ -156,31 +148,31 @@ export function StrategyRoom() {
 
   return (
     <Scene id="strategy" travel={sceneTravel("strategy")} className="cw-room cw-room--02 cw-scene--overlap" label="Department 02: Strategy Room">
+      {/* Atmosphere. The room's instrument is evidence the visitor feels
+          rather than reads: full-bleed, behind everything, and never asked to
+          be decoded. It keeps its own beats — the story it tells is true — but
+          it is no longer a panel competing with the artifact. */}
+      <div className="cw-layer cw-atmos" aria-hidden="true">
+        <div className="cw-gate">
+          {lightweight ? <span className="cw-gate__static" /> : <VersionGate />}
+        </div>
+      </div>
+
       <div className="cw-layer cw-layer--copy">
-        <Cue from={0.9} to={1} className="cw-exit">
+        <Cue from={0.88} to={1} className="cw-exit">
           <div className="cw-shell">
-            <div className="cw-room__grid cw-room__grid--02">
-              <div className="cw-room__brief">
-                <h2 className="cw-heading">
-                  <Cue from={0.04} to={0.15} as="span" className="cw-rise cw-room__heading-line">
-                    {STRATEGY.heading}
-                  </Cue>
-                </h2>
+            <div className="cw-room__frame" data-beat="b4">
+              <h2 className="cw-heading cw-room__headline">
+                <Cue from={0.04} to={0.15} as="span" className="cw-rise cw-room__heading-line">
+                  {STRATEGY.heading}
+                </Cue>
+              </h2>
 
+              {/* One raised voice per room, and no caption under it. */}
+              <div className="cw-verdict" style={{ "--at": 0.62 } as CSSProperties}>
+                <span className="cw-verdict__mark" aria-hidden="true" />
+                <span className="cw-verdict__line">{STRATEGY.verdict}</span>
               </div>
-
-              <Cue from={0.2} to={0.32} className="cw-instrument cw-rise--solid">
-                <div className="cw-gate">
-                  {lightweight ? <span className="cw-gate__static" /> : <VersionGate />}
-                </div>
-
-
-                {/* Verdict, in the same register as Department 01's. */}
-                <div className="cw-verdict" style={{ "--at": 0.62 } as CSSProperties}>
-                  <span className="cw-verdict__mark" aria-hidden="true" />
-                  <span className="cw-verdict__line">{STRATEGY.verdict}</span>
-                </div>
-              </Cue>
             </div>
           </div>
         </Cue>
@@ -204,31 +196,31 @@ export function WritersRoom() {
 
   return (
     <Scene id="writers" travel={sceneTravel("writers")} className="cw-room cw-room--03 cw-scene--overlap" label="Department 03: Writers' Room">
+      {/* Atmosphere. The room's instrument is evidence the visitor feels
+          rather than reads: full-bleed, behind everything, and never asked to
+          be decoded. It keeps its own beats — the story it tells is true — but
+          it is no longer a panel competing with the artifact. */}
+      <div className="cw-layer cw-atmos" aria-hidden="true">
+        <div className="cw-sequencer">
+          {lightweight ? <span className="cw-sequencer__static" /> : <ScriptSequencer />}
+        </div>
+      </div>
+
       <div className="cw-layer cw-layer--copy">
         <Cue from={0.88} to={1} className="cw-exit">
           <div className="cw-shell">
-            <div className="cw-room__grid cw-room__grid--03">
-              <div className="cw-room__brief">
-                <h2 className="cw-heading">
-                  <Cue from={0.04} to={0.15} as="span" className="cw-rise cw-room__heading-line">
-                    {WRITERS.heading}
-                  </Cue>
-                </h2>
+            <div className="cw-room__frame" data-beat="b5">
+              <h2 className="cw-heading cw-room__headline">
+                <Cue from={0.04} to={0.15} as="span" className="cw-rise cw-room__heading-line">
+                  {WRITERS.heading}
+                </Cue>
+              </h2>
 
+              {/* One raised voice per room, and no caption under it. */}
+              <div className="cw-verdict" style={{ "--at": 0.82 } as CSSProperties}>
+                <span className="cw-verdict__mark" aria-hidden="true" />
+                <span className="cw-verdict__line">{WRITERS.verdict}</span>
               </div>
-
-              <Cue from={0.2} to={0.32} className="cw-instrument cw-rise--solid">
-                <div className="cw-sequencer">
-                  {lightweight ? <span className="cw-sequencer__static" /> : <ScriptSequencer />}
-                </div>
-
-
-                {/* Verdict, in the same register as Departments 01 and 02. */}
-                <div className="cw-verdict" style={{ "--at": 0.82 } as CSSProperties}>
-                  <span className="cw-verdict__mark" aria-hidden="true" />
-                  <span className="cw-verdict__line">{WRITERS.verdict}</span>
-                </div>
-              </Cue>
             </div>
           </div>
         </Cue>
@@ -252,31 +244,31 @@ export function ProductionFloor() {
 
   return (
     <Scene id="production" travel={sceneTravel("production")} className="cw-room cw-room--04 cw-scene--overlap" label="Department 04: Production Floor">
+      {/* Atmosphere. The room's instrument is evidence the visitor feels
+          rather than reads: full-bleed, behind everything, and never asked to
+          be decoded. It keeps its own beats — the story it tells is true — but
+          it is no longer a panel competing with the artifact. */}
+      <div className="cw-layer cw-atmos" aria-hidden="true">
+        <div className="cw-line">
+          {lightweight ? <span className="cw-line__static" /> : <RenderLine />}
+        </div>
+      </div>
+
       <div className="cw-layer cw-layer--copy">
         <Cue from={0.88} to={1} className="cw-exit">
           <div className="cw-shell">
-            <div className="cw-room__grid cw-room__grid--04">
-              <div className="cw-room__brief">
-                <h2 className="cw-heading">
-                  <Cue from={0.04} to={0.15} as="span" className="cw-rise cw-room__heading-line">
-                    {PRODUCTION.heading}
-                  </Cue>
-                </h2>
+            <div className="cw-room__frame" data-beat="b6">
+              <h2 className="cw-heading cw-room__headline">
+                <Cue from={0.04} to={0.15} as="span" className="cw-rise cw-room__heading-line">
+                  {PRODUCTION.heading}
+                </Cue>
+              </h2>
 
+              {/* One raised voice per room, and no caption under it. */}
+              <div className="cw-verdict" style={{ "--at": 0.82 } as CSSProperties}>
+                <span className="cw-verdict__mark" aria-hidden="true" />
+                <span className="cw-verdict__line">{PRODUCTION.verdict}</span>
               </div>
-
-              <Cue from={0.2} to={0.32} className="cw-instrument cw-rise--solid">
-                <div className="cw-line">
-                  {lightweight ? <span className="cw-line__static" /> : <RenderLine />}
-                </div>
-
-
-                {/* Verdict, in the same register as Departments 01–03. */}
-                <div className="cw-verdict" style={{ "--at": 0.82 } as CSSProperties}>
-                  <span className="cw-verdict__mark" aria-hidden="true" />
-                  <span className="cw-verdict__line">{PRODUCTION.verdict}</span>
-                </div>
-              </Cue>
             </div>
           </div>
         </Cue>
@@ -299,31 +291,31 @@ export function ControlRoom() {
 
   return (
     <Scene id="control" travel={sceneTravel("control")} className="cw-room cw-room--05 cw-scene--overlap" label="Department 05: Control Room">
+      {/* Atmosphere. The room's instrument is evidence the visitor feels
+          rather than reads: full-bleed, behind everything, and never asked to
+          be decoded. It keeps its own beats — the story it tells is true — but
+          it is no longer a panel competing with the artifact. */}
+      <div className="cw-layer cw-atmos" aria-hidden="true">
+        <div className="cw-console">
+          {lightweight ? <span className="cw-console__static" /> : <ReleaseCompositor />}
+        </div>
+      </div>
+
       <div className="cw-layer cw-layer--copy">
         <Cue from={0.88} to={1} className="cw-exit">
           <div className="cw-shell">
-            <div className="cw-room__grid cw-room__grid--05">
-              <div className="cw-room__brief">
-                <h2 className="cw-heading">
-                  <Cue from={0.04} to={0.15} as="span" className="cw-rise cw-room__heading-line">
-                    {CONTROL.heading}
-                  </Cue>
-                </h2>
+            <div className="cw-room__frame" data-beat="b7">
+              <h2 className="cw-heading cw-room__headline">
+                <Cue from={0.04} to={0.15} as="span" className="cw-rise cw-room__heading-line">
+                  {CONTROL.heading}
+                </Cue>
+              </h2>
 
+              {/* One raised voice per room, and no caption under it. */}
+              <div className="cw-verdict" style={{ "--at": 0.82 } as CSSProperties}>
+                <span className="cw-verdict__mark" aria-hidden="true" />
+                <span className="cw-verdict__line">{CONTROL.verdict}</span>
               </div>
-
-              <Cue from={0.2} to={0.32} className="cw-instrument cw-rise--solid">
-                <div className="cw-console">
-                  {lightweight ? <span className="cw-console__static" /> : <ReleaseCompositor />}
-                </div>
-
-
-                {/* Verdict, in the same register as Departments 01–04. */}
-                <div className="cw-verdict" style={{ "--at": 0.82 } as CSSProperties}>
-                  <span className="cw-verdict__mark" aria-hidden="true" />
-                  <span className="cw-verdict__line">{CONTROL.verdict}</span>
-                </div>
-              </Cue>
             </div>
           </div>
         </Cue>

@@ -25,8 +25,15 @@ import { ACID, LUME, clamp01, easeOut, monoFamily, ramp } from "./instrument";
  * acid is a gate cleared and the version locked.
  */
 
-/** The six independent checks a master must clear, in the order it meets them. */
-const GATES = ["TECH", "RIGHTS", "CLAIMS", "VISUAL", "AUDIO", "PLATFORM"];
+/**
+ * One gate.
+ *
+ * The floor really does run six independent checks, and the register says so
+ * in the words a sceptic wants. On screen six labelled stations asked the
+ * visitor to parse a taxonomy while the artifact was standing still; one gate
+ * that closes, holds the artifact, and opens says the same thing in a beat.
+ */
+const GATES = ["CHECK"];
 
 /** What each probe tick confirms, ticked off as the render is measured. */
 const PROBES = ["CONTAINER", "CODECS", "LOUDNESS", "CHECKSUM"];
@@ -60,7 +67,6 @@ export function RenderLine() {
       const band = height - inset.top - inset.bottom;
       // The stations span most of the canvas height rather than a strip across
       // its middle: six gates standing over the line is the picture.
-      const specY = height - inset.bottom + 12;
       const rowY = inset.top + band * 0.44;
       const stationReach = band * 0.34;
       const blockSize = Math.min(band * 0.24, 62);
@@ -79,7 +85,6 @@ export function RenderLine() {
       context.font = type(7);
       context.textBaseline = "middle";
       context.fillStyle = `rgba(${LUME}, ${0.4 * build})`;
-      context.fillText("MASTER v1 · DETERMINISTIC RENDER", trackLeft, inset.top - 12);
 
       // Baseline rail the packet rides — the line itself.
       context.strokeStyle = `rgba(${LUME}, .22)`;
@@ -107,7 +112,6 @@ export function RenderLine() {
       context.fillStyle = clearedCount === GATES.length
         ? `rgba(${ACID}, .85)`
         : `rgba(${LUME}, ${0.34 + (clearedCount / GATES.length) * 0.3})`;
-      context.fillText(`${clearedCount}/${GATES.length} GATES CLEAR`, trackRight, inset.top - 12);
       context.textAlign = "left";
 
       stations.forEach((station) => {
@@ -130,12 +134,10 @@ export function RenderLine() {
           context.textBaseline = "middle";
           context.fillStyle = `rgba(${tone}, ${cleared ? 0.9 : 0.5})`;
           context.font = type(7);
-          context.fillText(station.label, station.x, barBottom + 11);
           // Each station reports its own outcome, so a cleared line reads as
           // six independent passes rather than one bar reaching the end.
           context.font = type(6.5);
           context.fillStyle = cleared ? `rgba(${ACID}, ${0.4 + flash * 0.5})` : `rgba(${LUME}, .22)`;
-          context.fillText(cleared ? "PASS" : "HELD", station.x, barBottom + 21);
           context.textAlign = "left";
         }
 
@@ -187,7 +189,6 @@ export function RenderLine() {
           context.font = type(6.5);
           context.textBaseline = "middle";
           context.fillStyle = `rgba(${ACID}, ${0.6 * probe})`;
-          context.fillText(PROBES[Math.min(marks, PROBES.length) - 1], bx + size / 2 + 8, rowY - size / 2 - 6);
         }
       }
 
@@ -204,7 +205,6 @@ export function RenderLine() {
           context.font = type(7.5);
           context.textAlign = "center";
           context.textBaseline = "middle";
-          context.fillText("v1 APPROVED", packetX, rowY - lockSize / 2 - 9);
           context.textAlign = "left";
         }
       }
@@ -216,10 +216,8 @@ export function RenderLine() {
         context.font = type(6.5);
         context.textBaseline = "middle";
         context.fillStyle = `rgba(${LUME}, ${0.34 * probe})`;
-        context.fillText("1920×1080 · DETERMINISTIC · CHECKSUM-PROBED", trackLeft, specY);
         context.textAlign = "right";
         context.fillStyle = `rgba(${LUME}, ${0.28 * probe})`;
-        context.fillText("NO GATE MAY BE SKIPPED", trackRight, specY);
         context.textAlign = "left";
       }
 
@@ -244,7 +242,6 @@ export function RenderLine() {
         context.font = type(7.5);
         context.textAlign = "right";
         context.textBaseline = "middle";
-        context.fillText("CONTROL ROOM", width - 2, rowY - stationReach - 12);
         context.textAlign = "left";
       }
     };

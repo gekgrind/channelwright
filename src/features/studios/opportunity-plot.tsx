@@ -218,7 +218,6 @@ export function OpportunityPlot() {
             context.textBaseline = "middle";
             context.textAlign = "center";
             context.fillStyle = `rgba(${chosen && select > 0.15 ? ACID : LUME}, ${(chosen ? 0.7 : 0.4) * fade})`;
-            context.fillText(candidate.label, cx, cy - r - 8);
             context.textAlign = "left";
           }
         }
@@ -264,7 +263,6 @@ export function OpportunityPlot() {
             context.font = type(7);
             context.textBaseline = "middle";
             context.fillStyle = `rgba(${ACID}, ${(lead - 0.5) * 2})`;
-            context.fillText("SELECTED · 1 OF 3", cx + r + 8, cy - 9);
           }
         }
       }
