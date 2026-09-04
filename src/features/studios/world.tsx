@@ -3,7 +3,9 @@
 import { CSSProperties, useEffect, useRef } from "react";
 import { HallFar, HallMid, HallNear } from "./facility";
 import { registerScene } from "./scroll-engine";
-import { SIGNAL, WORLD } from "./copy";
+import { LANDMARK } from "./beats";
+import { ArtifactPlate } from "./artifact-plate";
+import { WORLD } from "./copy";
 
 /**
  * The persistent Channelwright Studios facility.
@@ -18,33 +20,6 @@ import { SIGNAL, WORLD } from "./copy";
  * is the one custom-property write shared with the rest of the experience.
  */
 
-/**
- * Journey positions of the fixed landmarks, in `--j` units.
- *
- * `--j` is a fraction of the *whole* journey, so adding a department
- * lengthens the building and shrinks every existing fraction — each value
- * below is the pre-05 position rescaled by the ratio of old to new
- * scrollable travel (~.8276 for this pass), which keeps every prop at the
- * same absolute scroll distance it held before. New 05 landmarks are placed
- * at the same proportion into their scene that Department 04's held into
- * its own, so the rhythm of arrival repeats rather than being invented
- * twice.
- */
-export const LANDMARK = {
-  /* Placed on the scene handoffs: the camera passes through the aperture at
-     the exact scroll position where Department 01 takes the stage. */
-  threshold: 0.1571,
-  dept01: 0.2346,
-  partition: 0.3635,
-  dept02: 0.422,
-  partition02to03: 0.5305,
-  dept03: 0.5957,
-  partition03to04: 0.7055,
-  dept04: 0.7708,
-  partition04to05: 0.8778,
-  dept05: 0.9431,
-} as const;
-
 type PropStyle = CSSProperties & Record<string, string | number>;
 
 /** A landmark's journey position. Its drift rate — how fast it passes, and so
@@ -58,12 +33,11 @@ function prop(at: number): PropStyle {
  * far plane's rate and is legible from a long way off — Department 02's sign
  * is already visible on the right while the visitor is still in 01.
  */
-function Sign({ at, index, name, note }: { at: number; index: string; name: string; note?: string }) {
+function Sign({ at, index, name }: { at: number; index: string; name: string }) {
   return (
     <div className="cw-prop cw-sign" style={prop(at)}>
       <span className="cw-sign__index">{index}</span>
       <span className="cw-sign__name">{name}</span>
-      {note ? <span className="cw-sign__note">{note}</span> : null}
     </div>
   );
 }
@@ -114,39 +88,6 @@ function Fixture({ at, kind }: { at: number; kind: "research" | "decision" | "wr
       {Array.from({ length: kind === "research" ? 16 : kind === "decision" ? 8 : kind === "control" ? 10 : 12 }, (_, index) => (
         <span key={index} className="cw-fixture__cell" style={{ "--i": index } as CSSProperties} />
       ))}
-    </div>
-  );
-}
-
-/**
- * The signal: one object, continuously present, transformed as it is worked on.
- *
- * Its designation changes at each stage of the loop; the object itself never
- * disappears and is never re-created, which is the difference between an idea
- * being *processed* by the studio and a graphic being reused.
- */
-function Signal() {
-  return (
-    <div className="cw-signal" aria-hidden="true">
-      <span className="cw-signal__tether" />
-      <span className="cw-signal__core" />
-      <span className="cw-signal__ring" />
-      <span className="cw-signal__evidence">
-        {Array.from({ length: 5 }, (_, index) => (
-          <i key={index} style={{ "--i": index } as CSSProperties} />
-        ))}
-      </span>
-      <span className="cw-signal__labels">
-        {SIGNAL.states.map((state) => (
-          <span
-            key={state.label}
-            className="cw-signal__label"
-            style={{ "--in": state.from, "--out": state.to } as CSSProperties}
-          >
-            {state.label}
-          </span>
-        ))}
-      </span>
     </div>
   );
 }
@@ -212,11 +153,11 @@ export function StudiosWorld({ scope }: { scope: string }) {
       <Fixture at={LANDMARK.dept04} kind="production" />
       <Fixture at={LANDMARK.dept05} kind="control" />
 
-      <Sign at={LANDMARK.dept01} index={WORLD.dept01.index} name={WORLD.dept01.name} note={WORLD.dept01.note} />
-      <Sign at={LANDMARK.dept02} index={WORLD.dept02.index} name={WORLD.dept02.name} note={WORLD.dept02.note} />
-      <Sign at={LANDMARK.dept03} index={WORLD.dept03.index} name={WORLD.dept03.name} note={WORLD.dept03.note} />
-      <Sign at={LANDMARK.dept04} index={WORLD.dept04.index} name={WORLD.dept04.name} note={WORLD.dept04.note} />
-      <Sign at={LANDMARK.dept05} index={WORLD.dept05.index} name={WORLD.dept05.name} note={WORLD.dept05.note} />
+      <Sign at={LANDMARK.dept01} index={WORLD.dept01.index} name={WORLD.dept01.name} />
+      <Sign at={LANDMARK.dept02} index={WORLD.dept02.index} name={WORLD.dept02.name} />
+      <Sign at={LANDMARK.dept03} index={WORLD.dept03.index} name={WORLD.dept03.name} />
+      <Sign at={LANDMARK.dept04} index={WORLD.dept04.index} name={WORLD.dept04.name} />
+      <Sign at={LANDMARK.dept05} index={WORLD.dept05.index} name={WORLD.dept05.name} />
 
       <div className="cw-plane cw-plane--mid"><HallMid /></div>
 
@@ -227,7 +168,6 @@ export function StudiosWorld({ scope }: { scope: string }) {
           floor grid alone could only imply. */}
       <div className="cw-world__deck" />
       <ConveyanceLine />
-      <Signal />
 
       <Partition at={LANDMARK.partition} />
       <Partition at={LANDMARK.partition02to03} />
@@ -245,6 +185,11 @@ export function StudiosWorld({ scope }: { scope: string }) {
       {/* Depth haze: the far end of the hall is never fully resolved, which is
           what keeps the building feeling longer than the page. */}
       <div className="cw-world__haze" />
+
+      {/* The artifact rides in front of the building, not inside it: it is the
+          thing being looked at, and the hall is where that happens. */}
+      <ArtifactPlate />
+
       <div className="cw-world__vignette" />
     </div>
   );

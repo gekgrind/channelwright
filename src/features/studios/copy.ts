@@ -46,14 +46,7 @@ export const INTELLIGENCE = {
     { value: "Contradictions", note: "Held in the record, not smoothed away.", tone: "warn" as const },
     { value: "Unknowns", note: "Declared rather than guessed at.", tone: "plain" as const },
   ],
-  readout: [
-    { at: 0.06, label: "Raw signals", value: "212" },
-    { at: 0.3, label: "Clustered", value: "41" },
-    { at: 0.52, label: "Candidates", value: "4" },
-    { at: 0.7, label: "Selected", value: "1" },
-  ],
   verdict: "Opportunity verified",
-  rejected: "3 rejected \u2014 saturation, thin evidence, no monetisation path",
 } as const;
 
 /**
@@ -64,34 +57,24 @@ export const INTELLIGENCE = {
 export const WORLD = {
   facility: "Channelwright Studios",
   thresholdLabel: "Operating floor \u00b7 Authorised",
-  dept01: { index: "01", name: "Intelligence Room", note: "Research \u00b7 Evidence \u00b7 Ranking" },
-  dept02: { index: "02", name: "Strategy Room", note: "Positioning \u00b7 Versioned decisions" },
-  dept03: { index: "03", name: "Writers' Room", note: "Brief \u00b7 Script \u00b7 Sourced claims" },
-  dept04: { index: "04", name: "Production Floor", note: "Render \u00b7 QA gates \u00b7 Master" },
-  dept05: { index: "05", name: "Control Room", note: "Packaging \u00b7 Selection \u00b7 Release lock" },
+  dept01: { index: "01", name: "Intelligence Room" },
+  dept02: { index: "02", name: "Strategy Room" },
+  dept03: { index: "03", name: "Writers' Room" },
+  dept04: { index: "04", name: "Production Floor" },
+  dept05: { index: "05", name: "Control Room" },
 } as const;
 
 /**
- * The signal's designation as it is worked on, keyed to journey progress.
- * Every state describes something the shipped workflows actually produce \u2014
- * see `./capabilities.ts`. No state may promise a downstream outcome.
+ * The artifact: the one idea the visitor follows through the whole building.
  *
- * Ranges are fractions of the whole journey's `--j`, so they were rescaled
- * when Department 03 extended the building, again when Department 04 did,
- * and again for Department 05 \u2014 see `LANDMARK` in `./world.tsx` for the
- * same rescale applied to the fixed props (ratio ~.8276 for this pass).
+ * PLACEHOLDER. The production example is a separate decision and should be
+ * drawn from a real Channelwright run, so the transformation the site shows is
+ * grounded in output the product actually produced.
+ *
+ * Later beats rewrite and add to this; the treatment never changes.
  */
-export const SIGNAL = {
-  states: [
-    { from: -0.0261, to: 0.1436, label: "Raw signal \u00b7 unverified" },
-    { from: 0.1305, to: 0.2546, label: "In research \u00b7 retrieving evidence" },
-    { from: 0.2416, to: 0.3264, label: "Claims bound to sources \u00b7 QA passed" },
-    { from: 0.32, to: 0.4113, label: "Approved research \u00b7 ranked backlog" },
-    { from: 0.4047, to: 0.5288, label: "Strategy input \u00b7 awaiting decision" },
-    { from: 0.5157, to: 0.6463, label: "Script structured \u00b7 locked at QA" },
-    { from: 0.6455, to: 0.811, label: "Master validated \u00b7 queued for release" },
-    { from: 0.803, to: 0.99, label: "Release package \u00b7 locked at exact version" },
-  ],
+export const ARTIFACT = {
+  line: "I want to make videos about mechanical keyboards.",
 } as const;
 
 /**
@@ -113,17 +96,7 @@ export const STRATEGY = {
     { key: "supersede", label: "Superseded strategy", value: "Retained in the record" },
     { key: "gate", label: "Stale strategy", value: "Blocks production start" },
   ],
-  instrumentTitle: "Version gate",
-  instrumentNote: "Illustrative",
-  readout: [
-    { at: 0.08, label: "Versions filed", value: "3" },
-    { at: 0.42, label: "Superseded", value: "2" },
-    { at: 0.5, label: "Approved", value: "v3" },
-    { at: 0.68, label: "Blocked at gate", value: "1" },
-  ],
   verdict: "Gate holds \u2014 only v3 clears",
-  rejected: "v1, v2 retained \u2014 struck through, not deleted",
-  arrival: "Department 02 \u00b7 arriving",
 } as const;
 
 /**
@@ -145,17 +118,7 @@ export const WRITERS = {
     { key: "structure", label: "Script structure", value: "Hook and timed sections" },
     { key: "revision", label: "Failed QA", value: "Bounded revision, not infinite" },
   ],
-  instrumentTitle: "Script sequencer",
-  instrumentNote: "Illustrative",
-  readout: [
-    { at: 0.08, label: "Sections drafted", value: "5" },
-    { at: 0.36, label: "Claims sourced", value: "11" },
-    { at: 0.54, label: "Flagged for revision", value: "1" },
-    { at: 0.76, label: "Locked at", value: "v2" },
-  ],
   verdict: "Script approved at v2",
-  rejected: "1 section revised — unsourced claim caught at QA",
-  arrival: "Department 03 · arriving",
 } as const;
 
 /**
@@ -179,17 +142,7 @@ export const PRODUCTION = {
     { key: "gates", label: "QA gates", value: "Technical, rights, claims, visual, audio, platform" },
     { key: "approval", label: "Human approval", value: "Exact version, before it can leave the floor" },
   ],
-  instrumentTitle: "Render line",
-  instrumentNote: "Illustrative",
-  readout: [
-    { at: 0.1, label: "Render started", value: "1" },
-    { at: 0.42, label: "Gates cleared", value: "6/6" },
-    { at: 0.64, label: "Checksum", value: "Verified" },
-    { at: 0.82, label: "Approved at", value: "v1" },
-  ],
   verdict: "Master approved for release",
-  rejected: "0 blocked — technical, rights, claims, visual, audio, platform all clear",
-  arrival: "Department 04 · arriving",
 } as const;
 
 /**
@@ -213,17 +166,7 @@ export const CONTROL = {
     { key: "selection", label: "Release selection", value: "Exact title + thumbnail, chosen from the approved set" },
     { key: "binding", label: "Hypothesis binding", value: "Bound to the strategy KPI this release is meant to test" },
   ],
-  instrumentTitle: "Release compositor",
-  instrumentNote: "Illustrative",
-  readout: [
-    { at: 0.08, label: "Candidates drafted", value: "9" },
-    { at: 0.36, label: "Flagged for deception risk", value: "2" },
-    { at: 0.6, label: "Title + thumbnail selected", value: "1 + 1" },
-    { at: 0.84, label: "Locked at", value: "v1" },
-  ],
   verdict: "Release package locked at v1",
-  rejected: "2 rejected — material deception risk (overstated comparison, shock framing)",
-  arrival: "Department 05 · arriving",
 } as const;
 
 export const REGISTER = {
@@ -235,12 +178,6 @@ export const REGISTER = {
     { status: "PROVEN" as const, note: "Demonstrated deterministically in-repo, not yet a running service." },
     { status: "DESIGNED" as const, note: "Specified and reserved in the architecture. Deliberately not built." },
   ],
-} as const;
-
-export const NEXT_UP = {
-  kicker: "Under construction",
-  heading: "One room still dark.",
-  body: "Analytics Command is staged into this experience but not yet built into it. It is being made to the standard set by the Intelligence, Strategy, Writers', Production and Control rooms, not generated to fill the page \u2014 a statement about this site, not about the product. Each department's real status is in the register above.",
 } as const;
 
 export const FOOTER = {

@@ -7,14 +7,11 @@ import { StudiosWorld } from "./world";
 import { HallFar, HallNear } from "./facility";
 import { useReducedMotion } from "./scene";
 import { refreshScenes } from "./scroll-engine";
-import { scrollToScene, useSmoothScroll } from "./smooth-scroll";
+import { useSmoothScroll } from "./smooth-scroll";
 import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL, type CapabilityStatus } from "./capabilities";
-import { CONTROL, FOOTER, INTELLIGENCE, NEXT_UP, OPEN, PRODUCTION, REGISTER, STRATEGY, WRITERS } from "./copy";
+import { CONTROL, FOOTER, INTELLIGENCE, OPEN, PRODUCTION, REGISTER, STRATEGY, WRITERS } from "./copy";
 import "./studios.css";
 
-/** Departments this experience has actually staged. The rail must not offer
- *  a destination that does not exist yet. */
-const BUILT_DEPARTMENTS = new Set(["intelligence", "strategy", "writers", "production", "control"]);
 
 /** Wrapper whose scroll span drives the persistent facility. */
 const JOURNEY_ID = "cw-journey";
@@ -71,32 +68,6 @@ function useStageScene() {
   }, []);
 
   return current;
-}
-
-function DepartmentRail({ current }: { current: string | null }) {
-  return (
-    <nav className="cw-rail" data-visible={current !== null && current !== "open"} aria-label="Studio departments">
-      {DEPARTMENTS.map((department) => {
-        const built = BUILT_DEPARTMENTS.has(department.id);
-        return (
-          <button
-            key={department.id}
-            type="button"
-            className="cw-rail__item"
-            data-current={current === department.id ? "true" : undefined}
-            disabled={!built}
-            aria-disabled={!built}
-            title={built ? department.name : `${department.name} — in construction`}
-            onClick={() => scrollToScene(department.id)}
-          >
-            <span className="cw-rail__name">{department.name}</span>
-            <span className="cw-rail__tick" aria-hidden="true" />
-            <span>{department.index}</span>
-          </button>
-        );
-      })}
-    </nav>
-  );
 }
 
 /* ------------------------------------------------------------ flow sections */
@@ -161,36 +132,6 @@ function CapabilityRegister() {
                     ) : null}
                   </div>
                 ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function NextUp() {
-  return (
-    <section className="cw-block">
-      <div className="cw-shell">
-        <div className="cw-block__head">
-          <p className="cw-mono">{NEXT_UP.kicker}</p>
-          <h2 className="cw-heading">{NEXT_UP.heading}</h2>
-          <p className="cw-lede">{NEXT_UP.body}</p>
-        </div>
-        <div className="cw-register">
-          {DEPARTMENTS.map((department) => (
-            <div key={department.id} className="cw-register__row">
-              <span className="cw-register__dept">{department.index}</span>
-              <div className="cw-capability">
-                <div className="cw-capability__head">
-                  <span className="cw-capability__name">{department.name}</span>
-                  <span className="cw-status" data-status={BUILT_DEPARTMENTS.has(department.id) ? "OPERATING" : "DESIGNED"}>
-                    {BUILT_DEPARTMENTS.has(department.id) ? "Built" : "In construction"}
-                  </span>
-                </div>
-                <p className="cw-capability__claim">{department.line}</p>
               </div>
             </div>
           ))}
@@ -406,7 +347,6 @@ export default function StudiosExperience() {
   return (
     <div className="cw-studios" ref={root} data-ready="false" data-phase={reduced ? "static" : stageScene ?? undefined}>
       <Topbar />
-      {reduced ? null : <DepartmentRail current={stageScene} />}
 
       <main id="main">
         {reduced ? (
@@ -426,15 +366,11 @@ export default function StudiosExperience() {
           </div>
         )}
         {reduced ? (
-          <>
             <CapabilityRegister />
-            <NextUp />
-          </>
         ) : (
           <div className="cw-archive">
             <ArchiveHall />
             <CapabilityRegister />
-            <NextUp />
             <Footer />
           </div>
         )}

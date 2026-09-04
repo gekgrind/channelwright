@@ -329,6 +329,22 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
 
 .cw-world {
   --j: 0;
+
+  /* Camera position, kept apart from the timeline.
+
+     `--j` only ever increases: it is scroll position, smoothed by the driver
+     in `./smooth-scroll.ts` but never reversed. Every *spatial* rule below
+     therefore reads `--cam`, which is free to run backwards — which is what
+     Beat 8's reverse traversal will need. `--rev` ramps 0..1 across that
+     return and `--home` is the landmark it settles on; until that beat is
+     staged both are zero, so `--cam` is identically `--j`.
+
+     Timeline behaviour — wake, the ambient wash, cue timing, signage gates
+     and the artifact's own state — stays on `--j` and must never move to
+     `--cam`, or the return would rewind the story as well as the camera. */
+  --rev: 0;
+  --home: 0;
+  --cam: calc(var(--j) - var(--rev) * (var(--j) - var(--home)));
   /* Facility wake-up. The building comes up to working light as the visitor
      approaches, but never from absolute nothing: pass 2 opened on a frame so
      close to pure black that the entrance read as an unfinished page rather
@@ -422,13 +438,13 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
    sits below the near deck, and the structure that used to be carried by
    outline strength is carried by the filled masses below instead. */
 .cw-plane--far { opacity: calc(var(--wake) * .5); }
-.cw-plane--far svg { transform: translate3d(min(0px, calc(var(--j) * (100vw - 260vh))), 0, 0); }
+.cw-plane--far svg { transform: translate3d(min(0px, calc(var(--cam) * (100vw - 260vh))), 0, 0); }
 
 .cw-plane--mid { opacity: calc(var(--wake) * .4); }
-.cw-plane--mid svg { transform: translate3d(min(0px, calc(var(--j) * (100vw - 340vh))), 0, 0); }
+.cw-plane--mid svg { transform: translate3d(min(0px, calc(var(--cam) * (100vw - 340vh))), 0, 0); }
 
 .cw-plane--near { opacity: calc(var(--wake) * .58); }
-.cw-plane--near svg { transform: translate3d(min(0px, calc(var(--j) * (100vw - 460vh))), 0, 0); }
+.cw-plane--near svg { transform: translate3d(min(0px, calc(var(--cam) * (100vw - 460vh))), 0, 0); }
 
 /* Background equipment reads as switched on. Deliberately unreadable at this
    distance: it is telemetry, not an interface the visitor is asked to parse. */
@@ -457,7 +473,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   background:
     repeating-linear-gradient(to right, rgba(242, 239, 230, .17) 0 1px, transparent 1px 124px),
     repeating-linear-gradient(to bottom, rgba(242, 239, 230, .13) 0 1px, transparent 1px 124px);
-  transform: perspective(760px) rotateX(74deg) translate3d(calc(var(--j) * -260vw), 0, 0);
+  transform: perspective(760px) rotateX(74deg) translate3d(calc(var(--cam) * -260vw), 0, 0);
   transform-origin: 50% 0;
   will-change: transform;
   mask-image: radial-gradient(62% 80% at 50% 4%, #000 0%, transparent 78%);
@@ -555,7 +571,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   width: 600vw;
   height: 9px;
   background: repeating-linear-gradient(90deg, rgba(242, 239, 230, .22) 0 1px, transparent 1px 66px);
-  transform: translate3d(calc(var(--j) * -460vw), 0, 0);
+  transform: translate3d(calc(var(--cam) * -460vw), 0, 0);
   will-change: transform;
   mask-image: linear-gradient(to bottom, #000, transparent);
 }
@@ -570,7 +586,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
 .cw-prop {
   --at: 0;
   --rate: 300;
-  --d: calc(var(--at) - var(--j));
+  --d: calc(var(--at) - var(--cam));
   --ad: max(var(--d), calc(var(--d) * -1));
   position: absolute;
   left: 50%;
@@ -639,7 +655,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
    converts "next section" into "next room". */
 .cw-threshold {
   --rate: 62;
-  --d: calc(var(--at) - var(--j));
+  --d: calc(var(--at) - var(--cam));
   top: 47%;
   width: min(46vw, 52vh);
   height: 44vh;
@@ -828,33 +844,18 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   background: repeating-linear-gradient(to bottom, rgba(220, 235, 255, .06) 0 1px, transparent 1px 7px);
 }
 
-/* --- The signal --------------------------------------------------------- */
+/* --- The artifact ------------------------------------------------------- */
 
-/* One object for the whole run. Its position is a sum of segment ramps, so it
-   is continuous by construction — it can never blink from one place to
-   another — and its designation changes while the object itself does not. */
-.cw-signal {
-  /* `--j` is a fraction of the whole journey; Department 03 and now
-     Department 04 each lengthened the building, so every stop below is the
-     pre-04 value rescaled by old-travel/new-travel (~.7887 for this pass) to
-     keep each beat at the same absolute scroll distance it held before —
-     see `LANDMARK` in `./world.tsx`. */
-  --s1: clamp(0, calc((var(--j) - .0284) / .1073), 1); /* lifts into the beam   */
-  --s2: clamp(0, calc((var(--j) - .153) / .0623), 1);  /* settles on the line   */
-  --s3: clamp(0, calc((var(--j) - .2264) / .1246), 1); /* crosses Department 01 */
-  --s4: clamp(0, calc((var(--j) - .351) / .0568), 1);  /* leaves, transformed   */
-  --s5: clamp(0, calc((var(--j) - .4196) / .0623), 1); /* carried down the hall */
-  --s6: clamp(0, calc((var(--j) - .4874) / .0623), 1); /* docks in Department 02*/
-  --s7: clamp(0, calc((var(--j) - .6231) / .1104), 1); /* structured in Department 03 */
-  --s8: clamp(0, calc((var(--j) - .78) / .18), 1);     /* validated in Department 04 */
-
-  /* Research is active while the signal is inside the instrument's reach. */
-  --work: calc(
-    clamp(0, calc((var(--j) - .2492) * 21.56), 1) *
-    clamp(0, calc((.3683 - var(--j)) * 21.56), 1)
-  );
-  /* Evidence stays attached once it has been attached. */
-  --bound: clamp(0, calc((var(--j) - .3289) / .0457), 1);
+/* One object for the whole run: the visitor's idea, written down, carried
+   through the building and added to as it goes. Its position is a running sum
+   of overlapping ramps emitted by `./artifact-plate.tsx`, so it is continuous
+   by construction — it can never blink from one place to another — and the
+   sentence's treatment never changes, which is what makes it recognisable as
+   the same idea in every room. */
+.cw-artifact {
+  /* `--ax` / `--ay` are the summed track, `--work` and `--bound` the state
+     ramps. All four are emitted from the beat table rather than hand-tuned
+     here, so lengthening a scene moves the artifact with its room. */
 
   /* Lateral throw is scaled down on a narrow viewport: the same journey read
      across 390px would carry the artifact off both edges of the frame. */
@@ -866,15 +867,11 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   width: 0;
   height: 0;
   translate: -50% -50%;
-  transform: translate3d(
-    clamp(-34vw, calc((var(--s1) * 6 - var(--s2) * 40 + var(--s3) * 46 + var(--s4) * 12 - var(--s5) * 48 + var(--s6) * 26 + var(--s7) * 20 + var(--s8) * 12) * var(--throw, 1) * 1vw), 24vw),
-    calc((var(--s1) * -33 + var(--s2) * 62 - var(--s6) * 6 - var(--s7) * 8 - var(--s8) * 10) * 1vh),
-    0
-  );
+  transform: translate3d(calc((var(--ax)) * var(--throw) * 1vw), calc((var(--ay)) * 1vh), 0);
   will-change: transform;
 }
 
-.cw-signal__core {
+.cw-artifact__core {
   will-change: transform;
   position: absolute;
   left: 0;
@@ -891,9 +888,9 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
     0 0 120px 36px rgba(216, 255, 62, .1);
 }
 
-/* Retrieval: a ring opens around the signal while evidence is being gathered.
-   It exists only during that window, so it means the work, not decoration. */
-.cw-signal__ring {
+/* Retrieval: a ring opens around the artifact while it is being worked on. It
+   exists only during that window, so it means the work, not decoration. */
+.cw-artifact__ring {
   will-change: transform, opacity;
   position: absolute;
   left: 0;
@@ -907,9 +904,9 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   transform: scale(calc(.35 + var(--work) * .75));
 }
 
-/* Tether to the instrument overhead: the visible link between the artifact on
-   the floor and the panel reading it. */
-.cw-signal__tether {
+/* Tether to the room overhead: the visible link between the artifact on the
+   floor and whatever is reading it. */
+.cw-artifact__tether {
   position: absolute;
   left: 0;
   bottom: 0;
@@ -922,9 +919,9 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   transform: scaleY(calc(.2 + var(--work) * .8));
 }
 
-/* Evidence attached. Five ticks, because the artifact that leaves this room is
-   a set of claims — not a topic. */
-.cw-signal__evidence {
+/* Evidence attached. Five ticks, because what leaves the first room is a set
+   of claims — not a topic. */
+.cw-artifact__evidence {
   position: absolute;
   left: 12px;
   top: 0;
@@ -933,36 +930,53 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   translate: 0 -50%;
   opacity: var(--bound);
 }
-.cw-signal__evidence i {
+.cw-artifact__evidence i {
   width: 2px;
   height: calc(5px + (var(--i) * 2px));
   background: var(--signal);
   opacity: calc(.45 + var(--i) * .12);
 }
 
-.cw-signal__labels {
-  /* The designation trails the signal, and the signal ends its run near the
-     right edge of the frame — so past the last department it flips to the
-     other side of the object rather than running out of the viewport. */
-  --flip: clamp(0, calc((var(--j) - .68) / .08), 1);
+/* The sentence. This is the invariant: later beats rewrite the words and add
+   to the plate around them, but the treatment below never changes, because
+   recognising it as the same object is the whole point of the journey. */
+.cw-artifact__plate {
   position: absolute;
-  left: 0;
-  top: 15px;
-  display: grid;
-  grid-template-areas: "label";
-  white-space: nowrap;
-  translate: calc(var(--flip) * -100% - var(--flip) * 14px) 0;
+  left: 14px;
+  /* Anchored above the artifact, not below it: the route runs low in the
+     stage, so a plate hanging under the core is clipped by the viewport for
+     most of the journey. */
+  bottom: 12px;
+  display: block;
+  /* The artifact is a zero-width origin, so the plate's containing block has
+     no width to resolve a percentage against — it would shrink to one word
+     per line. `max-content` sizes it to the sentence, and the cap is stated
+     in viewport units so it still cannot run off the frame. */
+  width: max-content;
+  max-width: min(38ch, 34vw);
+  /* Held inside the frame. The route ends far to the right, where a plate
+     anchored to the artifact would run off the edge, so past the point where
+     it no longer fits the plate is pulled back by exactly the overflow and no
+     more. `min()` keeps that correction continuous — it eases in rather than
+     switching sides, so the sentence never jumps.
+
+     Note the inner parentheses around `--ax`: it expands to a bare sum, so
+     without them only its final term would be multiplied here and the whole
+     declaration would be dropped as invalid. */
+  translate: min(0px, calc((11 - (var(--ax)) * var(--throw)) * 1vw)) 0;
+  padding: 9px 13px 10px;
+  border-left: 1px solid var(--signal-dim);
+  background: linear-gradient(96deg, rgba(12, 15, 20, .82), rgba(12, 15, 20, .34));
+  opacity: var(--wake);
 }
-.cw-signal__label {
-  grid-area: label;
-  --t: clamp(0, calc((var(--j) - var(--in)) / (var(--out) - var(--in))), 1);
-  /* Fade up, hold, fade down — the designation changes, the object does not. */
-  opacity: clamp(0, calc(min(var(--t), calc(1 - var(--t))) * 9), 1);
-  font-family: var(--font-mono), monospace;
-  font-size: 9px;
-  letter-spacing: .19em;
-  text-transform: uppercase;
-  color: var(--signal);
+.cw-artifact__line {
+  display: block;
+  font-family: var(--font-body), sans-serif;
+  font-size: clamp(13px, 1.15vw, 16px);
+  line-height: 1.35;
+  letter-spacing: -.005em;
+  color: var(--lume);
+  text-wrap: pretty;
 }
 
 /* --- Atmosphere --------------------------------------------------------- */
@@ -1646,10 +1660,23 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   .cw-room__brief { gap: 10px; }
   /* Shorter lateral throw: the phone's frame is narrow, so desktop distances
      would fling every landmark off-screen before it could be read. */
-  .cw-signal { top: 54%; --throw: .5; }
-  .cw-signal__ring { width: 84px; height: 84px; }
-  .cw-signal__label { font-size: 8px; letter-spacing: .14em; }
-  .cw-signal__tether { height: 18vh; }
+  .cw-artifact { top: 54%; --throw: .5; }
+  .cw-artifact__ring { width: 84px; height: 84px; }
+  .cw-artifact__tether { height: 18vh; }
+  /* A 390px frame cannot hang a readable sentence off a point that roams
+     either side of centre: anchored left it clips right, anchored right it
+     clips left. So on a phone the plate holds a fixed gutter while the
+     artifact still travels under it — it counter-translates by exactly the
+     artifact's own lateral offset. The object keeps moving; the sentence
+     stays legible, which is the invariant that matters. */
+  .cw-artifact__plate {
+    left: calc(-50vw + 18px);
+    bottom: 10px;
+    max-width: calc(100vw - 36px);
+    translate: calc((var(--ax)) * var(--throw) * -1vw) 0;
+    padding: 8px 11px 9px;
+  }
+  .cw-artifact__line { font-size: 12.5px; }
   .cw-readout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cw-readout__cell:nth-child(2n) { border-right: 0; }
   .cw-readout__cell:nth-child(-n + 2) { border-bottom: 1px solid var(--edge); }
