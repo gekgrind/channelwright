@@ -50,13 +50,27 @@ type Stop = {
  * scene moves the artifact with its room instead of requiring the hand rescale
  * that `beats.ts` exists to remove.
  *
+ * The first stop is the origin by construction: `axis()` sums *deltas*, so its
+ * own coordinates never reach the screen and every later stop's numbers are
+ * absolute. Moving it off (0, 0) would silently translate the whole route.
+ *
  * Two stops carry the same position on purpose: across Beat 6 the artifact is
  * held at the gate, so scroll advances the check while the object itself does
  * not move. That stillness is the beat, not a bug.
+ *
+ * The four open-scene stops are Beats 1 and 2. The artifact is the first thing
+ * in the frame and it never leaves it: it drifts while the cold open's one
+ * line lands, is drawn onto the centre line as the building opens, rises to
+ * the height of the aperture and is carried through it — so the threshold is
+ * crossed *by the protagonist*, not merely by the camera. Its descent onto the
+ * conveyance line inside Department 01 is the same continuous sum, which is
+ * why Beat 2 hands over to Beat 3 without a seam.
  */
 export const TRACK: Stop[] = [
-  { scene: "open", at: 0.19, x: 0, y: 0 }, /*          at rest, before the building */
-  { scene: "open", at: 0.89, x: 6, y: -33 }, /*        lifts into the beam          */
+  { scene: "open", at: 0.03, x: 0, y: 0 }, /*          Beat 1 — at rest, before the building */
+  { scene: "open", at: 0.45, x: -2, y: -3 }, /*        barely drifts while the line lands */
+  { scene: "open", at: 0.74, x: -7, y: -12 }, /*       Beat 2 — drawn toward the opening   */
+  { scene: "open", at: 0.95, x: -11, y: -18 }, /*      carried through the threshold       */
   { scene: "intelligence", at: 0.3, x: -34, y: 29 }, /* arrives where it is read    */
   { scene: "intelligence", at: 0.78, x: -28, y: 29 }, /* barely drifts as it is rewritten */
   { scene: "strategy", at: 0.08, x: 12, y: 29 }, /*     leaves the first room       */

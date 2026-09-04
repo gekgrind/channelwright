@@ -9,7 +9,7 @@ import { useReducedMotion } from "./scene";
 import { refreshScenes } from "./scroll-engine";
 import { useSmoothScroll } from "./smooth-scroll";
 import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL, type CapabilityStatus } from "./capabilities";
-import { CONTROL, FOOTER, INTELLIGENCE, OPEN, PRODUCTION, REGISTER, STRATEGY, WRITERS } from "./copy";
+import { ARTIFACT, CONTROL, FOOTER, INTELLIGENCE, OPEN, PRODUCTION, REGISTER, STRATEGY, WORLD, WRITERS } from "./copy";
 import "./studios.css";
 
 
@@ -165,19 +165,20 @@ function Footer() {
 function StaticNarrative() {
   return (
     <div className="cw-shell">
+      {/* Beats 1 and 2, without choreography. The cinematic opening shows an
+          idea, then the building that is about to act on it; stated linearly
+          that is the same three things in the same order — the idea in the
+          visitor's own words, the studios it is carried into, and the first
+          department waiting on the other side of the threshold. The words are
+          the same words: there is no second copy source. */}
       <section className="cw-static__act">
-        <div className="cw-static__whispers">
-          {OPEN.slate.map((line) => (
-            <p key={line} className="cw-mono">{line}</p>
-          ))}
-        </div>
-        <p className="cw-mono cw-mono--signal">{OPEN.overline}</p>
-        <h1 className="cw-display" style={{ marginTop: 18 }}>
-          {OPEN.title.map((line) => (
-            <span key={line} style={{ display: "block" }}>{line} </span>
-          ))}
-        </h1>
+        <h1 className="cw-display">{OPEN.idea}</h1>
         <div className="cw-static__body">
+          <blockquote className="cw-static__artifact">{ARTIFACT.line}</blockquote>
+          <p className="cw-lede">{OPEN.turn}</p>
+          <p className="cw-mono cw-mono--signal">
+            {WORLD.facility} — {WORLD.thresholdLabel}
+          </p>
           <p className="cw-lede">{OPEN.lede}</p>
           <div className="cw-open__actions" style={{ marginTop: 0 }}>
             <Link className="cw-cta cw-cta--solid" href="/login">{OPEN.primaryCta}</Link>

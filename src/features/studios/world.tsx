@@ -3,7 +3,7 @@
 import { CSSProperties, useEffect, useRef } from "react";
 import { HallFar, HallMid, HallNear } from "./facility";
 import { registerScene } from "./scroll-engine";
-import { LANDMARK } from "./beats";
+import { LANDMARK, lightVariables } from "./beats";
 import { ArtifactPlate } from "./artifact-plate";
 import { WORLD } from "./copy";
 
@@ -134,7 +134,18 @@ export function StudiosWorld({ scope }: { scope: string }) {
   }, [scope]);
 
   return (
-    <div className="cw-world" ref={ref} data-live="false" aria-hidden="true">
+    <div
+      className="cw-world"
+      ref={ref}
+      data-live="false"
+      aria-hidden="true"
+      /* Journey positions for every light cue and environmental gate, derived
+         from the scene lengths in `./beats.ts` rather than written into the
+         stylesheet as bare decimals. Lengthening the cold open to hold Beats 1
+         and 2 moves all of them together, so the building's light stays tied
+         to the room it belongs to instead of to a scroll fraction. */
+      style={lightVariables() as CSSProperties}
+    >
       {/* Ambient light. Interpolated rather than switched, so the colour of
           Department 01 has already begun bleeding into the approach corridor. */}
       <div className="cw-world__ambient" />

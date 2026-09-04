@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { CSSProperties } from "react";
 import { Cue, Scene, useLightweightMode } from "./scene";
 import { sceneTravel } from "./beats";
@@ -27,65 +26,54 @@ import { CAPABILITIES, STATUS_LABEL } from "./capabilities";
 
 /* ---------------------------------------------------------------- ACT 00 -- */
 
+/**
+ * Beats 1 and 2: the idea, and the world that is about to act on it.
+ *
+ * The pass-2 cold open was a landing page — eyebrow, three-line display
+ * headline, positioning paragraph, two calls to action — stacked over a
+ * building the visitor had not been shown yet. All of it is retired here.
+ *
+ * What is left is the sequence the rest of the run depends on:
+ *
+ *   Beat 1   One sentence, and the artifact it is about. At rest the artifact
+ *            is the only lit thing in the frame and its plate carries the idea
+ *            in the visitor's own words; the line resolves on the first small
+ *            scroll gesture, so the opening rewards movement instead of taxing
+ *            it with a screen of static hero.
+ *   Beat 2   The turn. The building opens around the same artifact and the
+ *            camera crosses the threshold with it.
+ *
+ * Neither beat owns any scenery: the reveal is the facility in `./world.tsx`
+ * becoming legible by depth, which is why nothing is added here to compensate.
+ */
 export function ColdOpen() {
   return (
     <Scene id="open" travel={sceneTravel("open")} className="cw-open" label="Channelwright Studios: cold open">
-      {/* Slate lines, set like subtitles rather than a headline. */}
-      <div className="cw-layer">
-        <div className="cw-open__slate">
-          <Cue from={-0.12} to={0.22} as="p" className="cw-mono cw-pulse cw-open__line">
-            {OPEN.slate[0]}
-          </Cue>
-          <Cue from={0.18} to={0.46} as="p" className="cw-mono cw-pulse cw-open__line">
-            {OPEN.slate[1]}
-          </Cue>
-        </div>
-      </div>
-
       <div className="cw-layer cw-layer--copy">
-        {/* One exit cue carries the whole stack out, so the boundary into
-            Department 01 is a camera move rather than a cut. */}
-        <Cue from={0.9} to={1} className="cw-exit cw-open__exit">
-          <div className="cw-shell cw-open__copy">
-            <Cue from={0.42} to={0.58} as="p" className="cw-mono cw-mono--signal cw-rise cw-open__over">
-              {OPEN.overline}
+        {/* Beat 1. One line, set against the artifact rather than above a
+            paragraph, and carried out by its own exit so the boundary into
+            Beat 2 is a camera move rather than a cut. */}
+        <Cue from={0.46} to={0.6} className="cw-exit cw-open__beat cw-open__beat--idea">
+          <div className="cw-shell cw-open__frame">
+            <Cue from={0.05} to={0.22} as="header" className="cw-rise">
+              <h1 className="cw-display cw-open__line">{OPEN.idea}</h1>
             </Cue>
-            <h1 className="cw-display cw-display--xl cw-open__title">
-              {OPEN.title.map((line, index) => (
-                <Cue
-                  key={line}
-                  from={0.44 + index * 0.04}
-                  to={0.62 + index * 0.04}
-                  as="span"
-                  className="cw-wipe cw-open__title-line"
-                >
-                  {line.startsWith(OPEN.emphasis) ? (
-                    <>
-                      <em>{OPEN.emphasis}</em>
-                      {line.slice(OPEN.emphasis.length)}
-                    </>
-                  ) : (
-                    line
-                  )}{" "}
-                </Cue>
-              ))}
-            </h1>
-            <Cue from={0.6} to={0.74} as="p" className="cw-lede cw-rise cw-open__lede">
-              {OPEN.lede}
-            </Cue>
-            <Cue from={0.66} to={0.8} className="cw-rise cw-open__actions">
-              <Link className="cw-cta cw-cta--solid" href="/login">
-                {OPEN.primaryCta}
-              </Link>
-              <a className="cw-cta cw-cta--ghost" href="#register">
-                {OPEN.secondaryCta}
-              </a>
+          </div>
+        </Cue>
+
+        {/* Beat 2. Said once, high and small, while the widest shot in the run
+            happens underneath it — then cleared before the crossing so the
+            threshold is passed with nothing written across it. */}
+        <Cue from={0.8} to={0.9} className="cw-exit cw-open__beat cw-open__beat--turn">
+          <div className="cw-shell cw-open__frame cw-open__frame--turn">
+            <Cue from={0.52} to={0.68} as="p" className="cw-rise cw-open__line cw-open__line--turn">
+              {OPEN.turn}
             </Cue>
           </div>
         </Cue>
       </div>
 
-      <Cue from={0} to={0.12} className="cw-scrollhint cw-hold">
+      <Cue from={0.02} to={0.14} className="cw-scrollhint cw-hold">
         <span className="cw-scrollhint__bar" />
         <span className="cw-mono">{OPEN.hint}</span>
       </Cue>

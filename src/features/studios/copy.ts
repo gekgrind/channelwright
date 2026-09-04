@@ -6,15 +6,28 @@
  * most visitors see. Claims are constrained by `./capabilities.ts`.
  */
 
+/**
+ * The cold open, as two beats rather than a hero.
+ *
+ * Beat 1 gives the visitor one idea; Beat 2 reveals the world that is about to
+ * act on it. The two lines below are the pass-2 slate, promoted: they used to
+ * be whispered at subtitle scale underneath a three-line headline and a
+ * paragraph of positioning, all of which is retired here. The building states
+ * its own name on the threshold lintel, and the technical claim belongs to the
+ * capability register — neither needs restating over the first frame.
+ *
+ * `lede` survives for the reduced-motion document, where the same claim is
+ * stated in full rather than shown; it is deliberately not a third beat.
+ */
 export const OPEN = {
-  slate: ["Every channel starts with an idea.", "The difference is what happens next."],
-  overline: "Channelwright Studios",
-  title: ["One idea enters.", "An entire media operation", "comes to life."],
-  emphasis: "One idea",
+  /** Beat 1. The whole of the first frame's copy. */
+  idea: "Every channel starts with an idea.",
+  /** Beat 2. The turn, said as the Studios open around it. */
+  turn: "The difference is what happens next.",
   lede: "The AI operating system for building and running a YouTube media business. Evidence before strategy, strategy before production, and a human decision at every gate.",
   primaryCta: "Enter the studio",
   secondaryCta: "See what is built",
-  hint: "Scroll to enter",
+  hint: "Scroll",
 } as const;
 
 export const INTELLIGENCE = {

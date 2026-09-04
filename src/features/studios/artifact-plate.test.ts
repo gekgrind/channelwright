@@ -39,4 +39,23 @@ describe("artifact track", () => {
       expect(distance / span).toBeLessThan(1200);
     }
   });
+
+  it("starts at the origin, because only deltas reach the screen", () => {
+    // `axis()` sums the differences between consecutive stops, so the first
+    // stop's own coordinates are never rendered. Moving it off (0, 0) would
+    // silently translate the entire route — including the approved Beats 3–7
+    // compositions — while looking like a local edit to the cold open.
+    expect(TRACK[0]).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it("carries the artifact through the threshold rather than past it", () => {
+    // Beat 2 is crossed by the protagonist, not only by the camera: the
+    // artifact has to be above its resting height and still travelling at the
+    // moment the aperture reaches the viewer.
+    const crossing = journeyAt("open", 0.88);
+    const before = TRACK.findLastIndex((_, index) => positions[index] <= crossing);
+    expect(before).toBeGreaterThan(0);
+    expect(TRACK[before].y).toBeLessThan(0);
+    expect(positions[before + 1]).toBeGreaterThan(crossing);
+  });
 });

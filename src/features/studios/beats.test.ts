@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LANDMARK, SCENES, SCROLLABLE_TRAVEL, TOTAL_TRAVEL, journeyAt, sceneTravel } from "./beats";
+import { GATE, LANDMARK, LIGHT, SCENES, SCROLLABLE_TRAVEL, TOTAL_TRAVEL, journeyAt, lightVariables, sceneTravel } from "./beats";
 
 /**
  * The edit's derivation, pinned.
@@ -17,7 +17,7 @@ import { LANDMARK, SCENES, SCROLLABLE_TRAVEL, TOTAL_TRAVEL, journeyAt, sceneTrav
  */
 describe("studios beat table", () => {
   it("derives scrollable travel from the scene lengths", () => {
-    expect(TOTAL_TRAVEL).toBe(23.2);
+    expect(TOTAL_TRAVEL).toBe(24.4);
     // The final sticky stage consumes one viewport and never scrubs.
     expect(SCROLLABLE_TRAVEL).toBe(TOTAL_TRAVEL - 1);
   });
@@ -29,24 +29,25 @@ describe("studios beat table", () => {
   });
 
   it("places a scene's start and end at the expected journey fractions", () => {
-    // The cold open owns the first 3.4 of 22.2 scrollable viewport-heights.
+    // The cold open owns the first 4.6 of 23.4 scrollable viewport-heights:
+    // Beat 1 and Beat 2 both live inside it.
     expect(journeyAt("open", 0)).toBe(0);
-    expect(journeyAt("intelligence", 0)).toBe(Number((3.4 / 22.2).toFixed(4)));
-    expect(journeyAt("control", 1)).toBe(Number((23.2 / 22.2).toFixed(4)));
+    expect(journeyAt("intelligence", 0)).toBe(Number((4.6 / 23.4).toFixed(4)));
+    expect(journeyAt("control", 1)).toBe(Number((24.4 / 23.4).toFixed(4)));
   });
 
-  it("reproduces the landmark positions the experience shipped with", () => {
+  it("places the landmarks the phase-4 edit shipped with", () => {
     expect(LANDMARK).toEqual({
-      threshold: 0.1571,
-      dept01: 0.2346,
-      partition: 0.3635,
-      dept02: 0.422,
-      partition02to03: 0.5305,
-      dept03: 0.5957,
-      partition03to04: 0.7055,
-      dept04: 0.7708,
-      partition04to05: 0.8778,
-      dept05: 0.9431,
+      threshold: 0.173,
+      dept01: 0.2739,
+      partition: 0.3961,
+      dept02: 0.4516,
+      partition02to03: 0.5546,
+      dept03: 0.6164,
+      partition03to04: 0.7206,
+      dept04: 0.7826,
+      partition04to05: 0.8841,
+      dept05: 0.946,
     });
   });
 
@@ -57,5 +58,41 @@ describe("studios beat table", () => {
       expect(position).toBeLessThanOrEqual(1);
     }
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+  });
+
+  it("keeps the threshold inside the cold open, ahead of Department 01", () => {
+    // Beat 2 is the climax of the open scene rather than a prop passed on the
+    // way out of it, and the corridor beyond it runs into Department 01.
+    expect(LANDMARK.threshold).toBeGreaterThan(journeyAt("open", 0.8));
+    expect(LANDMARK.threshold).toBeLessThan(journeyAt("intelligence", 0));
+    expect(LANDMARK.dept01).toBeGreaterThan(LANDMARK.threshold);
+  });
+
+  it("stages the facility's light by depth and finishes it before Beat 3", () => {
+    const [nearFrom] = LIGHT.wake;
+    const [midFrom] = LIGHT.wakeMid;
+    const [farFrom, farTo] = LIGHT.wakeFar;
+    // Foreground, then the operating floor, then the back wall.
+    expect(nearFrom).toBeLessThan(midFrom);
+    expect(midFrom).toBeLessThan(farFrom);
+    // Every wake ramp, and the crossing dolly, is spent before the room the
+    // approved Beat 3 composition lives in.
+    const beat3 = journeyAt("intelligence", 0.4);
+    expect(farTo).toBeLessThan(LANDMARK.threshold);
+    expect(GATE.dolly[2]).toBeLessThan(beat3);
+    // Department 01's wash is the pass-2 timing, restated room-relative.
+    expect(LIGHT.dept01[0]).toBeGreaterThan(LANDMARK.threshold);
+  });
+
+  it("emits every light window as a start and a reciprocal span", () => {
+    const vars = lightVariables();
+    // Division in `calc()` by anything but a literal number is the kind of
+    // thing that silently invalidates a declaration and takes the building's
+    // light with it, so the stylesheet is only ever handed multipliers.
+    for (const [name, value] of Object.entries(vars)) {
+      expect(Number.isFinite(Number(value)), `${name} = ${value}`).toBe(true);
+    }
+    expect(vars["--wake-a"]).toBe(String(LIGHT.wake[0]));
+    expect(Number(vars["--wake-k"])).toBeCloseTo(1 / (LIGHT.wake[1] - LIGHT.wake[0]), 3);
   });
 });
