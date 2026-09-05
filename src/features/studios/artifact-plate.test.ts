@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { CAMERA, cameraAt, journeyAt } from "./beats";
+import { ACTION_AT, HANDOFF_DONE } from "./acts";
+import { CAPABILITIES } from "./capabilities";
+import { ARTIFACT, FINALE } from "./copy";
 import { TRACK } from "./artifact-plate";
 
 /**
@@ -61,12 +64,21 @@ describe("artifact track", () => {
 
   it("keeps the artifact in the Return rather than leaving it behind", () => {
     // Beat 8 resolves the hypothesis, and the hypothesis is attached to this
-    // plate — so the camera cannot go back for it without the artifact. The
-    // last stop is in the return scene and the whole beat stays on screen.
+    // plate — so the camera cannot go back for it without the artifact.
     const inReturn = TRACK.filter((stop) => stop.scene === "return");
     expect(inReturn.length).toBeGreaterThanOrEqual(3);
-    expect(TRACK[TRACK.length - 1].scene).toBe("return");
     for (const stop of inReturn) expect(Math.abs(stop.x)).toBeLessThan(46);
+  });
+
+  it("carries the artifact into the finale and sets it down there", () => {
+    // Beat 9 is a handoff, not an exit: the protagonist ends the run standing
+    // at the seam, so the last stop on the track belongs to the last scene and
+    // it is close enough to centre to be inside the door it is waiting at.
+    const inFinale = TRACK.filter((stop) => stop.scene === "finale");
+    expect(inFinale.length).toBeGreaterThanOrEqual(2);
+    const last = TRACK[TRACK.length - 1];
+    expect(last.scene).toBe("finale");
+    expect(Math.abs(last.x)).toBeLessThan(14);
   });
 
   it("moves the artifact far less than the camera across the Return", () => {
@@ -74,10 +86,30 @@ describe("artifact track", () => {
     // while the building travels half its length the other way. If the
     // artifact ever swept as far as the camera the beat would collapse into
     // "the page scrolled backwards".
-    const first = TRACK.find((stop) => stop.scene === "return")!;
-    const last = TRACK[TRACK.length - 1];
+    const inReturn = TRACK.filter((stop) => stop.scene === "return");
+    const first = inReturn[0];
+    const last = inReturn[inReturn.length - 1];
     const artifactRun = Math.abs(last.x - first.x) / 100;
     const cameraRun = Math.abs(cameraAt(CAMERA.retrieve[1]) - cameraAt(CAMERA.retrieve[0]));
     expect(artifactRun).toBeLessThan(cameraRun);
+  });
+
+  it("states the measurement boundary instead of an outcome", () => {
+    // The one thing Beat 9 must never do. Performance measurement is DESIGNED,
+    // so the plate ends on a binding and an absence, and the room says which is
+    // which. If this ever starts failing because measurement shipped, the copy
+    // is what has to change — not this assertion.
+    const measurement = CAPABILITIES.find((capability) => capability.id === "measurement")!;
+    expect(measurement.status).toBe("DESIGNED");
+    expect(ARTIFACT.unmeasured).toBe("No result yet");
+    expect([FINALE.heading, FINALE.verdict, ...FINALE.body].join(" ")).toContain("ingests no analytics");
+  });
+
+  it("offers the action only after the plate has become a decision", () => {
+    // The call to action is the last thing in the run, and it is a real link
+    // rather than a scrubbed graphic — so it must not become reachable before
+    // the handoff it is the consequence of has finished.
+    expect(ACTION_AT).toBeGreaterThan(HANDOFF_DONE);
+    expect(ACTION_AT).toBeLessThan(1);
   });
 });

@@ -46,6 +46,11 @@ export const SCENES = [
      asked, a hold there, and the way forward again. Its length is what keeps
      that traverse legible rather than a blur — see `CAMERA` below. */
   { id: "return", travel: 7 },
+  /* Beat 9, the Next Decision. Deliberately the shortest room in the run: the
+     Return earned its length by moving the camera half the building and back,
+     and an ending that outstays it reads as another hallway appearing after
+     the film has finished. Arrival, one door, one action. */
+  { id: "finale", travel: 4 },
 ] as const;
 
 export type SceneId = (typeof SCENES)[number]["id"];
@@ -156,6 +161,19 @@ export const LANDMARK = {
   dept05: journeyAt("control", 0.434205),
 } as const;
 
+/**
+ * Beat 9 — the measurement seam, where Department 06 would be.
+ *
+ * Deliberately *outside* `LANDMARK`, and deliberately past the end of the
+ * journey. Every landmark above is somewhere the camera goes; this is the one
+ * place it does not. `measurement` is DESIGNED, not built — the register says
+ * Channelwright ingests no analytics today and that the loop is open at this
+ * seam — so the door is placed just beyond the last frame the visitor can
+ * reach. The camera closes on it and runs out of building. That is the honest
+ * statement, and it is made in architecture rather than in a caption.
+ */
+export const SEAM = journeyAt("finale", 0.95);
+
 /* ----------------------------------------------------------------- camera */
 
 /**
@@ -243,6 +261,10 @@ export const LIGHT = {
   reveal: [journeyAt("open", 0.34), journeyAt("open", 0.6)] as Window,
   /** The cold open's key light, which the hall's own light replaces. */
   beam: [journeyAt("open", 0.3), journeyAt("open", 0.62)] as Window,
+  /** Beat 9: the unlit door resolving at the far end of the hall. Gated on the
+   *  timeline rather than on distance alone, so the Return's release cannot
+   *  sweep it into frame on its way past. */
+  seam: [journeyAt("return", 0.9), journeyAt("finale", 0.12)] as Window,
   /** Department 01's wash, and the building's warmer second half. Both are
    *  carried over unchanged from the pass-2 timings, restated room-relative. */
   dept01: [journeyAt("intelligence", 0.3533), journeyAt("strategy", 0.2322)] as Window,
@@ -326,6 +348,7 @@ export function lightVariables(): Record<string, string> {
     "wake-far": LIGHT.wakeFar,
     reveal: LIGHT.reveal,
     beam: LIGHT.beam,
+    seam: LIGHT.seam,
     l1: LIGHT.dept01,
     l2: LIGHT.dept02,
     inside: GATE.inside,

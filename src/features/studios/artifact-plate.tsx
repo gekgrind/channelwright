@@ -58,6 +58,11 @@ type Stop = {
  * held at the gate, so scroll advances the check while the object itself does
  * not move. That stillness is the beat, not a bug.
  *
+ * The two finale stops are Beat 9. The artifact is not carried through the
+ * last door — it is set down at its foot and left there, because the room
+ * beyond it is not built. That stillness is the ending: a decision standing at
+ * a seam, waiting for evidence the product does not yet ingest.
+ *
  * The four return-scene stops are Beat 8. The artifact travels *with* the
  * camera rather than being left behind: the question is physically attached to
  * this plate, so resolving it anywhere else would mean resolving it off screen.
@@ -95,6 +100,8 @@ export const TRACK: Stop[] = [
   { scene: "return", at: 0.34, x: 24, y: 20 }, /*       barely moves while the hall sweeps the other way */
   { scene: "return", at: 0.54, x: 22, y: 26 }, /*       set back down on the route it left by */
   { scene: "return", at: 0.84, x: 10, y: 18 }, /*       released, facing forward again */
+  { scene: "finale", at: 0.22, x: -2, y: 17 }, /*       Beat 9 — carried toward the last door */
+  { scene: "finale", at: 0.62, x: -10, y: 16 }, /*      stands in it, and waits                */
 ];
 
 /**
@@ -155,6 +162,12 @@ const STATE = {
   /* Beat 7 — several names existed; one of them goes out. */
   "--named": beat("control", 0.3, 0.46),
   "--chosen": beat("control", 0.5, 0.64),
+  /* Beat 9 — the handoff. Nothing is removed: the finished work recedes to a
+     record and the one thing that is still open stays lit, which is the
+     difference between "content that was produced" and "a decision waiting for
+     evidence". Reversible, like every other ramp here, so scrubbing back
+     brings the whole record forward again. */
+  "--handoff": beat("finale", 0.18, 0.36),
   /* Beat 8 — the question comes back.
      `--recall` is the recognition cue: the dormant tag stirs a beat before the
      camera turns, so the return is motivated by the artifact rather than

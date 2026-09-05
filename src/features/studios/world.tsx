@@ -3,9 +3,10 @@
 import { CSSProperties, useEffect, useRef } from "react";
 import { HallFar, HallMid, HallNear } from "./facility";
 import { registerScene } from "./scroll-engine";
-import { LANDMARK, cameraVariables, lightVariables } from "./beats";
+import { LANDMARK, SEAM, cameraVariables, lightVariables } from "./beats";
 import { ArtifactPlate } from "./artifact-plate";
 import { WORLD } from "./copy";
+import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL } from "./capabilities";
 
 /**
  * The persistent Channelwright Studios facility.
@@ -45,20 +46,37 @@ function Sign({ at, index, name }: { at: number; index: string; name: string }) 
 /**
  * An aperture the camera travels through. Scales past the viewer at the moment
  * it is reached, which is what turns "next section" into "next room".
+ *
+ * Two of these exist, and the difference between them is the whole argument of
+ * the ending. The entrance is lit and the camera goes through it. The seam at
+ * the far end — Department 06, where measurement would close the loop — is
+ * drawn in the same hand and left dark, because `measurement` is DESIGNED and
+ * Channelwright ingests no analytics today. The camera closes on it and the
+ * building runs out.
  */
-function Threshold({ at, label }: { at: number; label: string }) {
+function Threshold({ at, mark, label, kind }: { at: number; mark: string; label: string; kind?: "seam" }) {
   return (
-    <div className="cw-prop cw-threshold" style={prop(at)}>
+    <div className="cw-prop cw-threshold" data-kind={kind} style={prop(at)}>
       <span className="cw-threshold__frame" />
       {/* The building names itself on its own lintel. The cold open used to
           resolve out of an unlabelled rectangle in the dark, which read as
           unfinished rather than withheld — the visitor should know what they
           are walking into before the first department arrives. */}
-      <span className="cw-threshold__mark">{WORLD.facility}</span>
+      <span className="cw-threshold__mark">{mark}</span>
       <span className="cw-threshold__label">{label}</span>
     </div>
   );
 }
+
+/**
+ * Department 06, read off the same register the capability table renders — and
+ * so is the status painted on its lintel. If measurement ever stops being
+ * DESIGNED, the door relabels itself rather than quietly continuing to say
+ * something the register no longer supports.
+ */
+const ANALYTICS = DEPARTMENTS.find((department) => department.index === "06")!;
+const MEASUREMENT = CAPABILITIES.find((capability) => capability.id === "measurement")!;
+export const SEAM_LABEL = STATUS_LABEL[MEASUREMENT.status];
 
 /** Glazed divider between operating areas: the visible seam that keeps two
  *  departments adjacent rather than merely sequential. */
@@ -187,7 +205,16 @@ export function StudiosWorld({ scope }: { scope: string }) {
       <Partition at={LANDMARK.partition03to04} />
       <Partition at={LANDMARK.partition04to05} />
       <div className="cw-plane cw-plane--near"><HallNear /></div>
-      <Threshold at={LANDMARK.threshold} label={WORLD.thresholdLabel} />
+      <Threshold at={LANDMARK.threshold} mark={WORLD.facility} label={WORLD.thresholdLabel} />
+      {/* Beat 9. Named off `./capabilities.ts` rather than restated here, so
+          the door on the wall and the row in the register can never disagree
+          about what is built. */}
+      <Threshold
+        at={SEAM}
+        kind="seam"
+        mark={`${ANALYTICS.index} \u2014 ${ANALYTICS.name}`}
+        label={SEAM_LABEL}
+      />
 
       {/* Foreground jambs: unlit structure the visitor is standing between.
           Nothing is drawn on them — their whole job is to occlude the room's

@@ -238,6 +238,28 @@ export const RETURN = {
   verdict: "1 question, still open",
 } as const;
 
+/**
+ * Beat 9 — the Next Decision. The last room, and the shortest.
+ *
+ * The Return proved the question survives the pipeline. This states what that
+ * is *for*: a release is not the end of the work, it is the thing that makes
+ * the next decision answerable. The register is the boundary — `measurement`
+ * is DESIGNED, Channelwright ingests no analytics today — so the finale points
+ * at the seam rather than pretending to have crossed it, and the building says
+ * so by leaving Department 06 unlit rather than by apologising in a paragraph.
+ *
+ * The supporting thought and the action are not stated here on purpose: they
+ * reuse `FOOTER.line` and `OPEN.primaryCta`, which the site already commits to.
+ */
+export const FINALE = {
+  heading: "Every video leaves knowing what it has to prove.",
+  body: [
+    "The release decision records the KPI and the hypothesis the video is meant to test, so a result has somewhere to land. Where it lands is the one room this building has not built.",
+    "Channelwright ingests no analytics today. Department 06 is specified and reserved, and it is left unlit here rather than dressed up as a dashboard.",
+  ],
+  verdict: "1 room, deliberately dark",
+} as const;
+
 export const REGISTER = {
   kicker: "Capability register",
   heading: "What is built, what is proven, and what is not.",

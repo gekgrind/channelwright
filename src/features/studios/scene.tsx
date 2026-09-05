@@ -21,9 +21,23 @@ type SceneProps = {
   children: ReactNode;
   /** Announced by the department rail while this scene holds the stage. */
   label?: string;
+  /**
+   * Progress at which `data-revealed` flips to "true", for content that must
+   * not merely be *invisible* before its moment but genuinely absent.
+   *
+   * Scroll-scrubbed opacity is right for copy — a heading at zero opacity is
+   * still only a heading. It is wrong for a link: an invisible anchor is still
+   * in the tab order, and the finale's call to action would otherwise be
+   * reachable by keyboard through the whole scene before it exists. A discrete
+   * attribute lets CSS switch `visibility`, which removes it properly.
+   *
+   * Written on crossings only, the same way `data-on-stage` is, so this costs
+   * a comparison per frame rather than a render.
+   */
+  revealAt?: number;
 };
 
-export function Scene({ id, travel = 3, className, children, label }: SceneProps) {
+export function Scene({ id, travel = 3, className, children, label, revealAt }: SceneProps) {
   const ref = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -31,6 +45,7 @@ export function Scene({ id, travel = 3, className, children, label }: SceneProps
     if (!element) return;
     let last = -1;
     let lastOnStage: boolean | null = null;
+    let lastRevealed: boolean | null = null;
 
     return registerScene({
       element,
@@ -45,9 +60,16 @@ export function Scene({ id, travel = 3, className, children, label }: SceneProps
           lastOnStage = onStage;
           element.dataset.onStage = onStage ? "true" : "false";
         }
+        if (revealAt !== undefined) {
+          const revealed = onStage && progress >= revealAt;
+          if (revealed !== lastRevealed) {
+            lastRevealed = revealed;
+            element.dataset.revealed = revealed ? "true" : "false";
+          }
+        }
       },
     });
-  }, []);
+  }, [revealAt]);
 
   return (
     <section
@@ -56,6 +78,7 @@ export function Scene({ id, travel = 3, className, children, label }: SceneProps
       aria-label={label}
       data-cw-scene=""
       data-on-stage="false"
+      data-revealed={revealAt === undefined ? undefined : "false"}
       className={className}
       style={{ "--travel": travel } as CSSProperties}
     >

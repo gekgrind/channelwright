@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ColdOpen, IntelligenceRoom, IntelligenceCapabilities, StrategyRoom, WritersRoom, ProductionFloor, ControlRoom, TheReturn } from "./acts";
+import { ColdOpen, IntelligenceRoom, IntelligenceCapabilities, StrategyRoom, WritersRoom, ProductionFloor, ControlRoom, TheReturn, NextDecision } from "./acts";
 import { StudiosWorld } from "./world";
 import { HallFar, HallNear } from "./facility";
 import { useReducedMotion } from "./scene";
 import { refreshScenes } from "./scroll-engine";
 import { useSmoothScroll } from "./smooth-scroll";
 import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL, type CapabilityStatus } from "./capabilities";
-import { ARTIFACT, CONTROL, FOOTER, INTELLIGENCE, OPEN, PRODUCTION, REGISTER, RETURN, STRATEGY, WORLD, WRITERS } from "./copy";
+import { ARTIFACT, CONTROL, FINALE, FOOTER, INTELLIGENCE, OPEN, PRODUCTION, REGISTER, RETURN, STRATEGY, WORLD, WRITERS } from "./copy";
 import "./studios.css";
 
 
@@ -350,6 +350,24 @@ function StaticNarrative() {
           </dl>
         </div>
       </section>
+
+      {/* Beat 9, without the camera. The same conclusion in the same order:
+          the question, the binding, the seam it is waiting on, and the action.
+          The result is not stated, because there is no result. */}
+      <section id="finale" className="cw-static__act">
+        <h2 className="cw-heading">{FINALE.heading}</h2>
+        <div className="cw-static__body">
+          {FINALE.body.map((paragraph) => (
+            <p key={paragraph} className="cw-lede">{paragraph}</p>
+          ))}
+          <p className="cw-mono cw-mono--signal">
+            {FINALE.verdict}
+          </p>
+          <div className="cw-open__actions" style={{ marginTop: 0 }}>
+            <Link className="cw-cta cw-cta--solid" href="/login">{OPEN.primaryCta}</Link>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
@@ -397,6 +415,7 @@ export default function StudiosExperience() {
             <ProductionFloor />
             <ControlRoom />
             <TheReturn />
+            <NextDecision />
           </div>
         )}
         {reduced ? (

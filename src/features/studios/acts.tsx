@@ -2,13 +2,14 @@
 
 import { CSSProperties } from "react";
 import { Cue, Scene, useLightweightMode } from "./scene";
-import { CAMERA, sceneProgress, sceneTravel } from "./beats";
+import { CAMERA, journeyAt, sceneProgress, sceneTravel } from "./beats";
 import { OpportunityPlot } from "./opportunity-plot";
 import { VersionGate } from "./version-gate";
 import { ScriptSequencer } from "./script-sequencer";
 import { RenderLine } from "./render-line";
 import { ReleaseCompositor } from "./control-room";
-import { CONTROL, INTELLIGENCE, OPEN, PRODUCTION, RETURN, STRATEGY, WRITERS } from "./copy";
+import Link from "next/link";
+import { CONTROL, FINALE, FOOTER, INTELLIGENCE, OPEN, PRODUCTION, RETURN, STRATEGY, WRITERS } from "./copy";
 import { CAPABILITIES, STATUS_LABEL } from "./capabilities";
 
 /**
@@ -362,6 +363,75 @@ export function TheReturn() {
             </div>
           </div>
         </Cue>
+      </div>
+    </Scene>
+  );
+}
+
+/* ---------------------------------------------------------------- ACT 07 -- */
+
+/** Progress at which the action stops being decoration and becomes a link. */
+export const ACTION_AT = 0.63;
+
+/** Where the plate has finished becoming a decision, in this scene's own
+ *  progress. The action is not offered before that has happened. */
+export const HANDOFF_DONE = sceneProgress("finale", journeyAt("finale", 0.36));
+
+/**
+ * Beat 9 — the Next Decision. The last room, and on purpose the shortest.
+ *
+ * The Return proved the facility remembers. This says what that memory is for:
+ * a release is not the end of the work, it is what makes the next decision
+ * answerable. The argument is made almost entirely in the building — the
+ * artifact is set down at a door that is drawn in the same hand as the
+ * entrance and left unlit, because `measurement` is DESIGNED and Channelwright
+ * ingests no analytics today.
+ *
+ * The frame deliberately rhymes with Beat 1: darkness, one lit object, one
+ * sentence, no chrome. The state is what has changed. An idea waiting to
+ * become something, then a decision waiting for evidence.
+ *
+ * The action is the last thing to arrive, and it arrives on a discrete
+ * `data-revealed` rather than a scrubbed opacity — an invisible link is still
+ * a tab stop, and the visitor should not be able to reach the end of the
+ * journey by keyboard before the journey has made its case.
+ */
+export function NextDecision() {
+  return (
+    <Scene
+      id="finale"
+      travel={sceneTravel("finale")}
+      className="cw-room cw-room--09 cw-scene--overlap"
+      label="The Next Decision"
+      revealAt={ACTION_AT}
+    >
+      <div className="cw-layer cw-layer--copy">
+        <div className="cw-shell">
+          <div className="cw-room__frame" data-beat="b9">
+            <h2 className="cw-heading cw-room__headline">
+              <Cue from={0.26} to={0.38} as="span" className="cw-rise cw-room__heading-line">
+                {FINALE.heading}
+              </Cue>
+            </h2>
+
+            {/* One raised voice per room, and no caption under it. */}
+            <div className="cw-verdict" style={{ "--at": 0.42 } as CSSProperties}>
+              <span className="cw-verdict__mark" aria-hidden="true" />
+              <span className="cw-verdict__line">{FINALE.verdict}</span>
+            </div>
+
+            {/* The visitor's turn. One action, the one the site has committed
+                to everywhere else, and the only lit thing left in the frame. */}
+            <div className="cw-finale__action">
+              <Cue from={0.48} to={0.6} as="p" className="cw-rise cw-finale__line">
+                {FOOTER.line}
+              </Cue>
+              <Link className="cw-cta cw-cta--solid cw-finale__cta" href="/login">
+                {OPEN.primaryCta}
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
     </Scene>
   );

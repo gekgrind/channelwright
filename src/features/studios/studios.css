@@ -384,6 +384,10 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   /* Beat 2's own window: the threshold resolves out of the dark at the far end
      of the hall and starts its approach inside this range. */
   --reveal: clamp(0, calc((var(--j) - var(--reveal-a, 0)) * var(--reveal-k, 10)), 1);
+  /* Beat 9's: the unlit door where Department 06 would be. Gated on the
+     timeline, not on distance, so the Return's release cannot sweep it into
+     frame on the way past. */
+  --seam: clamp(0, calc((var(--j) - var(--seam-a, 2)) * var(--seam-k, 10)), 1);
   /* The cold open's key light, handed over to the hall's own light. */
   --beam-out: clamp(0, calc((var(--j) - var(--beam-a, 0)) * var(--beam-k, 10)), 1);
   /* Which department's light is in the room. Both ramps start well before
@@ -877,6 +881,50 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   color: rgba(242, 239, 230, .34);
 }
 
+/* BEAT 9 — the measurement seam.
+   ---------------------------------------------------------------------------
+   The same doorway, drawn in the same hand, and unlit. Everything that made
+   the entrance read as a way *through* — the spill from the room beyond, the
+   pool it threw on the deck, the glow on the wall around it — is removed here
+   rather than dimmed, because `measurement` is DESIGNED and Channelwright
+   ingests no analytics today. What is left is an opening with nothing behind
+   it and its own name on the lintel.
+
+   It also never arrives. `SEAM` is placed past the end of the journey, so the
+   camera closes on this door and the building runs out before it is reached:
+   the approach has no `--close` stage and the aperture never grows past the
+   frame. That is the argument of the ending, made in architecture. */
+.cw-threshold[data-kind="seam"] {
+  /* A longer, flatter approach than the entrance, and no last stage at all.
+     The entrance accelerated into the camera because it was about to be
+     crossed; this one is only ever walked up to, so it resolves early — the
+     visitor should be able to read what it says while there is still building
+     between them and it — and then stops growing. */
+  --near: clamp(0, calc((.2 - var(--d)) * 5.6), 1);
+  --close: 0;
+  opacity: var(--seam, 0);
+  transform:
+    translate3d(calc(var(--d) * var(--rate) * 1vw), -50%, 0)
+    scale(calc(.34 + var(--near) * 1.5));
+}
+.cw-threshold[data-kind="seam"] .cw-threshold__frame {
+  /* Cold and thin. The entrance is warm-white and 2px; this is the same
+     opening described by a colder, quieter line. */
+  border-color: rgba(150, 186, 232, .3);
+  box-shadow:
+    inset 0 0 0 7px rgba(5, 6, 7, .92),
+    inset 0 0 0 8px rgba(150, 186, 232, .14);
+}
+/* No light from beyond, and no pool on the floor in front of it. An interior
+   that is darker than the hall it is cut into is the whole statement. */
+.cw-threshold[data-kind="seam"] .cw-threshold__frame::after {
+  background: linear-gradient(to bottom, rgba(6, 8, 12, .96), rgba(6, 8, 12, .88));
+  opacity: 1;
+}
+.cw-threshold[data-kind="seam"] .cw-threshold__frame::before { opacity: 0; }
+.cw-threshold[data-kind="seam"] .cw-threshold__mark { color: rgba(190, 212, 240, .6); }
+.cw-threshold[data-kind="seam"] .cw-threshold__label { color: var(--warn); opacity: .62; }
+
 /* Glazed divider between operating areas: the visible seam between 01 and 02
    that keeps them adjacent rather than separate. */
 .cw-partition {
@@ -1126,6 +1174,57 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
    would only flatten the depth the returning camera just built. */
 .cw-room--08 .cw-layer--copy { --scrim: .7; }
 
+/* Beat 9 — the next decision. Left column, low in the frame and sparse: the
+   door and the object standing at it are the shot, and the copy is three short
+   things stacked under each other on the reading side. */
+.cw-room__frame[data-beat="b9"] { justify-items: start; align-content: center; padding-top: 4vh; }
+.cw-room__frame[data-beat="b9"] .cw-room__headline { max-width: 15ch; }
+/* The sparsest wash in the run, matching the Return's. The frame is nearly
+   black by design and a department-strength scrim would only flatten it. */
+.cw-room--09 .cw-layer--copy { --scrim: .66; }
+
+/* The action. Held out of the document until the scene says so — `visibility`
+   rather than opacity, because an invisible link is still a tab stop and the
+   visitor should not reach the end of the journey by keyboard before the
+   journey has made its case. `data-revealed` is written by the scene engine on
+   crossings only (see `revealAt` in ./scene.tsx), so this costs a comparison
+   per frame rather than a render, and it is a pure function of scroll — the
+   action withdraws again on the way back up. */
+.cw-finale__action {
+  display: grid;
+  gap: 18px;
+  justify-items: start;
+  margin-top: 26px;
+}
+.cw-finale__line {
+  font-family: var(--font-display), sans-serif;
+  font-size: clamp(1rem, 1.5vw, 1.28rem);
+  letter-spacing: -.012em;
+  color: var(--lume-2);
+  max-width: 26ch;
+}
+.cw-studios[data-ready="true"] .cw-finale__cta {
+  visibility: hidden;
+  opacity: 0;
+  transform: translate3d(0, 10px, 0);
+  /* Short. This is the one time-based thing in an otherwise purely
+     scroll-derived page, so it is kept brief enough that scrubbing across the
+     threshold settles almost immediately and never leaves a focusable link
+     stranded behind a fade. */
+  transition: opacity .26s var(--ease), transform .26s var(--ease), visibility .26s;
+}
+.cw-studios[data-ready="true"] [data-cw-scene][data-revealed="true"] .cw-finale__cta {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+}
+
+/* One action in the last frame. The top bar recedes here exactly as it does in
+   the cold open — the ending rhymes with the opening, and the visitor is not
+   offered the same door twice at the moment they are asked to walk through
+   it. The register and the footer are directly below, unchanged. */
+.cw-studios[data-phase="finale"] .cw-topbar { opacity: 0; visibility: hidden; }
+
 /* --- The artifact ------------------------------------------------------- */
 
 /* One object for the whole run: the visitor's idea, written down, carried
@@ -1142,6 +1241,13 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   /* Lateral throw is scaled down on a narrow viewport: the same journey read
      across 390px would carry the artifact off both edges of the frame. */
   --throw: 1;
+  /* Extra descent during Beat 9's handoff, in vh. Zero on a wide viewport,
+     where the copy and the plate occupy different columns. A phone has only
+     one column: the plate is pinned across the frame and the finale's copy
+     stack would land on top of it, so there the object is set down lower.
+     Multiplied by `--handoff`, so it eases in with the beat and cannot
+     introduce a step anywhere else in the run. */
+  --drop: 0;
 
   position: absolute;
   left: 50%;
@@ -1149,7 +1255,11 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   width: 0;
   height: 0;
   translate: -50% -50%;
-  transform: translate3d(calc((var(--ax)) * var(--throw) * 1vw), calc((var(--ay)) * 1vh), 0);
+  transform: translate3d(
+    calc((var(--ax)) * var(--throw) * 1vw),
+    calc(((var(--ay)) + var(--handoff, 0) * var(--drop)) * 1vh),
+    0
+  );
   will-change: transform;
 }
 
@@ -1210,7 +1320,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   display: flex;
   gap: 3px;
   translate: 0 -50%;
-  opacity: var(--bound);
+  opacity: calc(var(--bound) * (1 - var(--handoff, 0) * .62));
 }
 .cw-artifact__evidence i {
   width: 2px;
@@ -1255,6 +1365,18 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
      it carries is the first thing in the film. It is lit before the hall is. */
   opacity: 1;
 }
+/* BEAT 9 — the handoff.
+   ---------------------------------------------------------------------------
+   Nothing is deleted. The finished work — the sentences, the shape it took,
+   the names it could have gone out under, the evidence bound to it — recedes
+   to a record, and what stays lit is the one thing that is still open: the
+   question, and the release it is bound to. That is the difference between
+   content that was produced and a decision waiting for evidence, and it is
+   stated by contrast rather than by a caption.
+
+   Composed into each element's own opacity rather than applied once to the
+   plate: half of these already carry a state ramp of their own, and a blanket
+   rule would either lose to them in the cascade or throw their state away. */
 /* Both sentences share one treatment. That is the device: the visitor reads a
    replacement, not a second object. */
 .cw-artifact__line {
@@ -1274,7 +1396,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   position: relative;
   width: max-content;
   max-width: 100%;
-  color: color-mix(in srgb, var(--lume) calc(100% - var(--strike) * 48%), transparent);
+  color: color-mix(in srgb, var(--lume) calc(100% - var(--strike) * 48% - var(--handoff, 0) * 34%), transparent);
 }
 .cw-artifact__line--first::after {
   content: "";
@@ -1293,7 +1415,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   font-weight: 500;
   margin-top: calc(var(--rewrite) * 6px);
   max-height: calc(var(--rewrite) * 6em);
-  opacity: var(--rewrite);
+  opacity: calc(var(--rewrite) * (1 - var(--handoff, 0) * .55));
   overflow: hidden;
 }
 
@@ -1319,7 +1441,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
 .cw-artifact__tag[data-kind="audience"] {
   color: color-mix(in srgb, var(--signal) 88%, var(--lume));
   border-color: var(--signal-dim);
-  opacity: var(--claimed);
+  opacity: calc(var(--claimed) * (1 - var(--handoff, 0) * .62));
 }
 /* Dormant on purpose. It is the only thing on the artifact that has not been
    resolved, and Beat 8 is where that changes.
@@ -1358,7 +1480,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   color: var(--lume-4);
   padding: 4px 5px 3px;
   border-top: 2px solid var(--lume-4);
-  opacity: var(--in);
+  opacity: calc(var(--in) * (1 - var(--handoff, 0) * .68));
   transform: translateY(calc((1 - var(--in)) * 6px));
 }
 .cw-artifact__shape i[data-flagged="true"] {
@@ -1387,7 +1509,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   font-size: 11px;
   line-height: 1.3;
   color: var(--lume-3);
-  opacity: var(--in);
+  opacity: calc(var(--in) * (1 - var(--handoff, 0) * .68));
 }
 .cw-artifact__names i[data-rejected="true"] {
   color: color-mix(in srgb, var(--lume) calc(40% - var(--chosen) * 22%), transparent);
@@ -1476,6 +1598,11 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   /* The ceiling and the deck are the top and bottom of the room now, so the
      vignette stops repainting them black and keeps only its corner falloff. */
   background: radial-gradient(136% 104% at 50% 46%, transparent 56%, rgba(5, 6, 7, .5) 100%);
+  /* Closes in a little as the last door resolves. The departments behind the
+     visitor are finished; the frame narrows to the one opening that is not,
+     and to the object standing in it. A few percent of falloff, not a filter
+     over the viewport. */
+  transform: scale(calc(1 - var(--seam, 0) * .1));
 }
 
 /* ============================================================================
@@ -2239,7 +2366,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   .cw-room__brief { gap: 10px; }
   /* Shorter lateral throw: the phone's frame is narrow, so desktop distances
      would fling every landmark off-screen before it could be read. */
-  .cw-artifact { top: 54%; --throw: .5; }
+  .cw-artifact { top: 54%; --throw: .5; --drop: 8; }
   .cw-artifact__ring { width: 84px; height: 84px; }
   .cw-artifact__tether { height: 18vh; }
   /* A 390px frame cannot hang a readable sentence off a point that roams
@@ -2279,6 +2406,29 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   .cw-room .cw-stage .cw-shell { padding-top: 60px; }
   /* Clear of the wall sign the Return brings back above it. */
   .cw-room__frame[data-beat="b8"] { padding-top: 24vh; }
+  /* One column, so the finale stacks rather than sitting side by side: the
+     proposition at the top, the door and the object standing in it through the
+     middle, and the action at the bottom of the frame where a thumb is. */
+  .cw-room__frame[data-beat="b9"] {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding-top: 11vh;
+    padding-bottom: 7vh;
+  }
+  .cw-room__frame[data-beat="b9"] .cw-verdict { margin-top: 12px; }
+  .cw-room__frame[data-beat="b9"] .cw-finale__action { margin-top: auto; }
+  .cw-finale__line { font-size: .98rem; max-width: 24ch; }
+  .cw-finale__action { gap: 14px; }
+  /* The status on the lintel is the honest half of this door; the sub-label is
+     dropped elsewhere on a phone, but not here. */
+  .cw-threshold[data-kind="seam"] { width: min(34vw, 18vh); top: 56%; }
+  .cw-threshold[data-kind="seam"] .cw-threshold__label {
+    display: block;
+    top: 20%;
+    font-size: .62vh;
+    letter-spacing: .14em;
+  }
   .cw-heading { font-size: clamp(1.5rem, 7.4vw, 2rem); }
   .cw-lede { font-size: .95rem; }
   .cw-room__grid { align-content: start; padding-top: 36px; }

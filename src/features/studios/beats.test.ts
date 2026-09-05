@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CAMERA,
+  SEAM,
   GATE,
   HOME,
   JOURNEY_SCRUB,
@@ -34,7 +35,7 @@ import {
  */
 describe("studios beat table", () => {
   it("derives scrollable travel from the scene lengths", () => {
-    expect(TOTAL_TRAVEL).toBe(31.4);
+    expect(TOTAL_TRAVEL).toBe(35.4);
     // The final sticky stage consumes one viewport and never scrubs.
     expect(SCROLLABLE_TRAVEL).toBe(TOTAL_TRAVEL - 1);
   });
@@ -46,25 +47,25 @@ describe("studios beat table", () => {
   });
 
   it("places a scene's start and end at the expected journey fractions", () => {
-    // The cold open owns the first 4.6 of 30.4 scrollable viewport-heights:
+    // The cold open owns the first 4.6 of 34.4 scrollable viewport-heights:
     // Beat 1 and Beat 2 both live inside it.
     expect(journeyAt("open", 0)).toBe(0);
-    expect(journeyAt("intelligence", 0)).toBe(Number((4.6 / 30.4).toFixed(4)));
-    expect(journeyAt("return", 1)).toBe(Number((31.4 / 30.4).toFixed(4)));
+    expect(journeyAt("intelligence", 0)).toBe(Number((4.6 / 34.4).toFixed(4)));
+    expect(journeyAt("finale", 1)).toBe(Number((35.4 / 34.4).toFixed(4)));
   });
 
-  it("places the landmarks the phase-5 edit shipped with", () => {
+  it("places the landmarks the phase-6 edit shipped with", () => {
     expect(LANDMARK).toEqual({
-      threshold: 0.1332,
-      dept01: 0.2108,
-      partition: 0.3049,
-      dept02: 0.3476,
-      partition02to03: 0.4269,
-      dept03: 0.4745,
-      partition03to04: 0.5547,
-      dept04: 0.6024,
-      partition04to05: 0.6805,
-      dept05: 0.7282,
+      threshold: 0.1177,
+      dept01: 0.1863,
+      partition: 0.2695,
+      dept02: 0.3072,
+      partition02to03: 0.3772,
+      dept03: 0.4193,
+      partition03to04: 0.4902,
+      dept04: 0.5323,
+      partition04to05: 0.6014,
+      dept05: 0.6435,
     });
   });
 
@@ -121,10 +122,10 @@ describe("studios beat table", () => {
     // the invariant that makes that safe.
     expect(JOURNEY_SCRUB).toBe(TOTAL_TRAVEL - (SCENES.length - 1) - 1);
     expect(sceneProgress("open", 0)).toBe(0);
-    expect(sceneProgress("return", 1)).toBe(1);
+    expect(sceneProgress("finale", 1)).toBe(1);
     // The naive `at / usable-range` guess is wrong by a third of a scene, which
     // is exactly why it is worth a test rather than a comment.
-    expect(sceneProgress("return", journeyAt("return", 0))).toBeGreaterThan(0.15);
+    expect(sceneProgress("finale", journeyAt("finale", 0))).toBeGreaterThan(0.15);
   });
 });
 
@@ -136,9 +137,13 @@ describe("the Return's camera", () => {
   });
 
   it("keeps the camera on the timeline everywhere outside the Return", () => {
-    for (const j of [0, 0.05, 0.1332, 0.2108, 0.3476, 0.5, 0.7282, 0.8, CAMERA.retrieve[0]]) {
-      expect(cameraAt(j)).toBeCloseTo(j, 6);
-    }
+    // Derived rather than listed: adding a scene rescales every fraction, and
+    // a hand-written list silently starts sampling inside the Return.
+    const before = [0, ...Object.values(LANDMARK), CAMERA.retrieve[0]].filter(
+      (j) => j <= CAMERA.retrieve[0],
+    );
+    expect(before.length).toBeGreaterThan(6);
+    for (const j of before) expect(cameraAt(j)).toBeCloseTo(j, 6);
     // ...and hands it back once the release completes.
     for (const j of [CAMERA.release[1], 0.999, 1]) {
       expect(cameraAt(j)).toBeCloseTo(j, 6);
@@ -193,5 +198,35 @@ describe("the Return's camera", () => {
     expect(vars["--home"]).toBe(String(HOME));
     expect(Number(vars["--rev-k"])).toBeCloseTo(1 / (CAMERA.retrieve[1] - CAMERA.retrieve[0]), 3);
     expect(Number(vars["--rel-k"])).toBeCloseTo(1 / (CAMERA.release[1] - CAMERA.release[0]), 3);
+  });
+
+  it("places the measurement seam where the camera can never reach it", () => {
+    // `measurement` is DESIGNED. The door is put past the last frame the
+    // visitor can scroll to, so the camera closes on it and the building runs
+    // out — the loop is shown open rather than described as open.
+    expect(SEAM).toBeGreaterThan(1);
+    expect(cameraAt(1)).toBeLessThan(SEAM);
+    let closest = 0;
+    for (let i = 0; i <= 2000; i += 1) closest = Math.max(closest, cameraAt(i / 2000));
+    expect(closest).toBeLessThan(SEAM);
+  });
+
+  it("leaves the finale on a neutral camera, with the Return fully relaxed", () => {
+    // Beat 9 performs no camera intervention of its own: the Return is the
+    // one reversal in the run and it must be spent before the ending starts.
+    const finaleStart = journeyAt("finale", 0);
+    expect(CAMERA.release[1]).toBeLessThan(finaleStart);
+    for (let i = 0; i <= 400; i += 1) {
+      const j = finaleStart + (1 - finaleStart) * (i / 400);
+      expect(reverseAt(j)).toBe(0);
+      expect(cameraAt(j)).toBeCloseTo(j, 6);
+    }
+  });
+
+  it("resolves the seam after the Return has released and before the end", () => {
+    const [from, to] = LIGHT.seam;
+    expect(from).toBeGreaterThan(CAMERA.release[1]);
+    expect(to).toBeLessThan(1);
+    expect(from).toBeLessThan(to);
   });
 });
