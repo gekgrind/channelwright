@@ -54,3 +54,48 @@ Keep completion reports concise and decision-oriented:
 - why it supports the Product Doctrine
 - tests/verification performed
 - remaining risks or follow-up work
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+## KNOWLEDGE RETRIEVAL POLICY
+
+Use the smallest authoritative source needed for the task.
+
+1. Project history, prior decisions, current state, handoffs, or product intent:
+   - Query/read Obsidian first.
+   - Prefer Channelwright Current State, Agent Handoffs, Decisions, Architecture, and Graphify notes.
+   - Do not reconstruct known project history by rereading the repository when durable notes already answer it.
+
+2. Code architecture, dependencies, symbol relationships, likely implementation files, or blast radius:
+   - Use Graphify first.
+   - For a known symbol, prefer:
+     graphify explain "SymbolName"
+   - For relationships between known nodes, prefer Graphify path/relationship traversal.
+   - For discovery, use a narrow Graphify query with a small token budget, normally <=1200 tokens.
+   - Avoid broad Graphify BFS queries when a known symbol can be explained directly.
+
+3. Exact implementation behavior:
+   - Git/source code is authoritative.
+   - After Obsidian or Graphify identifies the relevant area, read only the exact files and line ranges required to verify or modify implementation.
+
+4. Broad repo search:
+   - Use repo-wide grep/search only when targeted Obsidian, Graphify, and source retrieval cannot resolve the question.
+   - Prefer exact symbols and narrow paths over large directory searches.
+
+5. Authority:
+   - Git/source = current implementation truth.
+   - Obsidian = durable project decision/history truth.
+   - Graphify = derived structural guidance.
+   - Graphify INFERRED or AMBIGUOUS relationships must be verified against source before being treated as fact.
+
+6. Context efficiency:
+   - Do not reread files already inspected unless an edit or new evidence makes the relevant section stale.
+   - Do not dump entire migrations, diffs, logs, or large source files when targeted ranges are sufficient.

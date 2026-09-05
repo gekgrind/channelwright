@@ -34,3 +34,6 @@ work/
 .data/
 
 *.tsbuildinfo
+
+# Graphify generated knowledge graph
+graphify-out/
