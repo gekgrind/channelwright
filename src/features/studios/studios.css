@@ -125,6 +125,21 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   pointer-events: none;
 }
 .cw-layer--copy { pointer-events: auto; }
+/* The reading wash arrives with the room it belongs to.
+   ---------------------------------------------------------------------------
+   Every scene after the cold open overlaps its predecessor by a viewport, so
+   the incoming room's stage — and this wash with it — was already painting a
+   full-strength near-black gradient over the *previous* room's copy for that
+   whole viewport, a third of the room before its own headline existed.
+   Measured against a suppressed next stage, the Writers' Room headline and its
+   verdict were rendering at roughly a sixth of their intended luminance while
+   reporting a computed opacity of 1: the copy was not fading, it was being
+   painted over. Every department transition had it.
+
+   Ramped on the room's own progress, the wash is nothing while the previous
+   room still owns the frame and full by the time this room's headline lands.
+   `--p` is clamped to 0 through the overlap, so the ramp does that for free. */
+.cw-layer--copy { --scrim: clamp(0, calc(var(--p, 1) * 8), 1); }
 .cw-layer--copy::before {
   content: "";
   position: absolute;
@@ -1172,7 +1187,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
 /* The sparsest reading wash in the run. This room has two short lines in it
    and the artifact is carrying the payoff, so a department-strength scrim
    would only flatten the depth the returning camera just built. */
-.cw-room--08 .cw-layer--copy { --scrim: .7; }
+.cw-room--08 .cw-layer--copy { --scrim: calc(clamp(0, calc(var(--p, 1) * 8), 1) * .7); }
 
 /* Beat 9 — the next decision. Left column, low in the frame and sparse: the
    door and the object standing at it are the shot, and the copy is three short
@@ -1181,7 +1196,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
 .cw-room__frame[data-beat="b9"] .cw-room__headline { max-width: 15ch; }
 /* The sparsest wash in the run, matching the Return's. The frame is nearly
    black by design and a department-strength scrim would only flatten it. */
-.cw-room--09 .cw-layer--copy { --scrim: .66; }
+.cw-room--09 .cw-layer--copy { --scrim: calc(clamp(0, calc(var(--p, 1) * 8), 1) * .66); }
 
 /* The action. Held out of the document until the scene says so — `visibility`
    rather than opacity, because an invisible link is still a tab stop and the
@@ -1244,9 +1259,18 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   /* Extra descent during Beat 9's handoff, in vh. Zero on a wide viewport,
      where the copy and the plate occupy different columns. A phone has only
      one column: the plate is pinned across the frame and the finale's copy
-     stack would land on top of it, so there the object is set down lower.
+     stack would land on top of it, so there the object is set down lower, and
+     lower again on a short phone where the copy band is proportionally taller.
      Multiplied by `--handoff`, so it eases in with the beat and cannot
-     introduce a step anywhere else in the run. */
+     introduce a step anywhere else in the run.
+
+     Audited end to end: this is the only viewport-conditional term in the
+     artifact's position, it is gated by a journey-derived ramp so it cannot
+     leak outside Beat 9, it is a pure function of `--j` at any given viewport,
+     and crossing the breakpoint changes it only where `--handoff` is already
+     zero — so there is no discontinuity to see. It is a deliberate composition
+     control, not a correction to the track, and the track itself stays
+     journey-derived. */
   --drop: 0;
 
   position: absolute;
@@ -2066,7 +2090,13 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
 .cw-instrument { position: relative; display: grid; gap: 16px; align-content: center; }
 
 .cw-verdict {
-  --lit: clamp(0, calc((var(--p, 1) - var(--at)) * 8), 1);
+  /* The room's one raised voice, and it has to be *read*.
+     Measured across a continuous traversal, three of the five departments
+     never got their verdict above half opacity: at eight the ramp needs .125
+     of scene progress to reach full, and the copy block starts lifting before
+     that lands — Beat 5's line peaked at .21 for a single frame. Fourteen
+     completes it in .071, which fits comfortably inside the room's own hold. */
+  --lit: clamp(0, calc((var(--p, 1) - var(--at)) * 14), 1);
   display: grid;
   grid-template-columns: auto 1fr;
   align-items: baseline;
@@ -2404,6 +2434,14 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   .cw-topbar__right .cw-cta--ghost { display: none; }
   .cw-topbar__right .cw-cta { min-height: 36px; padding: 8px 13px; font-size: 11px; }
   .cw-room .cw-stage .cw-shell { padding-top: 60px; }
+  /* Beat 5 anchors its copy low on a wide viewport so it sits beside the shape
+     forming on the plate, in the other column. A phone has one column and the
+     plate is pinned across the whole of it, so "low" means "on top of the
+     sentence the plate is carrying" — measured across a continuous traversal,
+     the Writers' Room headline was printed straight through it for a fifth of
+     the room. Here the copy takes the top band like every other room. */
+  .cw-room__frame[data-beat="b5"] { align-content: start; padding-top: 9vh; padding-bottom: 0; }
+
   /* Clear of the wall sign the Return brings back above it. */
   .cw-room__frame[data-beat="b8"] { padding-top: 24vh; }
   /* One column, so the finale stacks rather than sitting side by side: the
@@ -2468,6 +2506,65 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   .cw-ledger__cell { padding: 9px 13px; }
   .cw-conveyance { top: 94%; }
   .cw-instrument { gap: 11px; }
+}
+
+/* ============================================================================
+   SHORT PHONES
+   ----------------------------------------------------------------------------
+   Every room was composed against 390 x 844. At 667 the same layout fails, and
+   it fails in one specific way: the artifact plate is the tallest object in the
+   run — 253px by Beat 8, 38% of the frame — and on a phone it is pinned across
+   the full width, so anything the room puts in the middle band lands on top of
+   it. Measured end to end at 390 x 667, four rooms collided: the Writers' Room
+   printed its headline straight through the plate's sentences, and the finale
+   put its verdict on the plate's top edge and its call to action below the fold.
+
+   The correction is composition, not scale. Every room's copy moves into the
+   top band and the artifact's route runs lower, so the two never share the
+   middle. Nothing is shrunk and nothing is hidden.
+   ============================================================================ */
+
+@media (max-width: 720px) and (max-height: 740px) {
+  /* One band for copy, at the top. The per-beat vertical placement that gives
+     each room its character on a taller phone is what breaks here, so it is
+     flattened rather than nudged. */
+  .cw-room__frame[data-beat="b3"],
+  .cw-room__frame[data-beat="b4"],
+  .cw-room__frame[data-beat="b5"],
+  .cw-room__frame[data-beat="b6"],
+  .cw-room__frame[data-beat="b7"],
+  .cw-room__frame[data-beat="b8"] {
+    align-content: start;
+    text-align: left;
+    justify-items: start;
+    padding-top: 7vh;
+    padding-bottom: 0;
+  }
+  /* The finale stacks in reading order instead of pinning its action to the
+     bottom of the frame: at this height the bottom of the frame is where the
+     plate is standing, and the action was falling off the screen entirely. */
+  .cw-room__frame[data-beat="b9"] {
+    display: grid;
+    align-content: start;
+    padding-top: 7vh;
+    padding-bottom: 0;
+  }
+  .cw-room__frame[data-beat="b9"] .cw-finale__action { margin-top: 4px; }
+  .cw-room__frame[data-beat="b9"] .cw-verdict { margin-top: 0; }
+
+  /* The route runs lower, which is what buys the copy band above it. Stated
+     once here rather than per beat, because the artifact's vertical offsets
+     are journey-derived and must stay that way. */
+  .cw-artifact { top: 62%; --drop: 14; }
+
+  /* The last door drops below the copy band with everything else, so its
+     lintel is read against the hall rather than through the call to action. */
+  .cw-threshold[data-kind="seam"] { top: 70%; }
+
+  /* A shorter frame reads a shorter measure. */
+  .cw-room .cw-stage .cw-shell { padding-top: 46px; }
+  .cw-heading { font-size: clamp(1.3rem, 6.6vw, 1.7rem); }
+  .cw-finale__line { font-size: .92rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

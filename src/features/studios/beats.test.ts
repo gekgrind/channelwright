@@ -35,7 +35,7 @@ import {
  */
 describe("studios beat table", () => {
   it("derives scrollable travel from the scene lengths", () => {
-    expect(TOTAL_TRAVEL).toBe(35.4);
+    expect(TOTAL_TRAVEL).toBe(36.4);
     // The final sticky stage consumes one viewport and never scrubs.
     expect(SCROLLABLE_TRAVEL).toBe(TOTAL_TRAVEL - 1);
   });
@@ -47,25 +47,25 @@ describe("studios beat table", () => {
   });
 
   it("places a scene's start and end at the expected journey fractions", () => {
-    // The cold open owns the first 4.6 of 34.4 scrollable viewport-heights:
+    // The cold open owns the first 4.6 of 35.4 scrollable viewport-heights:
     // Beat 1 and Beat 2 both live inside it.
     expect(journeyAt("open", 0)).toBe(0);
-    expect(journeyAt("intelligence", 0)).toBe(Number((4.6 / 34.4).toFixed(4)));
-    expect(journeyAt("finale", 1)).toBe(Number((35.4 / 34.4).toFixed(4)));
+    expect(journeyAt("intelligence", 0)).toBe(Number((4.6 / 35.4).toFixed(4)));
+    expect(journeyAt("finale", 1)).toBe(Number((36.4 / 35.4).toFixed(4)));
   });
 
-  it("places the landmarks the phase-6 edit shipped with", () => {
+  it("places the landmarks the phase-7 edit shipped with", () => {
     expect(LANDMARK).toEqual({
-      threshold: 0.1177,
-      dept01: 0.1863,
-      partition: 0.2695,
-      dept02: 0.3072,
-      partition02to03: 0.3772,
-      dept03: 0.4193,
-      partition03to04: 0.4902,
-      dept04: 0.5323,
-      partition04to05: 0.6014,
-      dept05: 0.6435,
+      threshold: 0.1144,
+      dept01: 0.181,
+      partition: 0.2619,
+      dept02: 0.2985,
+      partition02to03: 0.3666,
+      dept03: 0.4075,
+      partition03to04: 0.4763,
+      dept04: 0.5173,
+      partition04to05: 0.5844,
+      dept05: 0.6253,
     });
   });
 
@@ -126,6 +126,30 @@ describe("studios beat table", () => {
     // The naive `at / usable-range` guess is wrong by a third of a scene, which
     // is exactly why it is worth a test rather than a comment.
     expect(sceneProgress("finale", journeyAt("finale", 0))).toBeGreaterThan(0.15);
+  });
+
+  it("pins how far the two coordinate spaces diverge, per scene", () => {
+    // The trap, made concrete. `journeyAt(scene, at)` reads like "at, through
+    // that scene" and is not: the overlap means the same moment sits much
+    // later in the scene's own progress, and the error grows down the run.
+    // If these numbers move, a timing somewhere has moved with them.
+    const divergence = Object.fromEntries(
+      SCENES.map((scene) => [scene.id, Number(sceneProgress(scene.id, journeyAt(scene.id, 0.5)).toFixed(2))]),
+    );
+    expect(divergence).toEqual({
+      open: 0.51,
+      intelligence: 0.56,
+      strategy: 0.66,
+      writers: 0.72,
+      production: 0.79,
+      control: 0.86,
+      return: 0.66,
+      finale: 0.7,
+    });
+    // Never below the label, always above it, and by a lot in the late rooms.
+    for (const scene of SCENES) {
+      expect(sceneProgress(scene.id, journeyAt(scene.id, 0.5))).toBeGreaterThan(0.5);
+    }
   });
 });
 

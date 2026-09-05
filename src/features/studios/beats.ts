@@ -21,6 +21,40 @@
  *          will need. Until that beat is staged, `--cam` equals `--j`.
  */
 
+/*
+ * TWO COORDINATE SPACES. READ THIS BEFORE ADDING A TIMING.
+ * ---------------------------------------------------------------------------
+ * `journeyAt(scene, at)` and a scene's own `--p` are NOT the same number, and
+ * the gap between them is large enough to put copy in the wrong beat.
+ *
+ *   journeyAt()     divides by `SCROLLABLE_TRAVEL`, which models the scenes as
+ *                   laid end to end. It is the space `--j` is compared against
+ *                   and the space every landmark, artifact stop, light window
+ *                   and camera window is written in. Things expressed in it
+ *                   coincide with each other exactly, which is all it has to do.
+ *
+ *   sceneProgress() converts a journey position into the scene's own `--p`,
+ *                   the space `Cue` reads. This is the real one: it accounts
+ *                   for the fact that every scene after the cold open overlaps
+ *                   its predecessor by a viewport.
+ *
+ * The consequence is that `journeyAt(scene, 0.5)` does not happen halfway
+ * through that scene — by the last rooms it is nearer 85%. `beats.test.ts`
+ * pins the actual divergence so the size of the trap is visible.
+ *
+ * So: a value that has to line up with the *world* (a landmark, a camera
+ * window, an artifact stop, a light ramp) is written with `journeyAt`. A value
+ * that has to line up with a scene's own copy (`Cue from/to`, the verdict's
+ * `--at`, `Scene.revealAt`) is written in `--p`, and if it must follow
+ * something in the world it goes through `sceneProgress` — see `acts.tsx`,
+ * where the whole finale is derived that way and needed no retuning when the
+ * scene's length changed.
+ *
+ * Renaming was considered and rejected: it would rewrite roughly forty
+ * approved timing declarations across five phases of tuned composition to buy
+ * clarity that this comment and the test buy for nothing.
+ */
+
 /**
  * Scene lengths in viewport-heights, in scroll order.
  *
@@ -46,11 +80,19 @@ export const SCENES = [
      asked, a hold there, and the way forward again. Its length is what keeps
      that traverse legible rather than a blur — see `CAMERA` below. */
   { id: "return", travel: 7 },
-  /* Beat 9, the Next Decision. Deliberately the shortest room in the run: the
-     Return earned its length by moving the camera half the building and back,
-     and an ending that outstays it reads as another hallway appearing after
-     the film has finished. Arrival, one door, one action. */
-  { id: "finale", travel: 4 },
+  /* Beat 9, the Next Decision. Still the shortest room in the run: the Return
+     earned its length by moving the camera half the building and back, and an
+     ending that outstays it reads as another hallway appearing after the film
+     has finished. Arrival, one door, one action.
+
+     The extra viewport over its first length is not more beat — every window
+     inside it is derived from the camera and the plate, so the beat plays at
+     the same pace — it is hold. Measured end to end, the journey wrapper ran
+     out at the exact scroll position where the capability register arrived, so
+     the final frame never had a moment of its own and the one call to action
+     in the film had about half a viewport before something else pushed it up
+     the screen. */
+  { id: "finale", travel: 5 },
 ] as const;
 
 export type SceneId = (typeof SCENES)[number]["id"];

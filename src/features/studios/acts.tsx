@@ -2,7 +2,7 @@
 
 import { CSSProperties } from "react";
 import { Cue, Scene, useLightweightMode } from "./scene";
-import { CAMERA, journeyAt, sceneProgress, sceneTravel } from "./beats";
+import { CAMERA, LIGHT, journeyAt, sceneProgress, sceneTravel } from "./beats";
 import { OpportunityPlot } from "./opportunity-plot";
 import { VersionGate } from "./version-gate";
 import { ScriptSequencer } from "./script-sequencer";
@@ -102,7 +102,7 @@ export function IntelligenceRoom() {
       </div>
 
       <div className="cw-layer cw-layer--copy">
-        <Cue from={0.88} to={1} className="cw-exit">
+        <Cue from={0.93} to={1} className="cw-exit">
           <div className="cw-shell">
             <div className="cw-room__frame" data-beat="b3">
               <h2 className="cw-heading cw-room__headline">
@@ -112,7 +112,7 @@ export function IntelligenceRoom() {
               </h2>
 
               {/* One raised voice per room, and no caption under it. */}
-              <div className="cw-verdict" style={{ "--at": 0.74 } as CSSProperties}>
+              <div className="cw-verdict" style={{ "--at": 0.72 } as CSSProperties}>
                 <span className="cw-verdict__mark" aria-hidden="true" />
                 <span className="cw-verdict__line">{INTELLIGENCE.verdict}</span>
               </div>
@@ -148,7 +148,7 @@ export function StrategyRoom() {
       </div>
 
       <div className="cw-layer cw-layer--copy">
-        <Cue from={0.88} to={1} className="cw-exit">
+        <Cue from={0.93} to={1} className="cw-exit">
           <div className="cw-shell">
             <div className="cw-room__frame" data-beat="b4">
               <h2 className="cw-heading cw-room__headline">
@@ -196,7 +196,7 @@ export function WritersRoom() {
       </div>
 
       <div className="cw-layer cw-layer--copy">
-        <Cue from={0.88} to={1} className="cw-exit">
+        <Cue from={0.93} to={1} className="cw-exit">
           <div className="cw-shell">
             <div className="cw-room__frame" data-beat="b5">
               <h2 className="cw-heading cw-room__headline">
@@ -206,7 +206,7 @@ export function WritersRoom() {
               </h2>
 
               {/* One raised voice per room, and no caption under it. */}
-              <div className="cw-verdict" style={{ "--at": 0.82 } as CSSProperties}>
+              <div className="cw-verdict" style={{ "--at": 0.78 } as CSSProperties}>
                 <span className="cw-verdict__mark" aria-hidden="true" />
                 <span className="cw-verdict__line">{WRITERS.verdict}</span>
               </div>
@@ -244,7 +244,7 @@ export function ProductionFloor() {
       </div>
 
       <div className="cw-layer cw-layer--copy">
-        <Cue from={0.88} to={1} className="cw-exit">
+        <Cue from={0.93} to={1} className="cw-exit">
           <div className="cw-shell">
             <div className="cw-room__frame" data-beat="b6">
               <h2 className="cw-heading cw-room__headline">
@@ -254,7 +254,7 @@ export function ProductionFloor() {
               </h2>
 
               {/* One raised voice per room, and no caption under it. */}
-              <div className="cw-verdict" style={{ "--at": 0.82 } as CSSProperties}>
+              <div className="cw-verdict" style={{ "--at": 0.78 } as CSSProperties}>
                 <span className="cw-verdict__mark" aria-hidden="true" />
                 <span className="cw-verdict__line">{PRODUCTION.verdict}</span>
               </div>
@@ -291,7 +291,7 @@ export function ControlRoom() {
       </div>
 
       <div className="cw-layer cw-layer--copy">
-        <Cue from={0.88} to={1} className="cw-exit">
+        <Cue from={0.93} to={1} className="cw-exit">
           <div className="cw-shell">
             <div className="cw-room__frame" data-beat="b7">
               <h2 className="cw-heading cw-room__headline">
@@ -301,7 +301,7 @@ export function ControlRoom() {
               </h2>
 
               {/* One raised voice per room, and no caption under it. */}
-              <div className="cw-verdict" style={{ "--at": 0.82 } as CSSProperties}>
+              <div className="cw-verdict" style={{ "--at": 0.78 } as CSSProperties}>
                 <span className="cw-verdict__mark" aria-hidden="true" />
                 <span className="cw-verdict__line">{CONTROL.verdict}</span>
               </div>
@@ -370,12 +370,22 @@ export function TheReturn() {
 
 /* ---------------------------------------------------------------- ACT 07 -- */
 
-/** Progress at which the action stops being decoration and becomes a link. */
-export const ACTION_AT = 0.63;
+/* The finale's copy is timed off the two things the world is doing, in this
+   scene's own progress space. Deriving them means the beat keeps its rhythm
+   when the scene's length changes — which is how the hold at the end was
+   bought without slowing anything down, and why none of these numbers had to
+   be re-tuned by hand when it was. `sceneProgress` is the only correct bridge:
+   the scenes overlap, so a scene's `--p` is not `at / travel`. */
 
-/** Where the plate has finished becoming a decision, in this scene's own
- *  progress. The action is not offered before that has happened. */
+/** Where the door at the end of the hall has finished resolving. */
+const SEAM_RESOLVED = sceneProgress("finale", LIGHT.seam[1]);
+
+/** Where the plate has finished becoming a decision. The action is not
+ *  offered before that has happened. */
 export const HANDOFF_DONE = sceneProgress("finale", journeyAt("finale", 0.36));
+
+/** Progress at which the action stops being decoration and becomes a link. */
+export const ACTION_AT = Number((HANDOFF_DONE + 0.05).toFixed(3));
 
 /**
  * Beat 9 — the Next Decision. The last room, and on purpose the shortest.
@@ -409,13 +419,13 @@ export function NextDecision() {
         <div className="cw-shell">
           <div className="cw-room__frame" data-beat="b9">
             <h2 className="cw-heading cw-room__headline">
-              <Cue from={0.26} to={0.38} as="span" className="cw-rise cw-room__heading-line">
+              <Cue from={SEAM_RESOLVED - 0.03} to={SEAM_RESOLVED + 0.07} as="span" className="cw-rise cw-room__heading-line">
                 {FINALE.heading}
               </Cue>
             </h2>
 
             {/* One raised voice per room, and no caption under it. */}
-            <div className="cw-verdict" style={{ "--at": 0.42 } as CSSProperties}>
+            <div className="cw-verdict" style={{ "--at": SEAM_RESOLVED + 0.09 } as CSSProperties}>
               <span className="cw-verdict__mark" aria-hidden="true" />
               <span className="cw-verdict__line">{FINALE.verdict}</span>
             </div>
@@ -423,7 +433,7 @@ export function NextDecision() {
             {/* The visitor's turn. One action, the one the site has committed
                 to everywhere else, and the only lit thing left in the frame. */}
             <div className="cw-finale__action">
-              <Cue from={0.48} to={0.6} as="p" className="cw-rise cw-finale__line">
+              <Cue from={HANDOFF_DONE - 0.11} to={HANDOFF_DONE - 0.01} as="p" className="cw-rise cw-finale__line">
                 {FOOTER.line}
               </Cue>
               <Link className="cw-cta cw-cta--solid cw-finale__cta" href="/login">
