@@ -342,7 +342,29 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
      Timeline behaviour — wake, the ambient wash, cue timing, signage gates
      and the artifact's own state — stays on `--j` and must never move to
      `--cam`, or the return would rewind the story as well as the camera. */
-  --rev: 0;
+  /* BEAT 8 — the Return.
+
+     `--rev` blends the camera off the timeline and onto `--home`: at 0 the
+     camera follows the story, at 1 it is standing in the room the story
+     started the question in, whatever `--j` has reached. Scrolling forward
+     therefore advances the narrative while the world travels backwards, which
+     is the distinction this beat exists to make legible. `--j` is untouched.
+
+     Composed as a product of two ramps rather than a difference, so it is
+     bounded on [0, 1] by construction and lands on exactly 0 once the release
+     completes — the return cannot leak into any later beat.
+
+     Both legs are smoothstepped. The camera covers roughly half the building
+     in each direction inside one scene, and a linear ramp starts and stops
+     that traverse abruptly; smoothstep has the lowest peak rate of the curves
+     available here (1.5x linear, against 2x for a quadratic ease), so it is
+     the gentlest whip, not merely the prettiest. */
+  --rev-t: clamp(0, calc((var(--j) - var(--rev-a, 2)) * var(--rev-k, 1)), 1);
+  --rel-t: clamp(0, calc((var(--j) - var(--rel-a, 2)) * var(--rel-k, 1)), 1);
+  --rev: calc(
+    (var(--rev-t) * var(--rev-t) * (3 - 2 * var(--rev-t))) *
+    (1 - var(--rel-t) * var(--rel-t) * (3 - 2 * var(--rel-t)))
+  );
   --home: 0;
   --cam: calc(var(--j) - var(--rev) * (var(--j) - var(--home)));
   /* Every window below arrives from `./beats.ts` as a start fraction and a
@@ -417,13 +439,19 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
     radial-gradient(112% 80% at 50% 72%, rgba(108, 138, 178, .17), transparent 68%);
   opacity: var(--wake);
 }
+/* The cool wash comes back up during the Return, because the camera is
+   standing in the half of the building it belongs to again — but only part of
+   the way, and the warm late-run wash is only partly withdrawn. The room is
+   recognisable without being restored: this is the same room later, not the
+   same room again. The department washes stay on `--j` everywhere else, which
+   is what keeps the return from reading as a rewind. */
 .cw-world__ambient::before {
   background: radial-gradient(74% 60% at 26% 34%, rgba(118, 158, 208, .2), transparent 66%);
-  opacity: calc(var(--l1) * (1 - var(--l2) * .8));
+  opacity: max(calc(var(--l1) * (1 - var(--l2) * .8)), calc(var(--rev) * .6));
 }
 .cw-world__ambient::after {
   background: radial-gradient(66% 54% at 70% 32%, rgba(172, 154, 120, .2), transparent 66%);
-  opacity: var(--l2);
+  opacity: calc(var(--l2) * (1 - var(--rev) * .55));
 }
 
 /* The key light of the cold open. Part of the rig, not an overlay: it hangs
@@ -655,6 +683,10 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
 .cw-sign {
   --rate: 96;
   --reach: .15;
+  /* Whether wall signage is shown at all. Held at 1 here and narrowed on a
+     phone, where the wall sign duplicates the room's own plate — except during
+     the Return, which has no plate naming the room it arrives in. */
+  --vis: 1;
   top: 11%;
   display: grid;
   justify-items: center;
@@ -664,10 +696,29 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   /* Approaching → readable. Passed → a trace on the wall behind you, which is
      what keeps the run spatially continuous without competing for the eye.
      Gated on the threshold crossing so no signage floats in the cold open. */
+  /* The last term dims a sign you have walked past, which is what keeps the
+     run spatially continuous on the way out. On the way *back* "past" and
+     "ahead" swap — so the two facings are crossfaded by `--rev` rather than
+     simply maxed together. Maxing lit both at once, and departments sit closer
+     together than a sign's reach, so two numerals ended up stacked in the
+     frame every time the returning camera crossed between rooms. Blended, one
+     sign reads at a time in either direction, and the forward run is untouched
+     because `--rev` is zero everywhere outside the Return.
+
+     The return facing holds at full strength through `--d` of zero rather than
+     falling to nothing there the way the forward one does. Standing at a sign
+     is a passing moment on the way out and the whole point of the beat on the
+     way back: the camera parks on Department 02 for the length of the hold,
+     and the numeral on the wall is what tells the visitor where it has
+     stopped. */
   opacity: calc(
+    var(--vis) *
     var(--inside) *
     clamp(0, calc((var(--reach) - var(--ad)) * 6), 1) *
-    (.07 + .53 * clamp(0, calc(var(--d) * 14), 1))
+    (.07 + .53 * (
+      clamp(0, calc(var(--d) * 14), 1) * (1 - var(--rev)) +
+      clamp(0, calc(1 - var(--d) * 14), 1) * var(--rev)
+    ))
   );
   transform: translate3d(calc(var(--d) * var(--rate) * 1vw), 0, 0) scale(calc(1 - var(--ad) * .6));
 }
@@ -1062,6 +1113,19 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
    it opened, with the names stacked on the artifact below. */
 .cw-room__frame[data-beat="b7"] { justify-items: start; align-content: start; padding-top: 12vh; }
 
+/* Beat 8 — the return. The mirror of Beat 4: the same room, but the copy now
+   stands on the opposite side of the frame from where it stood when the
+   question was attached, which is the cheapest possible way to say "you have
+   come at this from the other direction". It is also the side the reading wash
+   is built for, which keeps the artifact — carrying the resolution — out on
+   the clear half of the frame where the plate stays legible. */
+.cw-room__frame[data-beat="b8"] { justify-items: start; align-content: start; padding-top: 14vh; }
+.cw-room__frame[data-beat="b8"] .cw-room__headline { max-width: 16ch; }
+/* The sparsest reading wash in the run. This room has two short lines in it
+   and the artifact is carrying the payoff, so a department-strength scrim
+   would only flatten the depth the returning camera just built. */
+.cw-room--08 .cw-layer--copy { --scrim: .7; }
+
 /* --- The artifact ------------------------------------------------------- */
 
 /* One object for the whole run: the visitor's idea, written down, carried
@@ -1258,10 +1322,20 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   opacity: var(--claimed);
 }
 /* Dormant on purpose. It is the only thing on the artifact that has not been
-   resolved, and Beat 8 is where that changes. */
+   resolved, and Beat 8 is where that changes.
+
+   Two ramps do that. `--recall` stirs it a beat before the camera turns, so
+   the return is motivated by the object rather than announced by the movement;
+   `--resolved` lands during the hold in Department 02 and brings the tag up
+   into the same treatment the audience tag has carried since Beat 4 — the
+   grammar for "this is in the record now". It never changes its words. */
 .cw-artifact__tag[data-kind="asked"] {
-  color: var(--lume-3);
-  opacity: calc(var(--asked) * (1 - var(--asked) * .45));
+  color: color-mix(in srgb, var(--signal) calc(var(--resolved, 0) * 88%), var(--lume-3));
+  border-color: color-mix(in srgb, var(--signal-dim) calc(var(--resolved, 0) * 100%), var(--edge-2));
+  opacity: calc(
+    var(--asked) * (1 - var(--asked) * .45) +
+    var(--recall, 0) * .18 + var(--resolved, 0) * .27
+  );
 }
 
 /* Beat 5 — the shape it takes. One part turns and comes back for another
@@ -1328,6 +1402,47 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   background: var(--warn);
   opacity: .7;
 }
+/* Beat 8 — what the return finds. Two halves, in the same struck/chosen
+   grammar the plate already uses: the binding is real and arrives lit, the
+   result is absent and stays a trace. Nothing else is added, because the beat
+   is that the question survived the pipeline — not that a readout appeared. */
+.cw-artifact__binding {
+  display: grid;
+  gap: 2px;
+  margin-top: calc(var(--resolved, 0) * 9px);
+  max-height: calc(var(--resolved, 0) * 5em);
+  overflow: hidden;
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+.cw-artifact__binding i {
+  font-style: normal;
+  opacity: clamp(0, calc(var(--resolved, 0) * 3 - 1), 1);
+}
+.cw-artifact__binding i[data-state="bound"] {
+  color: color-mix(in srgb, var(--signal) 82%, var(--lume));
+  padding-left: 9px;
+  position: relative;
+}
+.cw-artifact__binding i[data-state="bound"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  width: calc(var(--resolved, 0) * 6px);
+  height: 1px;
+  background: var(--signal);
+}
+/* Held deliberately unlit. Performance measurement is DESIGNED, not built, and
+   the plate is not allowed to imply otherwise — the absence is the honest
+   half of this beat and it is styled as an absence. */
+.cw-artifact__binding i[data-state="open"] {
+  color: var(--lume-4);
+  padding-left: 9px;
+}
+
 /* The one that goes out. */
 .cw-artifact__names i:not([data-rejected])  {
   color: color-mix(in srgb, var(--signal) calc(var(--chosen) * 100%), var(--lume-3));
@@ -2055,8 +2170,20 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   /* The room plate names the department on a phone, so the wall sign would be
      a second copy of the same information inside a 390px frame — and it landed
      directly behind the headline. Wayfinding on the wall is a desktop
-     affordance; here the room states its own identity. */
-  .cw-sign { display: none; }
+     affordance; here the room states its own identity.
+
+     The Return is the exception, and the reason this is now a variable rather
+     than `display: none`. It arrives in a room whose copy does not name it,
+     and every other landmark a phone could have recognised it by — the back
+     wall, the partitions, the installed equipment — is dropped at this width.
+     The sign is the only wayfinding left, so it comes back with the camera and
+     goes again with it. */
+  /* A tighter reach and a wider drift than the desktop wall: the returning
+     camera passes four departments in a few hundred milliseconds, and at the
+     desktop values two numerals sit on top of each other inside a 390px frame.
+     One sign at a time, clearly separated as it goes by. */
+  .cw-sign { --vis: var(--rev); --reach: .05; --rate: 260; top: 9%; }
+  .cw-sign__index { font-size: clamp(2.2rem, 6.4vh, 3.4rem); }
   /* One piece of environmental lettering at a time on a 390px frame: the
      lintel names the building, the sub-label is dropped. */
   .cw-threshold__label { display: none; }
@@ -2150,6 +2277,8 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   .cw-topbar__right .cw-cta--ghost { display: none; }
   .cw-topbar__right .cw-cta { min-height: 36px; padding: 8px 13px; font-size: 11px; }
   .cw-room .cw-stage .cw-shell { padding-top: 60px; }
+  /* Clear of the wall sign the Return brings back above it. */
+  .cw-room__frame[data-beat="b8"] { padding-top: 24vh; }
   .cw-heading { font-size: clamp(1.5rem, 7.4vw, 2rem); }
   .cw-lede { font-size: .95rem; }
   .cw-room__grid { align-content: start; padding-top: 36px; }

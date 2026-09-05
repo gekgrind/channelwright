@@ -2,13 +2,13 @@
 
 import { CSSProperties } from "react";
 import { Cue, Scene, useLightweightMode } from "./scene";
-import { sceneTravel } from "./beats";
+import { CAMERA, sceneProgress, sceneTravel } from "./beats";
 import { OpportunityPlot } from "./opportunity-plot";
 import { VersionGate } from "./version-gate";
 import { ScriptSequencer } from "./script-sequencer";
 import { RenderLine } from "./render-line";
 import { ReleaseCompositor } from "./control-room";
-import { CONTROL, INTELLIGENCE, OPEN, PRODUCTION, STRATEGY, WRITERS } from "./copy";
+import { CONTROL, INTELLIGENCE, OPEN, PRODUCTION, RETURN, STRATEGY, WRITERS } from "./copy";
 import { CAPABILITIES, STATUS_LABEL } from "./capabilities";
 
 /**
@@ -303,6 +303,61 @@ export function ControlRoom() {
               <div className="cw-verdict" style={{ "--at": 0.82 } as CSSProperties}>
                 <span className="cw-verdict__mark" aria-hidden="true" />
                 <span className="cw-verdict__line">{CONTROL.verdict}</span>
+              </div>
+            </div>
+          </div>
+        </Cue>
+      </div>
+    </Scene>
+  );
+}
+
+/* ---------------------------------------------------------------- ACT 06 -- */
+
+/**
+ * Beat 8 — the Return. Department 02, revisited.
+ *
+ * This scene owns almost nothing. The beat is a camera move: `--rev` rises in
+ * `studios.css`, the world travels back down the hall to the room where the
+ * hypothesis was attached, holds there while the dormant question on the
+ * artifact wakes, and then releases forward again. The copy arrives *after*
+ * the traverse has already happened, because the visitor should recognise the
+ * room before being told what it means.
+ *
+ * There is no instrument layer here, deliberately. Every other room has one
+ * because something is being done to the artifact in it; here nothing is being
+ * done to it, which is the point — the building is looking back, not working.
+ * An instrument would also be the exact place a fabricated analytics readout
+ * would creep in, and performance measurement is DESIGNED, not built.
+ */
+/* The camera's own moments, in the return scene's progress space.
+   `sceneProgress` is the only correct bridge between a journey position and a
+   `Cue`: the scenes overlap, so a scene's `--p` is not `at / travel`. Deriving
+   these means retiming the camera retimes the copy with it. */
+const SETTLED = sceneProgress("return", CAMERA.retrieve[1]);
+const LEAVING = sceneProgress("return", CAMERA.release[0]);
+
+export function TheReturn() {
+  return (
+    <Scene id="return" travel={sceneTravel("return")} className="cw-room cw-room--08 cw-scene--overlap" label="The Return: Department 02, revisited">
+      <div className="cw-layer cw-layer--copy">
+        {/* Later and shorter than a department's window. The copy arrives as the
+            camera settles in Department 02, holds while the question resolves
+            on the plate, and lifts as the release begins — so the beat is read
+            in the order it happens: recognise the room, then be told why. */}
+        <Cue from={LEAVING + 0.08} to={LEAVING + 0.18} className="cw-exit">
+          <div className="cw-shell">
+            <div className="cw-room__frame" data-beat="b8">
+              <h2 className="cw-heading cw-room__headline">
+                <Cue from={SETTLED + 0.02} to={SETTLED + 0.11} as="span" className="cw-rise cw-room__heading-line">
+                  {RETURN.heading}
+                </Cue>
+              </h2>
+
+              {/* One raised voice per room, and no caption under it. */}
+              <div className="cw-verdict" style={{ "--at": SETTLED + 0.03 } as CSSProperties}>
+                <span className="cw-verdict__mark" aria-hidden="true" />
+                <span className="cw-verdict__line">{RETURN.verdict}</span>
               </div>
             </div>
           </div>

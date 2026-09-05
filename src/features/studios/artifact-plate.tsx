@@ -58,6 +58,16 @@ type Stop = {
  * held at the gate, so scroll advances the check while the object itself does
  * not move. That stillness is the beat, not a bug.
  *
+ * The four return-scene stops are Beat 8. The artifact travels *with* the
+ * camera rather than being left behind: the question is physically attached to
+ * this plate, so resolving it anywhere else would mean resolving it off screen.
+ * Its lateral run is deliberately almost flat while the camera's is not: the
+ * artifact holds its side of the frame and drifts a few vw, while the world
+ * behind it travels half the building in the opposite direction. That relative
+ * motion is the whole read — the object stays, the building moves — and it is
+ * what makes the beat land as the facility retrieving something rather than as
+ * the page scrolling backwards.
+ *
  * The four open-scene stops are Beats 1 and 2. The artifact is the first thing
  * in the frame and it never leaves it: it drifts while the cold open's one
  * line lands, is drawn onto the centre line as the building opens, rises to
@@ -81,6 +91,10 @@ export const TRACK: Stop[] = [
   { scene: "production", at: 0.2, x: 22, y: 15 }, /*    reaches the gate            */
   { scene: "production", at: 0.76, x: 22, y: 15 }, /*   HELD — the gate is shut     */
   { scene: "control", at: 0.53, x: 46, y: 5 }, /*       goes out under one name     */
+  { scene: "return", at: 0.06, x: 42, y: 3 }, /*        Beat 8 — barely drifts, then is taken back */
+  { scene: "return", at: 0.34, x: 24, y: 20 }, /*       barely moves while the hall sweeps the other way */
+  { scene: "return", at: 0.54, x: 22, y: 26 }, /*       set back down on the route it left by */
+  { scene: "return", at: 0.84, x: 10, y: 18 }, /*       released, facing forward again */
 ];
 
 /**
@@ -141,6 +155,15 @@ const STATE = {
   /* Beat 7 — several names existed; one of them goes out. */
   "--named": beat("control", 0.3, 0.46),
   "--chosen": beat("control", 0.5, 0.64),
+  /* Beat 8 — the question comes back.
+     `--recall` is the recognition cue: the dormant tag stirs a beat before the
+     camera turns, so the return is motivated by the artifact rather than
+     announced by the movement. `--resolved` then lands during the hold in
+     Department 02, once the world has arrived. Neither of them answers the
+     question — see `ARTIFACT.bound` — because performance measurement is not a
+     capability this product has. */
+  "--recall": beat("return", 0.02, 0.1),
+  "--resolved": beat("return", 0.38, 0.52),
 
   /* Legacy room state kept from the pass-2 artifact: the ring while it is
      being worked on, and the evidence that attaches and stays attached. */
@@ -218,6 +241,15 @@ export function ArtifactPlate() {
               {candidate.label}
             </i>
           ))}
+        </span>
+
+        {/* Beat 8. What the return finds. Two halves on purpose: the binding
+            is real and lit, the result is absent and stays dim. Nothing else
+            is added to the plate — the beat is that the question is still
+            here, not that a dashboard arrived. */}
+        <span className="cw-artifact__binding">
+          <i data-state="bound">{ARTIFACT.bound}</i>
+          <i data-state="open">{ARTIFACT.unmeasured}</i>
         </span>
       </span>
     </div>

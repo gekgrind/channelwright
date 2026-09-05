@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ColdOpen, IntelligenceRoom, IntelligenceCapabilities, StrategyRoom, WritersRoom, ProductionFloor, ControlRoom } from "./acts";
+import { ColdOpen, IntelligenceRoom, IntelligenceCapabilities, StrategyRoom, WritersRoom, ProductionFloor, ControlRoom, TheReturn } from "./acts";
 import { StudiosWorld } from "./world";
 import { HallFar, HallNear } from "./facility";
 import { useReducedMotion } from "./scene";
 import { refreshScenes } from "./scroll-engine";
 import { useSmoothScroll } from "./smooth-scroll";
 import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL, type CapabilityStatus } from "./capabilities";
-import { ARTIFACT, CONTROL, FOOTER, INTELLIGENCE, OPEN, PRODUCTION, REGISTER, STRATEGY, WORLD, WRITERS } from "./copy";
+import { ARTIFACT, CONTROL, FOOTER, INTELLIGENCE, OPEN, PRODUCTION, REGISTER, RETURN, STRATEGY, WORLD, WRITERS } from "./copy";
 import "./studios.css";
 
 
@@ -318,6 +318,38 @@ function StaticNarrative() {
           </dl>
         </div>
       </section>
+
+      <section id="return" className="cw-static__act">
+        {/* Beat 8, without the camera. The reduced-motion path cannot show the
+            facility travelling back, so it states the same logic in order:
+            the question that was attached in 02, the work it went through, the
+            binding that brings it back, and the seam where the answer would
+            land if the product measured it — which it does not. */}
+        <p className="cw-mono">The Return — Department {RETURN.index}, revisited</p>
+        <h2 className="cw-heading" style={{ marginTop: 16 }}>{RETURN.heading}</h2>
+        <div className="cw-static__body">
+          <blockquote className="cw-static__artifact">{ARTIFACT.hypothesis}</blockquote>
+          {RETURN.body.map((paragraph) => (
+            <p key={paragraph} className="cw-lede">{paragraph}</p>
+          ))}
+        </div>
+        <div className="cw-panel cw-panel--record cw-static__panel">
+          <div className="cw-panel__bar">
+            <span className="cw-mono">Hypothesis</span>
+            <span className="cw-mono">{RETURN.verdict}</span>
+          </div>
+          <dl className="cw-record">
+            <div className="cw-record__row">
+              <dt>Binding</dt>
+              <dd>{ARTIFACT.bound}</dd>
+            </div>
+            <div className="cw-record__row">
+              <dt>Result</dt>
+              <dd>{ARTIFACT.unmeasured}</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
     </div>
   );
 }
@@ -364,6 +396,7 @@ export default function StudiosExperience() {
             <WritersRoom />
             <ProductionFloor />
             <ControlRoom />
+            <TheReturn />
           </div>
         )}
         {reduced ? (

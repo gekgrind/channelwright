@@ -109,6 +109,17 @@ export const ARTIFACT = {
     { label: "You're Overspending on This", rejected: true },
     { label: "The $10 Setup, Tested Honestly", rejected: false },
   ],
+  /**
+   * Beat 8. What the return actually finds, and what it deliberately does not.
+   *
+   * The release decision is bound to the strategy hypothesis it tests — that
+   * capability is OPERATING (`video-release` in ./capabilities.ts). Ingesting
+   * the result is not: `measurement` is DESIGNED, and its boundary states that
+   * Channelwright ingests no analytics today. So the question comes back
+   * carrying a binding, not an answer, and the site says which is which.
+   */
+  bound: "Bound to the release that tests it",
+  unmeasured: "No result yet",
 } as const;
 
 /**
@@ -201,6 +212,30 @@ export const CONTROL = {
     { key: "binding", label: "Hypothesis binding", value: "Bound to the strategy KPI this release is meant to test" },
   ],
   verdict: "1 of 5 chosen",
+} as const;
+
+/**
+ * Beat 8 — the Return. Department 02, revisited.
+ *
+ * Not a sixth department: the camera goes back to the Strategy Room, which is
+ * where `ARTIFACT.hypothesis` was attached in Beat 4. The claim being made is
+ * structural rather than analytical — a release is bound to the hypothesis it
+ * tests and a superseded strategy stays in the record, so the question
+ * survives the pipeline instead of being lost at the end of it.
+ *
+ * What this room must never imply is that the answer has arrived. Performance
+ * measurement is DESIGNED, not built; the loop is open at that seam and the
+ * copy here says so in the same breath as the claim.
+ */
+export const RETURN = {
+  index: "02",
+  department: "Strategy Room, revisited",
+  heading: "A pipeline forgets. This one comes back.",
+  body: [
+    "The release decision was bound to the strategy hypothesis it was meant to test, and the strategy it came from is still in the record at the exact version that was approved. The question does not get lost between the video going out and the next one being planned \u2014 it comes back to the room that asked it.",
+    "What has not landed against it yet is the result. Channelwright ingests no analytics today; the loop is architected and open at that seam, and the register below says so rather than showing you a number nobody measured.",
+  ],
+  verdict: "1 question, still open",
 } as const;
 
 export const REGISTER = {

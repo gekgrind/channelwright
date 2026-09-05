@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { journeyAt } from "./beats";
+import { CAMERA, cameraAt, journeyAt } from "./beats";
 import { TRACK } from "./artifact-plate";
 
 /**
@@ -57,5 +57,27 @@ describe("artifact track", () => {
     expect(before).toBeGreaterThan(0);
     expect(TRACK[before].y).toBeLessThan(0);
     expect(positions[before + 1]).toBeGreaterThan(crossing);
+  });
+
+  it("keeps the artifact in the Return rather than leaving it behind", () => {
+    // Beat 8 resolves the hypothesis, and the hypothesis is attached to this
+    // plate — so the camera cannot go back for it without the artifact. The
+    // last stop is in the return scene and the whole beat stays on screen.
+    const inReturn = TRACK.filter((stop) => stop.scene === "return");
+    expect(inReturn.length).toBeGreaterThanOrEqual(3);
+    expect(TRACK[TRACK.length - 1].scene).toBe("return");
+    for (const stop of inReturn) expect(Math.abs(stop.x)).toBeLessThan(46);
+  });
+
+  it("moves the artifact far less than the camera across the Return", () => {
+    // The read is relative motion: the object holds its side of the frame
+    // while the building travels half its length the other way. If the
+    // artifact ever swept as far as the camera the beat would collapse into
+    // "the page scrolled backwards".
+    const first = TRACK.find((stop) => stop.scene === "return")!;
+    const last = TRACK[TRACK.length - 1];
+    const artifactRun = Math.abs(last.x - first.x) / 100;
+    const cameraRun = Math.abs(cameraAt(CAMERA.retrieve[1]) - cameraAt(CAMERA.retrieve[0]));
+    expect(artifactRun).toBeLessThan(cameraRun);
   });
 });
