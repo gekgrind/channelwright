@@ -2,14 +2,19 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ColdOpen, IntelligenceRoom, IntelligenceCapabilities } from "./acts";
+import { ColdOpen, IntelligenceRoom, IntelligenceCapabilities, StrategyRoom, WritersRoom, ProductionFloor, ControlRoom, TheReturn, NextDecision } from "./acts";
+import { StudiosWorld } from "./world";
+import { HallFar, HallNear } from "./facility";
 import { useReducedMotion } from "./scene";
 import { refreshScenes } from "./scroll-engine";
+import { useSmoothScroll } from "./smooth-scroll";
 import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL, type CapabilityStatus } from "./capabilities";
-import { FOOTER, INTELLIGENCE, NEXT_UP, OPEN, REGISTER } from "./copy";
+import { ARTIFACT, CONTROL, FINALE, FOOTER, INTELLIGENCE, OPEN, PRODUCTION, REGISTER, RETURN, STRATEGY, WORLD, WRITERS } from "./copy";
 import "./studios.css";
 
-const BUILT_DEPARTMENTS = new Set(["intelligence"]);
+
+/** Wrapper whose scroll span drives the persistent facility. */
+const JOURNEY_ID = "cw-journey";
 
 /* ------------------------------------------------------------------ chrome */
 
@@ -50,7 +55,9 @@ function useStageScene() {
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) intersecting.set(entry.target.id, entry.isIntersecting);
-        const active = scenes.find((scene) => intersecting.get(scene.id));
+        // Scenes overlap by a viewport, so more than one can be intersecting at
+        // a handoff. The later one is the room being entered, so it wins.
+        const active = [...scenes].reverse().find((scene) => intersecting.get(scene.id));
         setCurrent(active ? active.id : null);
       },
       { rootMargin: "-45% 0px -45% 0px" },
@@ -63,33 +70,26 @@ function useStageScene() {
   return current;
 }
 
-function DepartmentRail({ current }: { current: string | null }) {
+/* ------------------------------------------------------------ flow sections */
+
+/** The same hall, pinned behind the register/next-up/footer flow. The
+ *  cinematic journey has ended, but the visitor has only walked further into
+ *  the building — this is not a new page. */
+function ArchiveHall() {
   return (
-    <nav className="cw-rail" data-visible={current !== null && current !== "open"} aria-label="Studio departments">
-      {DEPARTMENTS.map((department) => {
-        const built = BUILT_DEPARTMENTS.has(department.id);
-        return (
-          <button
-            key={department.id}
-            type="button"
-            className="cw-rail__item"
-            data-current={current === department.id ? "true" : undefined}
-            disabled={!built}
-            aria-disabled={!built}
-            title={built ? department.name : `${department.name} — in construction`}
-            onClick={() => document.getElementById(department.id)?.scrollIntoView({ behavior: "smooth" })}
-          >
-            <span className="cw-rail__name">{department.name}</span>
-            <span className="cw-rail__tick" aria-hidden="true" />
-            <span>{department.index}</span>
-          </button>
-        );
-      })}
-    </nav>
+    <div className="cw-archive__hall" aria-hidden="true">
+      <div className="cw-world__ceiling" />
+      <div className="cw-plane cw-plane--near"><HallNear /></div>
+      <div className="cw-plane cw-plane--far"><HallFar /></div>
+      <div className="cw-archive__wash" />
+      <div className="cw-world__haze" />
+      <div className="cw-archive__floor" />
+      {/* Same shell as the departments: the records room is one more room in
+          the building, so it is framed by the same jambs. */}
+      <div className="cw-world__jambs" />
+    </div>
   );
 }
-
-/* ------------------------------------------------------------ flow sections */
 
 function CapabilityRegister() {
   const grouped = DEPARTMENTS.map((department) => ({
@@ -141,36 +141,6 @@ function CapabilityRegister() {
   );
 }
 
-function NextUp() {
-  return (
-    <section className="cw-block">
-      <div className="cw-shell">
-        <div className="cw-block__head">
-          <p className="cw-mono">{NEXT_UP.kicker}</p>
-          <h2 className="cw-heading">{NEXT_UP.heading}</h2>
-          <p className="cw-lede">{NEXT_UP.body}</p>
-        </div>
-        <div className="cw-register">
-          {DEPARTMENTS.map((department) => (
-            <div key={department.id} className="cw-register__row">
-              <span className="cw-register__dept">{department.index}</span>
-              <div className="cw-capability">
-                <div className="cw-capability__head">
-                  <span className="cw-capability__name">{department.name}</span>
-                  <span className="cw-status" data-status={BUILT_DEPARTMENTS.has(department.id) ? "OPERATING" : "DESIGNED"}>
-                    {BUILT_DEPARTMENTS.has(department.id) ? "Built" : "In construction"}
-                  </span>
-                </div>
-                <p className="cw-capability__claim">{department.line}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function Footer() {
   return (
     <footer className="cw-footer">
@@ -195,19 +165,20 @@ function Footer() {
 function StaticNarrative() {
   return (
     <div className="cw-shell">
+      {/* Beats 1 and 2, without choreography. The cinematic opening shows an
+          idea, then the building that is about to act on it; stated linearly
+          that is the same three things in the same order — the idea in the
+          visitor's own words, the studios it is carried into, and the first
+          department waiting on the other side of the threshold. The words are
+          the same words: there is no second copy source. */}
       <section className="cw-static__act">
-        <div className="cw-static__whispers">
-          {OPEN.slate.map((line) => (
-            <p key={line} className="cw-mono">{line}</p>
-          ))}
-        </div>
-        <p className="cw-mono cw-mono--signal">{OPEN.overline}</p>
-        <h1 className="cw-display" style={{ marginTop: 18 }}>
-          {OPEN.title.map((line) => (
-            <span key={line} style={{ display: "block" }}>{line} </span>
-          ))}
-        </h1>
+        <h1 className="cw-display">{OPEN.idea}</h1>
         <div className="cw-static__body">
+          <blockquote className="cw-static__artifact">{ARTIFACT.line}</blockquote>
+          <p className="cw-lede">{OPEN.turn}</p>
+          <p className="cw-mono cw-mono--signal">
+            {WORLD.facility} — {WORLD.thresholdLabel}
+          </p>
           <p className="cw-lede">{OPEN.lede}</p>
           <div className="cw-open__actions" style={{ marginTop: 0 }}>
             <Link className="cw-cta cw-cta--solid" href="/login">{OPEN.primaryCta}</Link>
@@ -224,7 +195,7 @@ function StaticNarrative() {
             <p key={paragraph} className="cw-lede">{paragraph}</p>
           ))}
         </div>
-        <div className="cw-panel cw-static__panel">
+        <div className="cw-panel cw-panel--record cw-static__panel">
           <div className="cw-panel__bar">
             <span className="cw-mono">{INTELLIGENCE.streamTitle}</span>
             <span className="cw-mono">{INTELLIGENCE.streamNote}</span>
@@ -251,6 +222,152 @@ function StaticNarrative() {
           <IntelligenceCapabilities />
         </div>
       </section>
+
+      <section id="strategy" className="cw-static__act">
+        <p className="cw-mono">Department {STRATEGY.index} — {STRATEGY.department}</p>
+        <h2 className="cw-heading" style={{ marginTop: 16 }}>{STRATEGY.heading}</h2>
+        <div className="cw-static__body">
+          {STRATEGY.body.map((paragraph) => (
+            <p key={paragraph} className="cw-lede">{paragraph}</p>
+          ))}
+        </div>
+        <div className="cw-panel cw-panel--record cw-static__panel">
+          <div className="cw-panel__bar">
+            <span className="cw-mono">{STRATEGY.panelTitle}</span>
+            <span className="cw-mono">{STRATEGY.panelNote}</span>
+          </div>
+          <dl className="cw-record">
+            {STRATEGY.rows.map((row) => (
+              <div key={row.key} className="cw-record__row">
+                <dt>{row.label}</dt>
+                <dd>{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
+      <section id="writers" className="cw-static__act">
+        <p className="cw-mono">Department {WRITERS.index} — {WRITERS.department}</p>
+        <h2 className="cw-heading" style={{ marginTop: 16 }}>{WRITERS.heading}</h2>
+        <div className="cw-static__body">
+          {WRITERS.body.map((paragraph) => (
+            <p key={paragraph} className="cw-lede">{paragraph}</p>
+          ))}
+        </div>
+        <div className="cw-panel cw-panel--record cw-static__panel">
+          <div className="cw-panel__bar">
+            <span className="cw-mono">{WRITERS.panelTitle}</span>
+            <span className="cw-mono">{WRITERS.panelNote}</span>
+          </div>
+          <dl className="cw-record">
+            {WRITERS.rows.map((row) => (
+              <div key={row.key} className="cw-record__row">
+                <dt>{row.label}</dt>
+                <dd>{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
+      <section id="production" className="cw-static__act">
+        <p className="cw-mono">Department {PRODUCTION.index} — {PRODUCTION.department}</p>
+        <h2 className="cw-heading" style={{ marginTop: 16 }}>{PRODUCTION.heading}</h2>
+        <div className="cw-static__body">
+          {PRODUCTION.body.map((paragraph) => (
+            <p key={paragraph} className="cw-lede">{paragraph}</p>
+          ))}
+        </div>
+        <div className="cw-panel cw-panel--record cw-static__panel">
+          <div className="cw-panel__bar">
+            <span className="cw-mono">{PRODUCTION.panelTitle}</span>
+            <span className="cw-mono">{PRODUCTION.panelNote}</span>
+          </div>
+          <dl className="cw-record">
+            {PRODUCTION.rows.map((row) => (
+              <div key={row.key} className="cw-record__row">
+                <dt>{row.label}</dt>
+                <dd>{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
+      <section id="control" className="cw-static__act">
+        <p className="cw-mono">Department {CONTROL.index} — {CONTROL.department}</p>
+        <h2 className="cw-heading" style={{ marginTop: 16 }}>{CONTROL.heading}</h2>
+        <div className="cw-static__body">
+          {CONTROL.body.map((paragraph) => (
+            <p key={paragraph} className="cw-lede">{paragraph}</p>
+          ))}
+        </div>
+        <div className="cw-panel cw-panel--record cw-static__panel">
+          <div className="cw-panel__bar">
+            <span className="cw-mono">{CONTROL.panelTitle}</span>
+            <span className="cw-mono">{CONTROL.panelNote}</span>
+          </div>
+          <dl className="cw-record">
+            {CONTROL.rows.map((row) => (
+              <div key={row.key} className="cw-record__row">
+                <dt>{row.label}</dt>
+                <dd>{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
+      <section id="return" className="cw-static__act">
+        {/* Beat 8, without the camera. The reduced-motion path cannot show the
+            facility travelling back, so it states the same logic in order:
+            the question that was attached in 02, the work it went through, the
+            binding that brings it back, and the seam where the answer would
+            land if the product measured it — which it does not. */}
+        <p className="cw-mono">The Return — Department {RETURN.index}, revisited</p>
+        <h2 className="cw-heading" style={{ marginTop: 16 }}>{RETURN.heading}</h2>
+        <div className="cw-static__body">
+          <blockquote className="cw-static__artifact">{ARTIFACT.hypothesis}</blockquote>
+          {RETURN.body.map((paragraph) => (
+            <p key={paragraph} className="cw-lede">{paragraph}</p>
+          ))}
+        </div>
+        <div className="cw-panel cw-panel--record cw-static__panel">
+          <div className="cw-panel__bar">
+            <span className="cw-mono">Hypothesis</span>
+            <span className="cw-mono">{RETURN.verdict}</span>
+          </div>
+          <dl className="cw-record">
+            <div className="cw-record__row">
+              <dt>Binding</dt>
+              <dd>{ARTIFACT.bound}</dd>
+            </div>
+            <div className="cw-record__row">
+              <dt>Result</dt>
+              <dd>{ARTIFACT.unmeasured}</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      {/* Beat 9, without the camera. The same conclusion in the same order:
+          the question, the binding, the seam it is waiting on, and the action.
+          The result is not stated, because there is no result. */}
+      <section id="finale" className="cw-static__act">
+        <h2 className="cw-heading">{FINALE.heading}</h2>
+        <div className="cw-static__body">
+          {FINALE.body.map((paragraph) => (
+            <p key={paragraph} className="cw-lede">{paragraph}</p>
+          ))}
+          <p className="cw-mono cw-mono--signal">
+            {FINALE.verdict}
+          </p>
+          <div className="cw-open__actions" style={{ marginTop: 0 }}>
+            <Link className="cw-cta cw-cta--solid" href="/login">{OPEN.primaryCta}</Link>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
@@ -260,6 +377,9 @@ function StaticNarrative() {
 export default function StudiosExperience() {
   const reduced = useReducedMotion();
   const stageScene = useStageScene();
+  // Smoothing belongs to the cinematic path only: static mode is a document,
+  // and a reduced-motion visitor has asked for the platform's own scrolling.
+  useSmoothScroll(!reduced);
   const root = useRef<HTMLDivElement>(null);
 
   // `data-ready` is written straight to the DOM rather than held in state: it
@@ -278,22 +398,38 @@ export default function StudiosExperience() {
   return (
     <div className="cw-studios" ref={root} data-ready="false" data-phase={reduced ? "static" : stageScene ?? undefined}>
       <Topbar />
-      {reduced ? null : <DepartmentRail current={stageScene} />}
 
       <main id="main">
         {reduced ? (
           <StaticNarrative />
         ) : (
-          <>
+          /* One scroll span for the whole cinematic run. The world reads its
+             progress from this element, which is why the facility can keep
+             moving across a scene boundary that the scenes themselves cut on. */
+          <div id={JOURNEY_ID} className="cw-journey">
+            <StudiosWorld scope={JOURNEY_ID} />
             <ColdOpen />
             <IntelligenceRoom />
-          </>
+            <StrategyRoom />
+            <WritersRoom />
+            <ProductionFloor />
+            <ControlRoom />
+            <TheReturn />
+            <NextDecision />
+          </div>
         )}
-        <CapabilityRegister />
-        <NextUp />
+        {reduced ? (
+            <CapabilityRegister />
+        ) : (
+          <div className="cw-archive">
+            <ArchiveHall />
+            <CapabilityRegister />
+            <Footer />
+          </div>
+        )}
       </main>
 
-      <Footer />
+      {reduced ? <Footer /> : null}
       <span className="cw-preview-flag">Preview · /studios-preview</span>
     </div>
   );
