@@ -12,6 +12,7 @@ import { ChannelVideoPackagingExecutor } from "./video-packaging-executor";
 import { ChannelVideoReleaseExecutor } from "./video-release-executor";
 import { ChannelVideoPerformanceExecutor } from "./video-performance-executor";
 import { ChannelVideoDiagnosisExecutor } from "./video-diagnosis-executor";
+import { ChannelVideoDecisionExecutor } from "./video-decision-executor";
 
 class RoutingWorkflowStepExecutor implements WorkflowStepExecutor {
   private readonly concept = new ChannelConceptValidationExecutor();
@@ -24,6 +25,7 @@ class RoutingWorkflowStepExecutor implements WorkflowStepExecutor {
   private readonly videoRelease = new ChannelVideoReleaseExecutor();
   private readonly videoPerformance = new ChannelVideoPerformanceExecutor();
   private readonly videoDiagnosis = new ChannelVideoDiagnosisExecutor();
+  private readonly videoDecision = new ChannelVideoDecisionExecutor();
   execute(step: ClaimedWorkflowStep) {
     return step.workflowType === "CHANNEL_RESEARCH" ? this.research.execute(step)
       : step.workflowType === "CHANNEL_STRATEGY" ? this.strategy.execute(step)
@@ -34,7 +36,8 @@ class RoutingWorkflowStepExecutor implements WorkflowStepExecutor {
                 : step.workflowType === "CHANNEL_VIDEO_RELEASE" ? this.videoRelease.execute(step)
                   : step.workflowType === "CHANNEL_VIDEO_PERFORMANCE" ? this.videoPerformance.execute(step)
                     : step.workflowType === "CHANNEL_VIDEO_DIAGNOSIS" ? this.videoDiagnosis.execute(step)
-                      : this.concept.execute(step);
+                      : step.workflowType === "CHANNEL_VIDEO_DECISION" ? this.videoDecision.execute(step)
+                        : this.concept.execute(step);
   }
 }
 
@@ -108,11 +111,11 @@ export class ProductionWorkflowWorker {
       const code = typeof classified.code === "string" ? classified.code : terminal ? "WORKFLOW_OUTPUT_INVALID" : "WORKFLOW_STEP_FAILED";
       const message = error instanceof ZodError
         ? "The workflow step produced invalid structured output."
-        : code === "RESEARCH_QA_REJECTED" || code === "STRATEGY_QA_REJECTED" || code === "CONTENT_QA_REJECTED" || code === "VIDEO_BRIEF_QA_REJECTED" || code === "VIDEO_SCRIPT_QA_REJECTED" || code === "VIDEO_PACKAGING_QA_REJECTED" || code === "VIDEO_RELEASE_QA_REJECTED" || code === "VIDEO_PERFORMANCE_QA_REJECTED" || code === "VIDEO_DIAGNOSIS_QA_REJECTED"
+        : code === "RESEARCH_QA_REJECTED" || code === "STRATEGY_QA_REJECTED" || code === "CONTENT_QA_REJECTED" || code === "VIDEO_BRIEF_QA_REJECTED" || code === "VIDEO_SCRIPT_QA_REJECTED" || code === "VIDEO_PACKAGING_QA_REJECTED" || code === "VIDEO_RELEASE_QA_REJECTED" || code === "VIDEO_PERFORMANCE_QA_REJECTED" || code === "VIDEO_DIAGNOSIS_QA_REJECTED" || code === "VIDEO_DECISION_QA_REJECTED"
           ? "Final QA found material errors; no recommendation was advanced to human review."
           : code === "CONTENT_INTEGRITY_UNREVISABLE" || code === "VIDEO_BRIEF_INTEGRITY_UNREVISABLE" || code === "VIDEO_SCRIPT_INTEGRITY_UNREVISABLE" || code === "VIDEO_PACKAGING_INTEGRITY_UNREVISABLE" || code === "VIDEO_RELEASE_INTEGRITY_UNREVISABLE" || code === "VIDEO_PERFORMANCE_INTEGRITY_UNREVISABLE"
             ? "A blocking viewer-value or content-integrity failure cannot be resolved by automated revision."
-          : code === "RESEARCH_RESOURCE_BUDGET_EXHAUSTED" || code === "STRATEGY_RESOURCE_BUDGET_EXHAUSTED" || code === "CONTENT_RESOURCE_BUDGET_EXHAUSTED" || code === "VIDEO_BRIEF_RESOURCE_BUDGET_EXHAUSTED" || code === "VIDEO_SCRIPT_RESOURCE_BUDGET_EXHAUSTED" || code === "VIDEO_PACKAGING_RESOURCE_BUDGET_EXHAUSTED" || code === "VIDEO_RELEASE_RESOURCE_BUDGET_EXHAUSTED" || code === "VIDEO_PERFORMANCE_RESOURCE_BUDGET_EXHAUSTED" || code === "VIDEO_DIAGNOSIS_RESOURCE_BUDGET_EXHAUSTED"
+          : code === "RESEARCH_RESOURCE_BUDGET_EXHAUSTED" || code === "STRATEGY_RESOURCE_BUDGET_EXHAUSTED" || code === "CONTENT_RESOURCE_BUDGET_EXHAUSTED" || code === "VIDEO_BRIEF_RESOURCE_BUDGET_EXHAUSTED" || code === "VIDEO_SCRIPT_RESOURCE_BUDGET_EXHAUSTED" || code === "VIDEO_PACKAGING_RESOURCE_BUDGET_EXHAUSTED" || code === "VIDEO_RELEASE_RESOURCE_BUDGET_EXHAUSTED" || code === "VIDEO_PERFORMANCE_RESOURCE_BUDGET_EXHAUSTED" || code === "VIDEO_DIAGNOSIS_RESOURCE_BUDGET_EXHAUSTED" || code === "VIDEO_DECISION_RESOURCE_BUDGET_EXHAUSTED"
             ? "The durable workflow-run resource budget was exhausted; no further external calls were made."
           : terminal
             ? "The workflow step failed a terminal validation gate."
