@@ -1,0 +1,2626 @@
+/* ============================================================================
+   CHANNELWRIGHT STUDIOS — cinematic surface
+   ----------------------------------------------------------------------------
+   Scoped entirely under `.cw-studios`. The production surfaces at "/" and
+   "/studio" keep every token in `src/app/globals.css` untouched; the two
+   `:root:has()` rules below are the only reach outside this class, and they
+   only apply while a Studios page is mounted.
+
+   Brand continuity: the existing Channelwright palette is inverted rather than
+   replaced. Paper (#f2efe6) becomes the light source, acid (#d8ff3e) stays the
+   single signal colour, orange and mint keep their existing meanings — alarm
+   and pass. Typefaces are the ones already loaded by the root layout.
+   ============================================================================ */
+
+/* Lenis' required host styles, kept here rather than imported from the package
+   so smoothing is scoped to the routes that actually mount the journey. The
+   classes are only ever on <html> while the Studios experience is alive. */
+html.lenis, html.lenis body { height: auto; }
+/* Native smooth scrolling would fight the interpolation, so it is off for
+   as long as Lenis is mounted — not only while it reports itself smooth. */
+html.lenis, html.lenis-smooth { scroll-behavior: auto !important; }
+html.lenis-stopped { overflow: hidden; }
+html.lenis-smooth iframe { pointer-events: none; }
+html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
+
+:root:has(.cw-studios) { color-scheme: dark; }
+:root:has(.cw-studios), :root:has(.cw-studios) body { background: #050607; }
+:root:has(.cw-studios) .grain { opacity: .085; mix-blend-mode: screen; }
+
+.cw-studios {
+  /* Ground — four steps of darkness, used to build depth without gradients. */
+  --void: #050607;
+  --deep: #0a0c10;
+  --deck: #12151b;
+  --riser: #1b1f27;
+
+  /* Light — one paper tone at four intensities. */
+  --lume: #f2efe6;
+  --lume-2: rgba(242, 239, 230, .66);
+  --lume-3: rgba(242, 239, 230, .40);
+  --lume-4: rgba(242, 239, 230, .20);
+  --edge: rgba(242, 239, 230, .10);
+  --edge-2: rgba(242, 239, 230, .18);
+
+  /* Signal — earned, never decorative. */
+  --signal: #d8ff3e;
+  --signal-dim: rgba(216, 255, 62, .34);
+  --signal-haze: rgba(216, 255, 62, .12);
+  --warn: #ff6846;
+  --pass: #91e6c1;
+
+  --shell: 1380px;
+  --gutter: clamp(20px, 5vw, 76px);
+  --ease: cubic-bezier(.22, .61, .28, 1);
+
+  position: relative;
+  background: var(--void);
+  color: var(--lume);
+  font-family: var(--font-body), sans-serif;
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+}
+
+.cw-studios ::selection { background: var(--signal); color: var(--void); }
+.cw-studios :focus-visible { outline: 2px solid var(--signal); outline-offset: 4px; border-radius: 2px; }
+
+/* --- Typography -------------------------------------------------------- */
+
+.cw-studios h1, .cw-studios h2, .cw-studios h3 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-weight: 600;
+  letter-spacing: -.035em;
+  line-height: .94;
+  text-wrap: balance;
+}
+.cw-studios p { margin: 0; }
+
+.cw-display { font-size: clamp(2.2rem, 5.2vw, 4.6rem); }
+.cw-display--xl { font-size: clamp(2.4rem, 5.9vw, 5.3rem); letter-spacing: -.042em; }
+.cw-heading { font-size: clamp(1.7rem, 3.4vw, 3rem); }
+
+.cw-lede {
+  max-width: 46ch;
+  color: var(--lume-2);
+  font-size: clamp(1rem, 1.35vw, 1.19rem);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.cw-mono {
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--lume-3);
+}
+.cw-mono--signal { color: var(--signal); }
+
+.cw-rule { height: 1px; background: var(--edge); border: 0; margin: 0; }
+
+/* --- Scene architecture ------------------------------------------------ */
+
+.cw-studios [data-cw-scene] {
+  position: relative;
+  height: calc(var(--travel, 3) * 100svh);
+}
+
+.cw-stage {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  overflow: hidden;
+  display: grid;
+  grid-template-areas: "stage";
+  isolation: isolate;
+}
+.cw-stage > * { grid-area: stage; }
+
+.cw-layer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.cw-layer--copy { pointer-events: auto; }
+/* The reading wash arrives with the room it belongs to.
+   ---------------------------------------------------------------------------
+   Every scene after the cold open overlaps its predecessor by a viewport, so
+   the incoming room's stage — and this wash with it — was already painting a
+   full-strength near-black gradient over the *previous* room's copy for that
+   whole viewport, a third of the room before its own headline existed.
+   Measured against a suppressed next stage, the Writers' Room headline and its
+   verdict were rendering at roughly a sixth of their intended luminance while
+   reporting a computed opacity of 1: the copy was not fading, it was being
+   painted over. Every department transition had it.
+
+   Ramped on the room's own progress, the wash is nothing while the previous
+   room still owns the frame and full by the time this room's headline lands.
+   `--p` is clamped to 0 through the overlap, so the ramp does that for free. */
+.cw-layer--copy { --scrim: clamp(0, calc(var(--p, 1) * 8), 1); }
+.cw-layer--copy::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--scrim, 1);
+  /* Negative space, made rather than found. The room is behind the copy, so
+     the copy has to clear a plane for itself: a hard wash over the reading
+     column that falls away well before the instrument, plus a top-and-bottom
+     lift so the deck and the rig stay visible and the frame keeps its depth.
+     Pass 2's single soft radial left structural linework crossing every
+     headline in the run. */
+  background:
+    linear-gradient(to right, rgba(5, 6, 7, .9) 0 20%, rgba(5, 6, 7, .74) 36%, rgba(5, 6, 7, .22) 50%, transparent 62%),
+    radial-gradient(78% 58% at 20% 48%, rgba(5, 6, 7, .88), transparent 72%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 15%, #000 82%, transparent 96%);
+}
+
+/* A department overlaps its predecessor by one viewport, so its stage pins at
+   the instant the previous scene stops scrubbing. Without this there is a
+   viewport-tall window where no scene holds the stage — the gap pass 1 read
+   as a cut. */
+.cw-studios .cw-scene--overlap { margin-top: -100svh; }
+
+/* Cue: maps a slice of scene progress onto --t (linear) and --te (ease-out). */
+.cw-cue {
+  --in: 0;
+  --out: 1;
+  --t: clamp(0, calc((var(--p, 1) - var(--in)) / (var(--out) - var(--in))), 1);
+  --te: calc(1 - (1 - var(--t)) * (1 - var(--t)));
+  --ti: calc(var(--t) * var(--t));
+  /* Symmetric window: rises then falls, for layers that pass through. */
+  --tw: calc(var(--t) * (1 - var(--t)) * 4);
+}
+
+/* Installed equipment does not fade up like text. A panel whose opacity is
+   still mid-ramp is a translucent card with a building showing through it —
+   precisely the "webpage card on a photo" failure this pass corrects — so the
+   panel reaches full opacity in the first third of its cue and spends the rest
+   of the cue settling into place. */
+.cw-studios[data-ready="true"] .cw-rise--solid {
+  opacity: clamp(0, calc(var(--t) * 3), 1);
+  transform: translate3d(0, calc((1 - var(--te)) * 26px), 0);
+}
+.cw-rise--solid { will-change: opacity, transform; }
+
+/* Content is fully legible until the engine confirms it is driving. */
+.cw-studios[data-ready="true"] .cw-fade { opacity: var(--t); }
+.cw-studios[data-ready="true"] .cw-hold { opacity: calc(1 - var(--t)); }
+.cw-studios[data-ready="true"] .cw-rise {
+  opacity: var(--t);
+  transform: translate3d(0, calc((1 - var(--te)) * 34px), 0);
+}
+.cw-studios[data-ready="true"] .cw-wipe {
+  clip-path: inset(0 calc((1 - var(--te)) * 101%) 0 0);
+}
+.cw-fade, .cw-hold, .cw-rise, .cw-wipe { will-change: opacity, transform; }
+
+/* --- Shell ------------------------------------------------------------- */
+
+.cw-shell {
+  width: 100%;
+  max-width: var(--shell);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+.cw-stage .cw-shell { height: 100%; display: flex; flex-direction: column; justify-content: center; }
+.cw-room .cw-stage .cw-shell { padding-top: 84px; }
+
+/* --- Chrome ------------------------------------------------------------ */
+
+.cw-topbar {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px var(--gutter);
+  background: linear-gradient(to bottom, rgba(5, 6, 7, .62), rgba(5, 6, 7, 0));
+  transition: opacity .55s var(--ease), visibility .55s var(--ease);
+}
+.cw-topbar__mark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.cw-topbar__mark b { font-weight: 700; }
+.cw-topbar__mark span { color: var(--lume-3); font-weight: 500; letter-spacing: .22em; font-size: 10.5px; }
+.cw-topbar__right { display: flex; align-items: center; gap: 18px; }
+.cw-studios[data-phase="open"] .cw-topbar { opacity: 0; visibility: hidden; }
+
+.cw-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 10px 20px;
+  border: 1px solid var(--signal);
+  background: transparent;
+  color: var(--signal);
+  font-family: var(--font-display), sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background .28s var(--ease), color .28s var(--ease), box-shadow .28s var(--ease);
+}
+.cw-cta:hover { background: var(--signal); color: var(--void); box-shadow: 0 0 44px var(--signal-haze); }
+.cw-cta--solid { background: var(--signal); color: var(--void); }
+.cw-cta--solid:hover { box-shadow: 0 0 60px rgba(216, 255, 62, .28); }
+.cw-cta--ghost { border-color: var(--edge-2); color: var(--lume-2); }
+.cw-cta--ghost:hover { background: transparent; color: var(--lume); border-color: var(--lume-3); box-shadow: none; }
+
+/* Department rail — a position indicator, not navigation chrome. */
+.cw-rail {
+  position: fixed;
+  right: max(18px, calc((100vw - var(--shell)) / 2 - 34px));
+  top: 50%;
+  z-index: 35;
+  translate: 0 -50%;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  opacity: 0;
+  transition: opacity .6s var(--ease);
+}
+.cw-rail[data-visible="true"] { opacity: 1; }
+.cw-rail__item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 11px;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--lume-4);
+  cursor: pointer;
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: .16em;
+  transition: color .3s var(--ease);
+}
+.cw-rail__item:hover { color: var(--lume-2); }
+.cw-rail__item[data-current="true"] { color: var(--signal); }
+.cw-rail__name {
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  text-transform: uppercase;
+  transition: max-width .45s var(--ease), opacity .3s var(--ease);
+}
+.cw-rail__item:hover .cw-rail__name,
+.cw-rail__item:focus-visible .cw-rail__name { max-width: 190px; opacity: 1; }
+.cw-rail__tick { width: 26px; height: 1px; background: currentColor; flex: none; transition: width .35s var(--ease); }
+.cw-rail__item[data-current="true"] .cw-rail__tick { width: 40px; }
+
+/* --- Status chips (truthful capability labelling) ---------------------- */
+
+.cw-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px 4px 7px;
+  border: 1px solid var(--edge-2);
+  font-family: var(--font-mono), monospace;
+  font-size: 9.5px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--lume-3);
+  white-space: nowrap;
+}
+.cw-status::before { content: ""; width: 5px; height: 5px; background: currentColor; flex: none; }
+.cw-status[data-status="OPERATING"] { color: var(--pass); border-color: rgba(145, 230, 193, .3); }
+.cw-status[data-status="PROVEN"] { color: var(--lume-2); }
+.cw-status[data-status="DESIGNED"] { color: var(--warn); border-color: rgba(255, 104, 70, .28); }
+
+/* ============================================================================
+   THE FACILITY — one persistent world behind every department
+   ----------------------------------------------------------------------------
+   Pass 1 gave each department its own opaque stage, so a scene boundary was a
+   cut. Here a single fixed layer holds the building and is driven by `--j`,
+   the visitor's progress through the *whole* run. Scenes above it are
+   transparent: crossing from 01 to 02 changes what is said, never where.
+
+   Everything below is declarative off `--j`. Lateral travel is expressed in
+   viewport-height units because each plane's SVG is sized by height against a
+   fixed viewBox, which keeps the hall's proportions identical on every aspect
+   ratio — including a phone.
+   ============================================================================ */
+
+.cw-journey { position: relative; isolation: isolate; }
+.cw-journey [data-cw-scene] { z-index: 1; }
+
+.cw-world {
+  --j: 0;
+
+  /* Camera position, kept apart from the timeline.
+
+     `--j` only ever increases: it is scroll position, smoothed by the driver
+     in `./smooth-scroll.ts` but never reversed. Every *spatial* rule below
+     therefore reads `--cam`, which is free to run backwards — which is what
+     Beat 8's reverse traversal will need. `--rev` ramps 0..1 across that
+     return and `--home` is the landmark it settles on; until that beat is
+     staged both are zero, so `--cam` is identically `--j`.
+
+     Timeline behaviour — wake, the ambient wash, cue timing, signage gates
+     and the artifact's own state — stays on `--j` and must never move to
+     `--cam`, or the return would rewind the story as well as the camera. */
+  /* BEAT 8 — the Return.
+
+     `--rev` blends the camera off the timeline and onto `--home`: at 0 the
+     camera follows the story, at 1 it is standing in the room the story
+     started the question in, whatever `--j` has reached. Scrolling forward
+     therefore advances the narrative while the world travels backwards, which
+     is the distinction this beat exists to make legible. `--j` is untouched.
+
+     Composed as a product of two ramps rather than a difference, so it is
+     bounded on [0, 1] by construction and lands on exactly 0 once the release
+     completes — the return cannot leak into any later beat.
+
+     Both legs are smoothstepped. The camera covers roughly half the building
+     in each direction inside one scene, and a linear ramp starts and stops
+     that traverse abruptly; smoothstep has the lowest peak rate of the curves
+     available here (1.5x linear, against 2x for a quadratic ease), so it is
+     the gentlest whip, not merely the prettiest. */
+  --rev-t: clamp(0, calc((var(--j) - var(--rev-a, 2)) * var(--rev-k, 1)), 1);
+  --rel-t: clamp(0, calc((var(--j) - var(--rel-a, 2)) * var(--rel-k, 1)), 1);
+  --rev: calc(
+    (var(--rev-t) * var(--rev-t) * (3 - 2 * var(--rev-t))) *
+    (1 - var(--rel-t) * var(--rel-t) * (3 - 2 * var(--rel-t)))
+  );
+  --home: 0;
+  --cam: calc(var(--j) - var(--rev) * (var(--j) - var(--home)));
+  /* Every window below arrives from `./beats.ts` as a start fraction and a
+     reciprocal span, so a scene length is stated in exactly one place and the
+     building's light cannot drift away from the room it belongs to.
+
+     Facility wake-up, staged by depth. Beat 1 is deliberately restrained: only
+     the surfaces the visitor is standing between come up, on a floor that
+     keeps the frame a dark *building* rather than an unfinished page. Beat 2
+     then brings the operating floor in, and the back wall last — so the reveal
+     builds foreground → middle → distance and the hall is understood as deep
+     before it is understood as bright. All three complete before the crossing,
+     which is why Departments 01–05 are lit exactly as they were. */
+  --wake: clamp(var(--wake-floor, .22), calc((var(--j) - var(--wake-a, 0)) * var(--wake-k, 10)), 1);
+  --wake-mid: clamp(var(--wake-mid-floor, .05), calc((var(--j) - var(--wake-mid-a, 0)) * var(--wake-mid-k, 10)), 1);
+  --wake-far: clamp(var(--wake-far-floor, 0), calc((var(--j) - var(--wake-far-a, 0)) * var(--wake-far-k, 10)), 1);
+  /* Beat 2's own window: the threshold resolves out of the dark at the far end
+     of the hall and starts its approach inside this range. */
+  --reveal: clamp(0, calc((var(--j) - var(--reveal-a, 0)) * var(--reveal-k, 10)), 1);
+  /* Beat 9's: the unlit door where Department 06 would be. Gated on the
+     timeline, not on distance, so the Return's release cannot sweep it into
+     frame on the way past. */
+  --seam: clamp(0, calc((var(--j) - var(--seam-a, 2)) * var(--seam-k, 10)), 1);
+  /* The cold open's key light, handed over to the hall's own light. */
+  --beam-out: clamp(0, calc((var(--j) - var(--beam-a, 0)) * var(--beam-k, 10)), 1);
+  /* Which department's light is in the room. Both ramps start well before
+     arrival, so the next room is already bleeding into this one. */
+  --l1: clamp(0, calc((var(--j) - var(--l1-a, 0)) * var(--l1-k, 6)), 1);
+  --l2: clamp(0, calc((var(--j) - var(--l2-a, 0)) * var(--l2-k, 6)), 1);
+  /* Things that only exist inside the building: wall signage, installed
+     equipment, and the route the artifact is about to be set down on. */
+  --inside: clamp(0, calc((var(--j) - var(--inside-a, 0)) * var(--inside-k, 7)), 1);
+  --fixtures-on: clamp(0, calc((var(--j) - var(--fixtures-a, 0)) * var(--fixtures-k, 15)), 1);
+  --route: clamp(0, calc((var(--j) - var(--route-a, 0)) * var(--route-k, 4)), 1);
+  /* The crossing dolly. Rises as the camera closes on the aperture and relaxes
+     back to nothing inside the approach corridor, so it is spent before
+     Department 01 takes the stage and no later beat inherits it. Spatial, so
+     it reads `--cam` rather than `--j`. */
+  --dolly: calc(
+    clamp(0, calc((var(--cam) - var(--dolly-a, 0)) * var(--dolly-in, 18)), 1) -
+    clamp(0, calc((var(--cam) - var(--dolly-b, 0)) * var(--dolly-out, 24)), 1)
+  );
+
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--lume);
+  opacity: 0;
+  transition: opacity .45s var(--ease);
+}
+.cw-world[data-live="true"] { opacity: 1; }
+
+/* --- Light ------------------------------------------------------------- */
+
+/* Three washes cross-faded by `--j`: the approach, Department 01, and
+   Department 02 arriving from up ahead. Acid appears only where the signal is
+   being worked on; the rest of the building is lit in cold paper and steel. */
+/* Two cross-fading washes, not three, and no promotion: measured, a promoted
+   viewport-sized gradient stack costs more to composite each frame than it
+   saves in repaint. The hall's base light is painted once and only the
+   department wash moves. */
+.cw-world__ambient,
+.cw-world__ambient::before,
+.cw-world__ambient::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+}
+/* Two washes rather than one: a cold floor bounce under the hall and a
+   shallower key above it. The room stays dark; it stops being flat. */
+.cw-world__ambient {
+  background:
+    radial-gradient(96% 46% at 50% 88%, rgba(122, 152, 190, .13), transparent 70%),
+    radial-gradient(112% 80% at 50% 72%, rgba(108, 138, 178, .17), transparent 68%);
+  opacity: var(--wake);
+}
+/* The cool wash comes back up during the Return, because the camera is
+   standing in the half of the building it belongs to again — but only part of
+   the way, and the warm late-run wash is only partly withdrawn. The room is
+   recognisable without being restored: this is the same room later, not the
+   same room again. The department washes stay on `--j` everywhere else, which
+   is what keeps the return from reading as a rewind. */
+.cw-world__ambient::before {
+  background: radial-gradient(74% 60% at 26% 34%, rgba(118, 158, 208, .2), transparent 66%);
+  opacity: max(calc(var(--l1) * (1 - var(--l2) * .8)), calc(var(--rev) * .6));
+}
+.cw-world__ambient::after {
+  background: radial-gradient(66% 54% at 70% 32%, rgba(172, 154, 120, .2), transparent 66%);
+  opacity: calc(var(--l2) * (1 - var(--rev) * .55));
+}
+
+/* The key light of the cold open. Part of the rig, not an overlay: it hangs
+   from the same truss the visitor is about to travel under. */
+.cw-world__beam {
+  position: absolute;
+  left: 50%;
+  top: -6%;
+  width: min(58vw, 720px);
+  height: 88%;
+  translate: -50% 0;
+  clip-path: polygon(43% 0, 57% 0, 100% 100%, 0 100%);
+  background: linear-gradient(to bottom, rgba(216, 255, 62, .17), rgba(216, 255, 62, .05) 42%, transparent 86%);
+  transform: scaleY(calc(.12 + var(--wake) * .88));
+  transform-origin: 50% 0;
+  will-change: opacity, transform;
+  opacity: calc(var(--wake) * (1 - var(--beam-out)) * .95);
+}
+
+/* --- Depth planes ------------------------------------------------------- */
+
+.cw-plane { position: absolute; left: 0; right: 0; }
+/* Each plane is cropped to the band it draws into: the ceiling rig only ever
+   paints the top of the frame, the operating floor only the middle. Same
+   picture, roughly half the rasterised area. */
+.cw-plane--far { top: 25%; height: 45%; }
+.cw-plane--mid { top: 47%; height: 34%; }
+.cw-plane--near { top: 6.2%; height: 38%; }
+.cw-plane svg { height: 100%; width: auto; display: block; }
+
+/* Three travel rates. The ratios (roughly 1 : 2.4 : 4) are what turn a sliding
+   drawing into a hall with depth.
+
+   Contrast is graded with distance rather than held flat. Pass 2 ran all three
+   planes at roughly the same strength, so the overhead truss — the furthest
+   thing from the subject — was the brightest linework in the frame and fought
+   the headline for the eye. The rig now sits below the operating floor, which
+   sits below the near deck, and the structure that used to be carried by
+   outline strength is carried by the filled masses below instead. */
+/* Each plane also carries the crossing dolly, scaled by the same ratio as its
+   travel rate: the rig overhead rushes past, the operating floor spreads, the
+   back wall barely moves. That differential is what makes passing through the
+   threshold read as forward motion rather than as a growing rectangle — and
+   because `--dolly` returns to zero inside the approach corridor, every room
+   after it is composed exactly as before. */
+.cw-plane--far { opacity: calc(var(--wake-far, 1) * .5); transform: scale(calc(1 + var(--dolly, 0) * .04)); }
+.cw-plane--far svg { transform: translate3d(min(0px, calc(var(--cam) * (100vw - 260vh))), 0, 0); }
+
+.cw-plane--mid { opacity: calc(var(--wake-mid, 1) * .4); transform: scale(calc(1 + var(--dolly, 0) * .12)); }
+.cw-plane--mid svg { transform: translate3d(min(0px, calc(var(--cam) * (100vw - 340vh))), 0, 0); }
+
+.cw-plane--near { opacity: calc(var(--wake) * .58); transform: scale(calc(1 + var(--dolly, 0) * .26)); }
+.cw-plane--near svg { transform: translate3d(min(0px, calc(var(--cam) * (100vw - 460vh))), 0, 0); }
+
+/* Background equipment reads as switched on. Deliberately unreadable at this
+   distance: it is telemetry, not an interface the visitor is asked to parse. */
+.cw-hall__trace {
+  stroke-dasharray: 40 260;
+  animation: cw-trace 9s linear infinite;
+}
+@keyframes cw-trace { to { stroke-dashoffset: -300; } }
+
+.cw-hall__led {
+  animation: cw-led 7s steps(1, end) infinite;
+}
+@keyframes cw-led {
+  0%, 34% { opacity: .8; }
+  35%, 62% { opacity: .18; }
+  63%, 100% { opacity: .55; }
+}
+
+/* --- Floor -------------------------------------------------------------- */
+
+/* One perspective plane whose markings scroll laterally. This is the cheapest
+   honest statement that the camera is travelling rather than cross-fading. */
+.cw-world__floor {
+  position: absolute;
+  inset: 54% -60% -34%;
+  background:
+    repeating-linear-gradient(to right, rgba(242, 239, 230, .17) 0 1px, transparent 1px 124px),
+    repeating-linear-gradient(to bottom, rgba(242, 239, 230, .13) 0 1px, transparent 1px 124px);
+  transform: perspective(760px) rotateX(74deg) translate3d(calc(var(--cam) * -260vw), 0, 0);
+  transform-origin: 50% 0;
+  will-change: transform;
+  mask-image: radial-gradient(62% 80% at 50% 4%, #000 0%, transparent 78%);
+  opacity: calc(var(--wake-mid, 1) * .34);
+}
+
+/* --- Room shell: the masses that make the darkness structured ----------- */
+
+/* Darkness has to be built, not merely left. Pass 2 drew the hall almost
+   entirely in outline over pure void, so every line — truss webbing, glazing,
+   fixture cells, headline — landed on the same plane at the same weight. The
+   three surfaces below are the correction: a ceiling the rig hangs from, a
+   deck the visitor stands on, and jambs they stand between. None of them
+   carries information; their whole job is to give the eye a near, a middle and
+   a far to sort everything else into. */
+
+/* Ceiling. Seats the overhead rig against a surface instead of leaving it as
+   the brightest set of lines in an empty frame. */
+.cw-world__ceiling {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 11.5%;
+  background: linear-gradient(to bottom, rgba(31, 36, 45, .97), rgba(17, 20, 26, .92) 58%, rgba(6, 7, 10, .55));
+  border-bottom: 1px solid rgba(242, 239, 230, .12);
+  opacity: calc(.4 + var(--wake) * .6);
+  /* Lifts out of frame as the camera goes through the doorway, which is what
+     buys Beat 2 the tallest shot in the run without a second mechanism. */
+  transform: translate3d(0, calc(var(--dolly, 0) * -2.6vh), 0);
+}
+
+/* Deck. The near half of the floor as a solid with one lit leading edge: the
+   plane the visitor is standing on, occluding the bottom of the operating
+   floor behind it. */
+.cw-world__deck {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 85%;
+  bottom: 0;
+  background:
+    linear-gradient(to bottom, rgba(242, 239, 230, .24) 0 1px, rgba(242, 239, 230, .05) 1px 3px, transparent 3px),
+    linear-gradient(to bottom, rgba(34, 39, 49, .96), rgba(14, 17, 22, .97) 30%, rgba(4, 5, 7, .99));
+  opacity: calc(.4 + var(--wake) * .6);
+  transform: translate3d(0, calc(var(--dolly, 0) * 2.6vh), 0);
+}
+
+/* Foreground jambs. Structure the visitor is standing between — close enough
+   to the camera to be out of focus and out of the story, so nothing is drawn
+   on them. They are the cheapest possible foreground plane, and without one
+   the hall reads as a drawing that scrolls sideways rather than a room seen
+   from inside it. */
+.cw-world__jambs {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: calc(.45 + var(--wake) * .55);
+}
+.cw-world__jambs::before,
+.cw-world__jambs::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: clamp(26px, 4.4vw, 88px);
+  /* A lit inner arris falling away into an unlit face: a column catching the
+     edge of the room light, not a vignette. */
+  background: linear-gradient(to bottom, rgba(19, 22, 28, .5), rgba(23, 27, 34, .96) 26%, rgba(10, 12, 16, .98));
+}
+/* Through the crossing the jambs slide off the sides of the frame: the visitor
+   passes between them. It is the same `--dolly` the planes read, so the whole
+   foreground clears in one move and re-forms in the corridor beyond. */
+.cw-world__jambs::before {
+  left: 0;
+  border-right: 1px solid rgba(242, 239, 230, .13);
+  box-shadow: 6px 0 26px rgba(4, 5, 6, .9);
+  transform: translate3d(calc(var(--dolly, 0) * -100%), 0, 0);
+}
+.cw-world__jambs::after {
+  right: 0;
+  border-left: 1px solid rgba(242, 239, 230, .1);
+  box-shadow: -6px 0 26px rgba(4, 5, 6, .9);
+  transform: translate3d(calc(var(--dolly, 0) * 100%), 0, 0);
+}
+
+/* The route the artifact travels. Held at one height through every department,
+   so the eye keeps tracking a single line instead of relocating after a cut. */
+.cw-conveyance {
+  position: absolute;
+  left: -20vw;
+  right: -20vw;
+  overflow: hidden;
+  top: 91%;
+  /* Lit during Beat 2 rather than after it: the route is what the artifact is
+     about to be set down on, so it has to exist before the crossing for the
+     descent into Department 01 to read as an arrival rather than a drop. */
+  opacity: calc(var(--route) * .9);
+}
+.cw-conveyance__rail {
+  display: block;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(242, 239, 230, .3) 14%, rgba(242, 239, 230, .3) 86%, transparent);
+}
+.cw-conveyance__marks {
+  display: block;
+  width: 600vw;
+  height: 9px;
+  background: repeating-linear-gradient(90deg, rgba(242, 239, 230, .22) 0 1px, transparent 1px 66px);
+  transform: translate3d(calc(var(--cam) * -460vw), 0, 0);
+  will-change: transform;
+  mask-image: linear-gradient(to bottom, #000, transparent);
+}
+
+/* --- Landmarks ---------------------------------------------------------- */
+
+/* A prop sits at journey position `--at` and drifts past at a rate that stands
+   in for its distance from the camera. Distance uses max(d, -d) rather than
+   abs() so it works without a recent-CSS requirement. Rates are set per prop
+   class so a narrow viewport can widen them: the same distance in `vw` throws
+   a landmark clean off a phone before the visitor can read it. */
+.cw-prop {
+  --at: 0;
+  --rate: 300;
+  --d: calc(var(--at) - var(--cam));
+  --ad: max(var(--d), calc(var(--d) * -1));
+  position: absolute;
+  left: 50%;
+  translate: -50% 0;
+  transform: translate3d(calc(var(--d) * var(--rate) * 1vw), 0, 0);
+  will-change: transform, opacity;
+}
+
+/* Department signage, stencilled on the back wall. Because it is placed in the
+   world rather than in a scene, Department 02's sign is already legible off to
+   the right while the visitor is still working in 01 — and 01's is still
+   behind them once they arrive. That is what gives the run spatial memory. */
+/* Wayfinding, not a caption.
+ *
+ * Pass 2's signage carried a .22 residual over a reach of nearly half the
+ * journey, which put two outlined numerals in frame at once — through the
+ * headline band — for most of the run. Both numbers are corrected here: the
+ * sign is legible only in the approach to its own department, it is parked
+ * high above the copy, and once the room's own identity plate is up it drops
+ * to a trace rather than holding a quarter of full strength. The active
+ * department owns the scene; its neighbours whisper. */
+.cw-sign {
+  --rate: 96;
+  --reach: .15;
+  /* Whether wall signage is shown at all. Held at 1 here and narrowed on a
+     phone, where the wall sign duplicates the room's own plate — except during
+     the Return, which has no plate naming the room it arrives in. */
+  --vis: 1;
+  top: 11%;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  text-align: center;
+  white-space: nowrap;
+  /* Approaching → readable. Passed → a trace on the wall behind you, which is
+     what keeps the run spatially continuous without competing for the eye.
+     Gated on the threshold crossing so no signage floats in the cold open. */
+  /* The last term dims a sign you have walked past, which is what keeps the
+     run spatially continuous on the way out. On the way *back* "past" and
+     "ahead" swap — so the two facings are crossfaded by `--rev` rather than
+     simply maxed together. Maxing lit both at once, and departments sit closer
+     together than a sign's reach, so two numerals ended up stacked in the
+     frame every time the returning camera crossed between rooms. Blended, one
+     sign reads at a time in either direction, and the forward run is untouched
+     because `--rev` is zero everywhere outside the Return.
+
+     The return facing holds at full strength through `--d` of zero rather than
+     falling to nothing there the way the forward one does. Standing at a sign
+     is a passing moment on the way out and the whole point of the beat on the
+     way back: the camera parks on Department 02 for the length of the hold,
+     and the numeral on the wall is what tells the visitor where it has
+     stopped. */
+  opacity: calc(
+    var(--vis) *
+    var(--inside) *
+    clamp(0, calc((var(--reach) - var(--ad)) * 6), 1) *
+    (.07 + .53 * (
+      clamp(0, calc(var(--d) * 14), 1) * (1 - var(--rev)) +
+      clamp(0, calc(1 - var(--d) * 14), 1) * var(--rev)
+    ))
+  );
+  transform: translate3d(calc(var(--d) * var(--rate) * 1vw), 0, 0) scale(calc(1 - var(--ad) * .6));
+}
+/* Stencilled on the wall: a hairline outline with a faint fill behind it, so
+   it reads as paint on a surface rather than display type on a layer. */
+.cw-sign__index {
+  font-family: var(--font-display), sans-serif;
+  font-size: clamp(2.8rem, 8.4vh, 5.4rem);
+  font-weight: 700;
+  line-height: .8;
+  letter-spacing: -.04em;
+  color: rgba(242, 239, 230, .045);
+  -webkit-text-stroke: 1px rgba(242, 239, 230, .3);
+}
+.cw-sign__name {
+  font-family: var(--font-mono), monospace;
+  font-size: clamp(10px, 1.2vh, 12px);
+  letter-spacing: .42em;
+  text-transform: uppercase;
+  color: var(--lume-4);
+  padding-left: .42em;
+}
+/* The department's remit is stated by the room itself once you are in it. On
+   the wall it is one more line of small type at reading distance, which is
+   exactly the kind of Level-4 detail this pass is removing. */
+.cw-sign__note { display: none; }
+
+/* BEAT 2 — the threshold.
+   ---------------------------------------------------------------------------
+   Pass 2 treated this as a prop the camera happened to pass: it was already
+   most of the frame at journey zero, so it never arrived. It is promoted here
+   into the widest shot in the run.
+
+   It resolves out of the dark at the far end of the hall inside `--reveal`,
+   small and unresolved, and then closes on the camera along two overlapping
+   distance ramps rather than one. A single linear ramp gave a rectangle
+   growing at a constant rate; two — slow while it is far, fast in the last
+   stretch — is what a doorway actually does as you walk into it, and it is
+   what makes the last half-second of Beat 2 feel like a crossing.
+
+   Everything else in the beat is the building: the hall is lit by depth
+   behind it, the jambs clear the frame, the planes carry the dolly, and the
+   artifact rides through the opening. Nothing decorative is added. */
+.cw-threshold {
+  --rate: 62;
+  --d: calc(var(--at) - var(--cam));
+  /* Approach, in two stages. `--near` runs the long walk up the hall;
+     `--close` only opens in the last stretch, when the opening goes past the
+     frame edges and the camera commits to going through it. */
+  --near: clamp(0, calc((.114 - var(--d)) * 11.9), 1);
+  --close: clamp(0, calc((.03 - var(--d)) * 33.3), 1);
+  top: 46%;
+  /* Small at rest, and portrait. The doorway has to be able to read as *far
+     away* for the approach to be worth anything, so its unscaled size is
+     roughly a third of what pass 2 shipped and the scale ramp below does the
+     rest. The proportion matters as much as the size: pass 2's aperture was
+     wider than it was tall, which reads as a panel hung on a wall rather than
+     as a way through a building. */
+  width: min(22vw, 25vh);
+  height: 34vh;
+  /* Absent through Beat 1 — the visitor meets the artifact before they meet
+     the Studios — then held at full strength up to the crossing and gone in
+     one beat, because the camera is through it. */
+  opacity: calc(
+    var(--reveal, 1) *
+    clamp(0, calc((var(--d) + .05) * 20), 1)
+  );
+  transform:
+    translate3d(calc(var(--d) * var(--rate) * 1vw), -50%, 0)
+    scale(calc(.34 + var(--near) * .95 + var(--close) * 3));
+}
+.cw-threshold__frame {
+  position: absolute;
+  inset: 0;
+  /* Jamb depth: a dark reveal inside a lit edge, so the opening has thickness
+     rather than being a rectangle drawn on the air. Stated in the doorway's
+     own proportions rather than in pixels, so the reveal keeps its thickness
+     as the opening scales past the camera instead of thinning to a hairline. */
+  border: 2px solid rgba(242, 239, 230, .62);
+  border-bottom: 0;
+  box-shadow:
+    inset 0 0 0 7px rgba(5, 6, 7, .86),
+    inset 0 0 0 8px rgba(242, 239, 230, .3),
+    /* The opening lighting the wall it is cut into. This is what makes the
+       doorway a light source rather than an outline, and it is the only
+       reason the hall around it reads as darker than the way out of it. */
+    0 0 34px 6px rgba(150, 186, 232, .1),
+    0 0 120px 30px rgba(150, 186, 232, .06);
+}
+/* Light from the room beyond, spilling through the opening. This is the
+   brightest thing in Beat 2 and the only reason the shot has a subject: the
+   hall is dark, the way out of it is lit. */
+.cw-threshold__frame::after {
+  content: "";
+  position: absolute;
+  inset: 8px 8px 0;
+  /* A darker volume with its own light in it, not a transparent rectangle.
+     Without the fill the operating floor reads straight through the opening at
+     the same contrast on both sides, and the doorway becomes a frame hung on
+     the room rather than a way out of it. */
+  background:
+    radial-gradient(74% 44% at 50% 0, rgba(178, 208, 246, .3), transparent 76%),
+    linear-gradient(to bottom, rgba(150, 186, 232, .2), rgba(150, 186, 232, .06) 48%, transparent 84%),
+    linear-gradient(to bottom, rgba(6, 8, 12, .82), rgba(6, 8, 12, .58) 62%, rgba(6, 8, 12, .3));
+  /* Read as a light source at reading distance; released once the opening is
+     larger than the frame, where it would only be a wash over everything. */
+  opacity: calc(1 - var(--close) * .82);
+}
+/* The spill landing on the deck in front of the opening, so the doorway is
+   standing in the room rather than cut out of it. Fades with the approach —
+   once the camera is inside the opening there is no floor left to catch it. */
+.cw-threshold__frame::before {
+  content: "";
+  position: absolute;
+  left: -14%;
+  right: -14%;
+  top: 96%;
+  height: 46%;
+  background: radial-gradient(58% 100% at 50% 0, rgba(150, 186, 232, .2), transparent 72%);
+  opacity: calc(1 - var(--close));
+}
+/* The lintel. The building states its own name here, at a size the visitor
+   reads without effort, so the cold open resolves into "I am entering
+   Channelwright Studios" rather than into an unlabelled rectangle. Both lines
+   counter-scale against the doorway's approach so the lettering stays at a
+   constant apparent size while the opening grows past the camera. */
+.cw-threshold__mark,
+.cw-threshold__label {
+  position: absolute;
+  left: 50%;
+  translate: -50% 0;
+  white-space: nowrap;
+  /* Lettering painted on the lintel, so it grows with the doorway as the
+     camera closes on it rather than floating at a fixed screen size. */
+}
+/* Read on the approach, gone at the crossing. Both lines are sized to fit
+   inside the opening at the distance they are actually legible from, and they
+   clear on `--close` so the camera is never driven through lettering. */
+.cw-threshold__mark,
+.cw-threshold__label { opacity: calc(1 - var(--close)); }
+.cw-threshold__mark {
+  top: 5%;
+  font-family: var(--font-display), sans-serif;
+  font-size: 1.1vh;
+  font-weight: 700;
+  letter-spacing: .24em;
+  text-transform: uppercase;
+  color: rgba(242, 239, 230, .82);
+}
+.cw-threshold__label {
+  top: 12.5%;
+  font-family: var(--font-mono), monospace;
+  font-size: .62vh;
+  letter-spacing: .3em;
+  text-transform: uppercase;
+  color: rgba(242, 239, 230, .34);
+}
+
+/* BEAT 9 — the measurement seam.
+   ---------------------------------------------------------------------------
+   The same doorway, drawn in the same hand, and unlit. Everything that made
+   the entrance read as a way *through* — the spill from the room beyond, the
+   pool it threw on the deck, the glow on the wall around it — is removed here
+   rather than dimmed, because `measurement` is DESIGNED and Channelwright
+   ingests no analytics today. What is left is an opening with nothing behind
+   it and its own name on the lintel.
+
+   It also never arrives. `SEAM` is placed past the end of the journey, so the
+   camera closes on this door and the building runs out before it is reached:
+   the approach has no `--close` stage and the aperture never grows past the
+   frame. That is the argument of the ending, made in architecture. */
+.cw-threshold[data-kind="seam"] {
+  /* A longer, flatter approach than the entrance, and no last stage at all.
+     The entrance accelerated into the camera because it was about to be
+     crossed; this one is only ever walked up to, so it resolves early — the
+     visitor should be able to read what it says while there is still building
+     between them and it — and then stops growing. */
+  --near: clamp(0, calc((.2 - var(--d)) * 5.6), 1);
+  --close: 0;
+  opacity: var(--seam, 0);
+  transform:
+    translate3d(calc(var(--d) * var(--rate) * 1vw), -50%, 0)
+    scale(calc(.34 + var(--near) * 1.5));
+}
+.cw-threshold[data-kind="seam"] .cw-threshold__frame {
+  /* Cold and thin. The entrance is warm-white and 2px; this is the same
+     opening described by a colder, quieter line. */
+  border-color: rgba(150, 186, 232, .3);
+  box-shadow:
+    inset 0 0 0 7px rgba(5, 6, 7, .92),
+    inset 0 0 0 8px rgba(150, 186, 232, .14);
+}
+/* No light from beyond, and no pool on the floor in front of it. An interior
+   that is darker than the hall it is cut into is the whole statement. */
+.cw-threshold[data-kind="seam"] .cw-threshold__frame::after {
+  background: linear-gradient(to bottom, rgba(6, 8, 12, .96), rgba(6, 8, 12, .88));
+  opacity: 1;
+}
+.cw-threshold[data-kind="seam"] .cw-threshold__frame::before { opacity: 0; }
+.cw-threshold[data-kind="seam"] .cw-threshold__mark { color: rgba(190, 212, 240, .6); }
+.cw-threshold[data-kind="seam"] .cw-threshold__label { color: var(--warn); opacity: .62; }
+
+/* Glazed divider between operating areas: the visible seam between 01 and 02
+   that keeps them adjacent rather than separate. */
+.cw-partition {
+  --rate: 430;
+  top: 14%;
+  height: 66vh;
+  width: min(96vw, 104vh);
+  opacity: calc(
+    clamp(0, calc((.22 - var(--d)) * 8), 1) *
+    clamp(0, calc((var(--d) + .07) * 12), 1)
+  );
+  transform:
+    translate3d(calc(var(--d) * var(--rate) * 1vw), 0, 0)
+    scale(calc(.62 + (.22 - clamp(0, var(--d), .22)) * 3.2));
+  /* Head and sill carry the divider; the glazing between them is a surface,
+     not a grid. Pass 2 drew five mullions and a transom at near-full contrast,
+     so crossing between departments threw a lattice of thin lines across the
+     lower half of the frame at the exact moment the visitor was meant to be
+     reading the next room. */
+  border-top: 3px solid rgba(242, 239, 230, .3);
+  border-bottom: 1px solid rgba(242, 239, 230, .12);
+}
+/* A pane you can see through, but not quite cleanly. */
+.cw-partition__glass {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(114deg, rgba(150, 190, 235, .055), transparent 38%, rgba(150, 190, 235, .03) 74%, transparent);
+}
+.cw-partition__transom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 22%;
+  height: 1px;
+  background: rgba(242, 239, 230, .12);
+}
+.cw-partition__mullion {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--i) * 25%);
+  width: 1px;
+  background: linear-gradient(to bottom, rgba(242, 239, 230, .14), rgba(242, 239, 230, .03));
+}
+/* Two mullions rather than five: the divider still reads as glazed, without
+   striping the room behind it. */
+.cw-partition__mullion:nth-child(even) { display: none; }
+
+/* --- Department fixtures ------------------------------------------------ */
+
+/* Each department works against its own equipment, so the rooms are told
+   apart by what is in them rather than only by the words printed over them. */
+/* Level 3. Equipment installed in the room, seen past the subject — never a
+   pattern the eye is asked to parse. Pass 2 ran this bank at .8 across a wide
+   reach and centred it in the copy band, so a grid of bordered cells sat
+   directly behind the headline of every department. It is now parked above the
+   copy, held to a fraction of its old contrast, and reaches only as far as its
+   own department. */
+.cw-fixture {
+  --rate: 96;
+  top: 19%;
+  width: min(70vw, 84vh);
+  display: grid;
+  gap: 5px;
+  opacity: calc(
+    var(--fixtures-on) *
+    clamp(0, calc((.24 - var(--ad)) * 6), 1) * .3
+  );
+  transform: translate3d(calc(var(--d) * var(--rate) * 1vw), 0, 0) scale(calc(1 - var(--ad) * .5));
+}
+.cw-fixture[data-kind="research"] { grid-template-columns: repeat(8, 1fr); }
+.cw-fixture[data-kind="decision"] { grid-template-columns: repeat(4, 1fr); }
+.cw-fixture[data-kind="writers"] { grid-template-columns: repeat(6, 1fr); }
+.cw-fixture[data-kind="production"] { grid-template-columns: repeat(6, 1fr); }
+.cw-fixture[data-kind="control"] { grid-template-columns: repeat(10, 1fr); }
+.cw-fixture__cell {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border: 1px solid rgba(242, 239, 230, .1);
+}
+/* Cool research wall against a warmer decision board: the two rooms read
+   differently the moment either comes into view. */
+.cw-fixture[data-kind="research"] .cw-fixture__cell {
+  background: linear-gradient(160deg, rgba(140, 180, 230, .1), rgba(140, 180, 230, .02));
+}
+.cw-fixture[data-kind="research"] .cw-fixture__cell:nth-child(3n + 1) {
+  background: linear-gradient(160deg, rgba(216, 255, 62, .07), rgba(216, 255, 62, .01));
+}
+.cw-fixture[data-kind="decision"] .cw-fixture__cell {
+  background: linear-gradient(160deg, rgba(196, 172, 130, .11), rgba(196, 172, 130, .02));
+}
+/* Warmer acid tint against the writers' bench: neither the research wall's
+   cool blue nor the decision board's brass, so the third room still reads
+   as its own place at a glance. */
+.cw-fixture[data-kind="writers"] .cw-fixture__cell {
+  background: linear-gradient(160deg, rgba(216, 255, 62, .05), rgba(216, 255, 62, .015));
+}
+.cw-fixture[data-kind="writers"] .cw-fixture__cell:nth-child(4n + 1) {
+  background: linear-gradient(160deg, rgba(216, 255, 62, .1), rgba(216, 255, 62, .02));
+}
+/* Cooler, harder steel tint against the production line: the floor reads as
+   execution machinery, not another editorial bench. */
+.cw-fixture[data-kind="production"] .cw-fixture__cell {
+  background: linear-gradient(160deg, rgba(180, 190, 200, .1), rgba(180, 190, 200, .02));
+}
+.cw-fixture[data-kind="production"] .cw-fixture__cell:nth-child(3n + 1) {
+  background: linear-gradient(160deg, rgba(216, 255, 62, .08), rgba(216, 255, 62, .015));
+}
+/* A tighter, narrower bank than the production floor's — a light table of
+   candidates rather than a machine hall — with an amber pick tint marking
+   the cells the room has already resolved to a decision. */
+.cw-fixture[data-kind="control"] .cw-fixture__cell {
+  background: linear-gradient(160deg, rgba(242, 239, 230, .09), rgba(242, 239, 230, .015));
+}
+.cw-fixture[data-kind="control"] .cw-fixture__cell:nth-child(5n + 1) {
+  background: linear-gradient(160deg, rgba(216, 255, 62, .1), rgba(216, 255, 62, .02));
+}
+.cw-fixture__cell::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  background: repeating-linear-gradient(to bottom, rgba(220, 235, 255, .06) 0 1px, transparent 1px 7px);
+}
+
+/* --- The gate ------------------------------------------------------------ */
+
+/* Beat 6. Two leaves close across the route, a check sweeps the artifact held
+   between them, and the leaves open again. The building stops the object, so
+   the room never has to say that it did.
+
+   Drawn inside the artifact: it is only on screen during the hold, when the
+   artifact is stationary, which is also the only window in which "the gate is
+   where the artifact is" is true. */
+.cw-artifact__gate {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  opacity: calc(var(--held) - var(--cleared));
+}
+.cw-artifact__gate i {
+  position: absolute;
+  /* Tall and wide enough to bracket the whole plate. At the old ±13vw the
+     leaves closed *through* the sentence and read as a border on it rather
+     than as the building stopping the object. */
+  top: -25vh;
+  width: 2px;
+  height: 32vh;
+  background: linear-gradient(to bottom, transparent, var(--lume-3) 16%, var(--lume-3) 84%, transparent);
+}
+.cw-artifact__gate i[data-side="left"] { right: 0; transform: translateX(calc(-34vw + var(--held) * 8vw - var(--cleared) * 8vw)); }
+.cw-artifact__gate i[data-side="right"] { left: 0; transform: translateX(calc(16vw - var(--held) * 8vw + var(--cleared) * 8vw)); }
+
+/* The check itself: one line travelling down the held object. This is what
+   advances while scrolling does not move the artifact. */
+.cw-artifact__gate b {
+  position: absolute;
+  left: -26vw;
+  top: -25vh;
+  width: 42vw;
+  height: 10px;
+  /* A band with a lit leading edge rather than a hairline: a 1px rule crossing
+     the sentence read as a rendering glitch, a band reads as something passing
+     over the object. */
+  background: linear-gradient(to bottom, transparent, rgba(216, 255, 62, .5) 82%, var(--signal) 100%);
+  opacity: .5;
+  transform: translateY(calc(var(--sweep) * 32vh));
+}
+
+/* --- Room atmosphere ---------------------------------------------------- */
+
+/* The department instruments, demoted.
+
+   They used to sit in bordered panels in the right-hand column, at full
+   contrast, competing with the headline and the artifact for the same glance.
+   Here each one fills its room and sits far back in the mix: the visitor
+   registers that the room is working without being asked to parse a diagram.
+   The canvases keep their own beats and their deterministic seeds, so what
+   they show is still true — it is simply no longer the subject. */
+.cw-atmos {
+  display: grid;
+  place-items: center;
+  /* Enveloped on the scene's own progress, not on `--wake`: `--wake` is
+     declared on `.cw-world` and this layer lives inside a scene, so reading it
+     here produced an invalid calc and the instrument rendered at full
+     strength — precisely the failure this demotion exists to fix. */
+  opacity: calc(
+    clamp(0, calc(var(--p, 1) * 8), 1) *
+    clamp(0, calc((1 - var(--p, 0)) * 9), 1) * .18
+  );
+  pointer-events: none;
+}
+.cw-atmos > * {
+  width: min(96vw, 1500px);
+  height: min(58vh, 560px);
+  aspect-ratio: auto;
+}
+.cw-atmos canvas { width: 100%; height: 100%; }
+
+/* --- Room composition ---------------------------------------------------- */
+
+/* Five rooms, five compositions. The old template put the headline in the same
+   place five times, which is most of why the departments blurred together.
+   Each beat now owns a corner of the stage, so a visitor who scrolls past
+   knows they have moved even before they read anything. */
+.cw-room__frame {
+  position: relative;
+  height: 100%;
+  display: grid;
+  align-content: center;
+  gap: 18px;
+}
+.cw-room__headline { max-width: 19ch; }
+
+/* Beat 3 — the rewrite. High and left, well clear of the artifact below. */
+.cw-room__frame[data-beat="b3"] { justify-items: start; align-content: start; padding-top: 13vh; }
+
+/* Beat 4 — attachment. Right-aligned and short: the event is on the artifact,
+   not in the copy, so the copy gets out of its way. */
+.cw-room__frame[data-beat="b4"] { justify-items: end; text-align: right; align-content: start; padding-top: 15vh; }
+.cw-room__frame[data-beat="b4"] .cw-room__headline { max-width: 15ch; }
+
+/* Beat 5 — assembly and criticism. Low and left, close to the shape forming
+   on the plate. */
+.cw-room__frame[data-beat="b5"] { justify-items: start; align-content: end; padding-bottom: 30vh; }
+
+/* Beat 6 — the hold. Centred and alone. This is the sparsest room in the run,
+   because the artifact standing still is the entire statement. */
+.cw-room__frame[data-beat="b6"] { justify-items: center; text-align: center; align-content: start; padding-top: 17vh; }
+.cw-room__frame[data-beat="b6"] .cw-room__headline { max-width: 17ch; }
+
+/* Beat 7 — rejection and choice. High and left again, closing the run where
+   it opened, with the names stacked on the artifact below. */
+.cw-room__frame[data-beat="b7"] { justify-items: start; align-content: start; padding-top: 12vh; }
+
+/* Beat 8 — the return. The mirror of Beat 4: the same room, but the copy now
+   stands on the opposite side of the frame from where it stood when the
+   question was attached, which is the cheapest possible way to say "you have
+   come at this from the other direction". It is also the side the reading wash
+   is built for, which keeps the artifact — carrying the resolution — out on
+   the clear half of the frame where the plate stays legible. */
+.cw-room__frame[data-beat="b8"] { justify-items: start; align-content: start; padding-top: 14vh; }
+.cw-room__frame[data-beat="b8"] .cw-room__headline { max-width: 16ch; }
+/* The sparsest reading wash in the run. This room has two short lines in it
+   and the artifact is carrying the payoff, so a department-strength scrim
+   would only flatten the depth the returning camera just built. */
+.cw-room--08 .cw-layer--copy { --scrim: calc(clamp(0, calc(var(--p, 1) * 8), 1) * .7); }
+
+/* Beat 9 — the next decision. Left column, low in the frame and sparse: the
+   door and the object standing at it are the shot, and the copy is three short
+   things stacked under each other on the reading side. */
+.cw-room__frame[data-beat="b9"] { justify-items: start; align-content: center; padding-top: 4vh; }
+.cw-room__frame[data-beat="b9"] .cw-room__headline { max-width: 15ch; }
+/* The sparsest wash in the run, matching the Return's. The frame is nearly
+   black by design and a department-strength scrim would only flatten it. */
+.cw-room--09 .cw-layer--copy { --scrim: calc(clamp(0, calc(var(--p, 1) * 8), 1) * .66); }
+
+/* The action. Held out of the document until the scene says so — `visibility`
+   rather than opacity, because an invisible link is still a tab stop and the
+   visitor should not reach the end of the journey by keyboard before the
+   journey has made its case. `data-revealed` is written by the scene engine on
+   crossings only (see `revealAt` in ./scene.tsx), so this costs a comparison
+   per frame rather than a render, and it is a pure function of scroll — the
+   action withdraws again on the way back up. */
+.cw-finale__action {
+  display: grid;
+  gap: 18px;
+  justify-items: start;
+  margin-top: 26px;
+}
+.cw-finale__line {
+  font-family: var(--font-display), sans-serif;
+  font-size: clamp(1rem, 1.5vw, 1.28rem);
+  letter-spacing: -.012em;
+  color: var(--lume-2);
+  max-width: 26ch;
+}
+.cw-studios[data-ready="true"] .cw-finale__cta {
+  visibility: hidden;
+  opacity: 0;
+  transform: translate3d(0, 10px, 0);
+  /* Short. This is the one time-based thing in an otherwise purely
+     scroll-derived page, so it is kept brief enough that scrubbing across the
+     threshold settles almost immediately and never leaves a focusable link
+     stranded behind a fade. */
+  transition: opacity .26s var(--ease), transform .26s var(--ease), visibility .26s;
+}
+.cw-studios[data-ready="true"] [data-cw-scene][data-revealed="true"] .cw-finale__cta {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+}
+
+/* One action in the last frame. The top bar recedes here exactly as it does in
+   the cold open — the ending rhymes with the opening, and the visitor is not
+   offered the same door twice at the moment they are asked to walk through
+   it. The register and the footer are directly below, unchanged. */
+.cw-studios[data-phase="finale"] .cw-topbar { opacity: 0; visibility: hidden; }
+
+/* --- The artifact ------------------------------------------------------- */
+
+/* One object for the whole run: the visitor's idea, written down, carried
+   through the building and added to as it goes. Its position is a running sum
+   of overlapping ramps emitted by `./artifact-plate.tsx`, so it is continuous
+   by construction — it can never blink from one place to another — and the
+   sentence's treatment never changes, which is what makes it recognisable as
+   the same idea in every room. */
+.cw-artifact {
+  /* `--ax` / `--ay` are the summed track, `--work` and `--bound` the state
+     ramps. All four are emitted from the beat table rather than hand-tuned
+     here, so lengthening a scene moves the artifact with its room. */
+
+  /* Lateral throw is scaled down on a narrow viewport: the same journey read
+     across 390px would carry the artifact off both edges of the frame. */
+  --throw: 1;
+  /* Extra descent during Beat 9's handoff, in vh. Zero on a wide viewport,
+     where the copy and the plate occupy different columns. A phone has only
+     one column: the plate is pinned across the frame and the finale's copy
+     stack would land on top of it, so there the object is set down lower, and
+     lower again on a short phone where the copy band is proportionally taller.
+     Multiplied by `--handoff`, so it eases in with the beat and cannot
+     introduce a step anywhere else in the run.
+
+     Audited end to end: this is the only viewport-conditional term in the
+     artifact's position, it is gated by a journey-derived ramp so it cannot
+     leak outside Beat 9, it is a pure function of `--j` at any given viewport,
+     and crossing the breakpoint changes it only where `--handoff` is already
+     zero — so there is no discontinuity to see. It is a deliberate composition
+     control, not a correction to the track, and the track itself stays
+     journey-derived. */
+  --drop: 0;
+
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  width: 0;
+  height: 0;
+  translate: -50% -50%;
+  transform: translate3d(
+    calc((var(--ax)) * var(--throw) * 1vw),
+    calc(((var(--ay)) + var(--handoff, 0) * var(--drop)) * 1vh),
+    0
+  );
+  will-change: transform;
+}
+
+.cw-artifact__core {
+  will-change: transform;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 9px;
+  height: 9px;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: var(--signal);
+  transform: scale(calc(.72 + var(--wake) * .28 + var(--bound) * .22));
+  box-shadow:
+    0 0 12px 2px rgba(216, 255, 62, .8),
+    0 0 44px 10px rgba(216, 255, 62, .26),
+    0 0 120px 36px rgba(216, 255, 62, .1);
+}
+
+/* Retrieval: a ring opens around the artifact while it is being worked on. It
+   exists only during that window, so it means the work, not decoration. */
+.cw-artifact__ring {
+  will-change: transform, opacity;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 300px;
+  height: 300px;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(216, 255, 62, .16), rgba(216, 255, 62, .04) 52%, transparent 74%);
+  opacity: calc(var(--work) * .95);
+  transform: scale(calc(.35 + var(--work) * .75));
+}
+
+/* Tether to the room overhead: the visible link between the artifact on the
+   floor and whatever is reading it. */
+.cw-artifact__tether {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 26vh;
+  translate: -50% 0;
+  background: linear-gradient(to top, var(--signal-dim), transparent);
+  opacity: calc(var(--work) * .75);
+  transform-origin: 50% 100%;
+  transform: scaleY(calc(.2 + var(--work) * .8));
+}
+
+/* Evidence attached. Five ticks, because what leaves the first room is a set
+   of claims — not a topic. */
+.cw-artifact__evidence {
+  position: absolute;
+  left: 12px;
+  top: 0;
+  display: flex;
+  gap: 3px;
+  translate: 0 -50%;
+  opacity: calc(var(--bound) * (1 - var(--handoff, 0) * .62));
+}
+.cw-artifact__evidence i {
+  width: 2px;
+  height: calc(5px + (var(--i) * 2px));
+  background: var(--signal);
+  opacity: calc(.45 + var(--i) * .12);
+}
+
+/* The sentence. This is the invariant: later beats rewrite the words and add
+   to the plate around them, but the treatment below never changes, because
+   recognising it as the same object is the whole point of the journey. */
+.cw-artifact__plate {
+  position: absolute;
+  left: 14px;
+  /* Anchored above the artifact, not below it: the route runs low in the
+     stage, so a plate hanging under the core is clipped by the viewport for
+     most of the journey. */
+  bottom: 12px;
+  display: block;
+  /* The artifact is a zero-width origin, so the plate's containing block has
+     no width to resolve a percentage against — it would shrink to one word
+     per line. `max-content` sizes it to the sentence, and the cap is stated
+     in viewport units so it still cannot run off the frame. */
+  width: max-content;
+  max-width: min(38ch, 34vw);
+  /* Held inside the frame. The route ends far to the right, where a plate
+     anchored to the artifact would run off the edge, so past the point where
+     it no longer fits the plate is pulled back by exactly the overflow and no
+     more. `min()` keeps that correction continuous — it eases in rather than
+     switching sides, so the sentence never jumps.
+
+     Note the inner parentheses around `--ax`: it expands to a bare sum, so
+     without them only its final term would be multiplied here and the whole
+     declaration would be dropped as invalid. */
+  translate: min(0px, calc((11 - (var(--ax)) * var(--throw)) * 1vw)) 0;
+  padding: 9px 13px 10px;
+  border-left: 1px solid var(--signal-dim);
+  background: linear-gradient(96deg, rgba(9, 11, 15, .93), rgba(9, 11, 15, .62));
+  /* Not tied to `--wake` any more. The plate used to come up with the building
+     it is inside, which was correct while the cold open was a headline over a
+     dark room — but Beat 1 is now the artifact's own frame, and the sentence
+     it carries is the first thing in the film. It is lit before the hall is. */
+  opacity: 1;
+}
+/* BEAT 9 — the handoff.
+   ---------------------------------------------------------------------------
+   Nothing is deleted. The finished work — the sentences, the shape it took,
+   the names it could have gone out under, the evidence bound to it — recedes
+   to a record, and what stays lit is the one thing that is still open: the
+   question, and the release it is bound to. That is the difference between
+   content that was produced and a decision waiting for evidence, and it is
+   stated by contrast rather than by a caption.
+
+   Composed into each element's own opacity rather than applied once to the
+   plate: half of these already carry a state ramp of their own, and a blanket
+   rule would either lose to them in the cascade or throw their state away. */
+/* Both sentences share one treatment. That is the device: the visitor reads a
+   replacement, not a second object. */
+.cw-artifact__line {
+  display: block;
+  font-family: var(--font-body), sans-serif;
+  font-size: clamp(13px, 1.15vw, 16px);
+  line-height: 1.35;
+  letter-spacing: -.005em;
+  color: var(--lume);
+  text-wrap: pretty;
+}
+
+/* Beat 3 — struck, dimmed, kept. Rejected material is never deleted in this
+   building; the strike is drawn as a rule that wipes across the line so the
+   visitor watches it happen rather than finding it already done. */
+.cw-artifact__line--first {
+  position: relative;
+  width: max-content;
+  max-width: 100%;
+  color: color-mix(in srgb, var(--lume) calc(100% - var(--strike) * 48% - var(--handoff, 0) * 34%), transparent);
+}
+.cw-artifact__line--first::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 52%;
+  height: 1px;
+  width: calc(var(--strike) * 100%);
+  background: var(--warn);
+  opacity: .8;
+}
+.cw-artifact__line--second {
+  /* The sentence the studio hands back. It is what the visitor is meant to
+     read in this frame, so it carries full contrast while the struck original
+     recedes behind it. */
+  font-weight: 500;
+  margin-top: calc(var(--rewrite) * 6px);
+  max-height: calc(var(--rewrite) * 6em);
+  opacity: calc(var(--rewrite) * (1 - var(--handoff, 0) * .55));
+  overflow: hidden;
+}
+
+/* Beat 4 — attached to the plate. The audience stays lit; the question it is
+   meant to answer settles back to a trace and waits for Beat 8. */
+.cw-artifact__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: calc(var(--claimed) * 8px);
+  max-height: calc(var(--claimed) * 6em);
+  overflow: hidden;
+}
+.cw-artifact__tag {
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  border: 1px solid var(--edge-2);
+  white-space: nowrap;
+}
+.cw-artifact__tag[data-kind="audience"] {
+  color: color-mix(in srgb, var(--signal) 88%, var(--lume));
+  border-color: var(--signal-dim);
+  opacity: calc(var(--claimed) * (1 - var(--handoff, 0) * .62));
+}
+/* Dormant on purpose. It is the only thing on the artifact that has not been
+   resolved, and Beat 8 is where that changes.
+
+   Two ramps do that. `--recall` stirs it a beat before the camera turns, so
+   the return is motivated by the object rather than announced by the movement;
+   `--resolved` lands during the hold in Department 02 and brings the tag up
+   into the same treatment the audience tag has carried since Beat 4 — the
+   grammar for "this is in the record now". It never changes its words. */
+.cw-artifact__tag[data-kind="asked"] {
+  color: color-mix(in srgb, var(--signal) calc(var(--resolved, 0) * 88%), var(--lume-3));
+  border-color: color-mix(in srgb, var(--signal-dim) calc(var(--resolved, 0) * 100%), var(--edge-2));
+  opacity: calc(
+    var(--asked) * (1 - var(--asked) * .45) +
+    var(--recall, 0) * .18 + var(--resolved, 0) * .27
+  );
+}
+
+/* Beat 5 — the shape it takes. One part turns and comes back for another
+   pass; the rest hold. */
+.cw-artifact__shape {
+  display: flex;
+  gap: 3px;
+  margin-top: calc(var(--shaped) * 8px);
+  max-height: calc(var(--shaped) * 4em);
+  overflow: hidden;
+}
+.cw-artifact__shape i {
+  --in: clamp(0, calc((var(--shaped) - var(--i) * .16) * 5), 1);
+  flex: 1;
+  font-family: var(--font-mono), monospace;
+  font-style: normal;
+  font-size: 8px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--lume-4);
+  padding: 4px 5px 3px;
+  border-top: 2px solid var(--lume-4);
+  opacity: calc(var(--in) * (1 - var(--handoff, 0) * .68));
+  transform: translateY(calc((1 - var(--in)) * 6px));
+}
+.cw-artifact__shape i[data-flagged="true"] {
+  /* Sent back, then reworked. The colour returns to the group when it does. */
+  color: color-mix(in srgb, var(--warn) calc(var(--sent-back) * 100% - var(--reworked) * 100%), var(--lume-4));
+  border-top-color: color-mix(in srgb, var(--warn) calc(var(--sent-back) * 100% - var(--reworked) * 78%), var(--lume-4));
+  transform: translateY(calc((1 - var(--in)) * 6px + var(--sent-back) * 5px - var(--reworked) * 5px));
+}
+
+/* Beat 7 — the names it could have gone out under. Two overstate and are
+   struck, in the same grammar as Beat 3. */
+.cw-artifact__names {
+  display: grid;
+  gap: 2px;
+  margin-top: calc(var(--named) * 8px);
+  max-height: calc(var(--named) * 8em);
+  overflow: hidden;
+}
+.cw-artifact__names i {
+  --in: clamp(0, calc((var(--named) - var(--i) * .18) * 5), 1);
+  position: relative;
+  width: max-content;
+  max-width: 100%;
+  font-family: var(--font-body), sans-serif;
+  font-style: normal;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--lume-3);
+  opacity: calc(var(--in) * (1 - var(--handoff, 0) * .68));
+}
+.cw-artifact__names i[data-rejected="true"] {
+  color: color-mix(in srgb, var(--lume) calc(40% - var(--chosen) * 22%), transparent);
+}
+.cw-artifact__names i[data-rejected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 52%;
+  height: 1px;
+  width: calc(var(--chosen) * 100%);
+  background: var(--warn);
+  opacity: .7;
+}
+/* Beat 8 — what the return finds. Two halves, in the same struck/chosen
+   grammar the plate already uses: the binding is real and arrives lit, the
+   result is absent and stays a trace. Nothing else is added, because the beat
+   is that the question survived the pipeline — not that a readout appeared. */
+.cw-artifact__binding {
+  display: grid;
+  gap: 2px;
+  margin-top: calc(var(--resolved, 0) * 9px);
+  max-height: calc(var(--resolved, 0) * 5em);
+  overflow: hidden;
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+.cw-artifact__binding i {
+  font-style: normal;
+  opacity: clamp(0, calc(var(--resolved, 0) * 3 - 1), 1);
+}
+.cw-artifact__binding i[data-state="bound"] {
+  color: color-mix(in srgb, var(--signal) 82%, var(--lume));
+  padding-left: 9px;
+  position: relative;
+}
+.cw-artifact__binding i[data-state="bound"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  width: calc(var(--resolved, 0) * 6px);
+  height: 1px;
+  background: var(--signal);
+}
+/* Held deliberately unlit. Performance measurement is DESIGNED, not built, and
+   the plate is not allowed to imply otherwise — the absence is the honest
+   half of this beat and it is styled as an absence. */
+.cw-artifact__binding i[data-state="open"] {
+  color: var(--lume-4);
+  padding-left: 9px;
+}
+
+/* The one that goes out. */
+.cw-artifact__names i:not([data-rejected])  {
+  color: color-mix(in srgb, var(--signal) calc(var(--chosen) * 100%), var(--lume-3));
+  padding-left: calc(var(--chosen) * 10px);
+}
+.cw-artifact__names i:not([data-rejected])::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: calc(var(--chosen) * 6px);
+  height: 1px;
+  background: var(--signal);
+}
+
+/* --- Atmosphere --------------------------------------------------------- */
+
+/* The far end of the hall never fully resolves, so the building always reads
+   as longer than the page. */
+.cw-world__haze {
+  position: absolute;
+  inset: 0;
+  /* Lateral falloff only. The jambs now hold the frame's edges, so the haze no
+     longer has to double as one — stacking both simply flattened the near
+     plane back into the void it was added to escape. */
+  background: linear-gradient(to right, rgba(5, 6, 7, .3), transparent 16%, transparent 82%, rgba(5, 6, 7, .34));
+}
+.cw-world__vignette {
+  position: absolute;
+  inset: 0;
+  /* The ceiling and the deck are the top and bottom of the room now, so the
+     vignette stops repainting them black and keeps only its corner falloff. */
+  background: radial-gradient(136% 104% at 50% 46%, transparent 56%, rgba(5, 6, 7, .5) 100%);
+  /* Closes in a little as the last door resolves. The departments behind the
+     visitor are finished; the frame narrows to the one opening that is not,
+     and to the object standing in it. A few percent of falloff, not a filter
+     over the viewport. */
+  transform: scale(calc(1 - var(--seam, 0) * .1));
+}
+
+/* ============================================================================
+   ACT 00 — COLD OPEN
+   The facility is already there; it is simply unlit. This act owns nothing but
+   the blackout that lifts off it and the typography that lands on top.
+   ============================================================================ */
+
+/* No blackout layer: the facility is dark at journey zero because `--wake` has
+   not run yet, and a covering rectangle would hide the one thing that must be
+   visible in the opening frame — the artifact itself.
+
+   The reading wash is held far lower here than in a department. Beat 1 lands
+   on a near-black frame and needs nothing; Beat 2 needs only enough to keep
+   one small line off the lit hall behind it. A department's full-strength
+   scrim over this act would flatten the depth the beat exists to show. */
+.cw-open .cw-layer--copy { --scrim: calc(clamp(0, calc((var(--p, 0) - .42) * 3), 1) * .46); }
+
+/* Every act clears itself out rather than being cut away. */
+.cw-studios[data-ready="true"] .cw-exit {
+  opacity: calc(1 - var(--te));
+  transform: translate3d(0, calc(var(--te) * -7vh), 0);
+}
+.cw-exit { will-change: opacity, transform; }
+.cw-layer--copy > .cw-exit { height: 100%; }
+
+/* BEAT 1 / BEAT 2 typography.
+   ---------------------------------------------------------------------------
+   Two lines for the whole opening, and their scales are the beat: Beat 1 is
+   the largest type in the act and Beat 2 is nearly the smallest, so the
+   contraction from "one object" to "a building around it" is legible before
+   either sentence is read. Neither is at hero scale — the frame is the event
+   here, not the headline. */
+/* Both beats occupy the same frame. They are siblings in one copy layer, so
+   without this the second would be laid out a full viewport below the first
+   and Beat 2's line would never be on screen. */
+.cw-open__beat { position: absolute; inset: 0; z-index: 3; }
+.cw-stage .cw-shell.cw-open__frame { justify-content: center; padding-bottom: 26vh; }
+.cw-open__line {
+  display: block;
+  font-family: var(--font-display), sans-serif;
+  font-weight: 500;
+  letter-spacing: -.028em;
+  line-height: 1.08;
+  color: var(--lume);
+  font-size: clamp(1.7rem, 3.5vw, 3.05rem);
+  max-width: 19ch;
+  text-wrap: balance;
+}
+/* Beat 2 is spoken over the widest shot in the run, so it is said quietly and
+   parked high — the architecture underneath it is the thing being looked at. */
+.cw-stage .cw-shell.cw-open__frame--turn { justify-content: flex-start; padding-top: 19vh; padding-bottom: 0; }
+.cw-open__line--turn {
+  font-size: clamp(1.05rem, 1.65vw, 1.5rem);
+  letter-spacing: -.012em;
+  line-height: 1.32;
+  max-width: 24ch;
+  color: var(--lume-2);
+}
+/* Retained for the reduced-motion document, which still offers both doors. */
+.cw-open__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 34px; }
+
+.cw-scrollhint {
+  position: absolute;
+  left: 50%;
+  bottom: 34px;
+  translate: -50% 0;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  z-index: 4;
+  opacity: .7;
+}
+.cw-scrollhint__bar { width: 1px; height: 46px; background: linear-gradient(to bottom, var(--lume-4), transparent); }
+
+/* ============================================================================
+   DEPARTMENT SHELL — shared by every room, so 02–06 inherit this vocabulary
+   ============================================================================ */
+
+
+.cw-room__grid {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: clamp(28px, 4vw, 62px);
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+  align-items: center;
+  width: 100%;
+}
+.cw-room__brief { display: grid; gap: 20px; align-content: center; }
+
+/* --- Room plate: the answer to "where am I" ----------------------------- */
+
+/* The department's identity belongs to the room the visitor is standing in,
+   not to a numeral drifting through the copy band behind it. Pass 2 answered
+   "where am I" with 10.5px of mono while two oversized outlined numerals from
+   other departments floated across the headline. The plate answers it once, at
+   Level 2, mounted on the wall beside the narrative — and the acid strip is
+   reserved for exactly this: the department that is currently active. */
+.cw-room__plate {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 18px;
+  padding-left: 18px;
+}
+.cw-room__plate::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--signal), var(--signal-dim) 46%, transparent);
+}
+.cw-room__plate-index {
+  font-family: var(--font-display), sans-serif;
+  font-size: clamp(2.1rem, 4.4vh, 3.1rem);
+  font-weight: 700;
+  line-height: .82;
+  letter-spacing: -.045em;
+  color: var(--lume-4);
+}
+.cw-room__plate-name {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .3em;
+  text-transform: uppercase;
+  color: var(--lume-2);
+}
+.cw-room__plate-note {
+  grid-column: 2;
+  margin-top: 6px;
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--lume-4);
+}
+
+.cw-room__kicker { display: flex; align-items: center; gap: 12px; }
+.cw-room__kicker::after { content: ""; height: 1px; flex: 1; background: var(--edge); }
+
+/* --- Framed instrument panel ------------------------------------------- */
+
+/* Two ranks of equipment, not one.
+ *
+ * Pass 2 gave the operational instrument and the paper record it produces the
+ * identical treatment — same border, same fill, same corner brackets — so
+ * every department presented the visitor with two objects of equal weight and
+ * no answer to "what am I supposed to look at". The instrument is Level 1 and
+ * is mounted, lit and bracketed; the record is Level 2 and is a sheet on a
+ * work surface. */
+.cw-panel {
+  position: relative;
+  border: 1px solid var(--edge);
+  /* Near-opaque on purpose: a panel you can see the building through reads as
+     a translucent web card sitting on a photo, which is exactly the failure
+     this pass is correcting. */
+  background: linear-gradient(168deg, rgba(15, 18, 24, .97), rgba(7, 9, 12, .98));
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .55);
+  backdrop-filter: none;
+}
+.cw-panel__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--edge);
+}
+
+/* How lit the room is while the signal is inside the instrument. Declared on
+   the scene so both the panel and the light spilling behind it read the same
+   value rather than each recomputing the window. */
+.cw-studios[data-ready="true"] .cw-room {
+  --live: calc(
+    clamp(0, calc((var(--p, 0) - .3) * 8), 1) *
+    clamp(0, calc((.96 - var(--p, 0)) * 7), 1)
+  );
+}
+
+/* --- Level 2: the record ------------------------------------------------ */
+
+/* Quieter than the instrument in every dimension that carries weight — border,
+   fill, bar contrast, type colour. It is evidence of what the room did, read
+   after the instrument, not alongside it. */
+.cw-panel--record {
+  border-color: rgba(242, 239, 230, .07);
+  background: linear-gradient(168deg, rgba(12, 14, 19, .95), rgba(6, 8, 11, .97));
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .45);
+}
+.cw-panel--record .cw-panel__bar { opacity: .72; }
+
+/* --- Level 1: the instrument, installed into the room ------------------- */
+
+/* Corner brackets are the instrument's alone: a fixing detail, so they mean
+   "bolted down" instead of decorating every box on the page. */
+.cw-panel--live::before, .cw-panel--live::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--signal-dim);
+}
+.cw-panel--live::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.cw-panel--live::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+
+.cw-panel--live {
+  border-color: var(--edge-2);
+  background: linear-gradient(168deg, rgba(22, 26, 34, .97), rgba(9, 11, 15, .98));
+}
+
+/* The mounting recess the instrument sits in. Drawn on the instrument's own
+   container rather than as extra markup: a dark reveal around the panel, a lit
+   head rail catching the light from the rig above, and a deep cast shadow
+   underneath. This is what makes the instrument read as equipment installed in
+   Channelwright Studios instead of a card laid over a picture of it. */
+.cw-instrument { position: relative; }
+.cw-instrument::before {
+  content: "";
+  position: absolute;
+  inset: -18px -20px -22px -20px;
+  background: linear-gradient(to bottom, rgba(16, 19, 25, .8), rgba(6, 7, 10, .92));
+  border-top: 1px solid rgba(242, 239, 230, .13);
+  border-left: 1px solid rgba(242, 239, 230, .05);
+  border-right: 1px solid rgba(242, 239, 230, .05);
+  box-shadow: 0 40px 80px -20px rgba(0, 0, 0, .85);
+  opacity: var(--t, 1);
+  pointer-events: none;
+}
+
+/* The panel answers the signal while it is being read. Restrained on purpose:
+   a border warming is enough to say "this is live". */
+.cw-studios[data-ready="true"] .cw-panel--live {
+  border-color: color-mix(in srgb, var(--signal) calc(var(--live, 0) * 34%), var(--edge-2));
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .55), 0 0 calc(var(--live, 0) * 90px) rgba(216, 255, 62, .06);
+}
+
+/* Local illumination. The instrument is the working light in its half of the
+   room: the wall immediately behind it lifts while the signal is being read,
+   and falls away again afterwards. The facility stays dark — it stops being
+   underexposed at the one place the visitor is asked to look. */
+.cw-studios[data-ready="true"] .cw-instrument::before {
+  content: "";
+  position: absolute;
+  inset: -20% -16%;
+  z-index: -1;
+  pointer-events: none;
+  /* Both washes fall to nothing well inside the box: a clipped gradient edge
+     would draw an ellipse across the room, which is the opposite of a light. */
+  background:
+    radial-gradient(44% 46% at 50% 46%, rgba(216, 255, 62, .05), transparent 62%),
+    radial-gradient(64% 62% at 50% 50%, rgba(124, 156, 196, .085), transparent 66%);
+  opacity: calc(.28 + var(--live, 0) * .72);
+}
+
+/* --- Opportunity plot --------------------------------------------------- */
+
+.cw-plot { position: relative; aspect-ratio: 16 / 8.4; width: 100%; }
+.cw-plot canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.cw-plot__axes { position: absolute; inset: 0; pointer-events: none; }
+.cw-plot__axis {
+  position: absolute;
+  color: var(--lume-4);
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  opacity: var(--t);
+}
+.cw-plot__axis--x { left: 16px; bottom: 10px; }
+.cw-plot__axis--y { left: 16px; top: 14px; }
+.cw-plot__frame {
+  position: absolute;
+  inset: 16px 16px 26px 16px;
+  border-left: 1px solid var(--edge);
+  border-bottom: 1px solid var(--edge);
+  opacity: var(--t);
+}
+/* Static fallback drawn whenever the canvas layer is not in use. */
+.cw-plot__static {
+  position: absolute;
+  inset: 16px 16px 26px 16px;
+  background:
+    radial-gradient(22% 30% at 72% 30%, var(--signal-dim), transparent 70%),
+    radial-gradient(16% 22% at 40% 62%, rgba(242, 239, 230, .16), transparent 72%),
+    radial-gradient(14% 18% at 26% 30%, rgba(242, 239, 230, .1), transparent 74%);
+}
+
+/* --- Version gate -------------------------------------------------------- */
+
+.cw-gate { position: relative; aspect-ratio: 16 / 7.4; width: 100%; }
+.cw-gate canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* Static fallback drawn whenever the canvas layer is not in use: three
+   resolved rows, the shortest two struck through, the third lit and routed
+   through the gate — the same claim the animation makes, held still. */
+.cw-gate__static {
+  position: absolute;
+  inset: 18px 66px 20px 18px;
+  background:
+    linear-gradient(90deg, rgba(242, 239, 230, .14), transparent 46%) 0 14% / 100% 2px no-repeat,
+    linear-gradient(90deg, rgba(242, 239, 230, .14), transparent 62%) 0 50% / 100% 2px no-repeat,
+    linear-gradient(90deg, var(--signal-dim), transparent 82%) 0 86% / 100% 2px no-repeat;
+  border-right: 1px dashed var(--edge);
+}
+
+/* --- Script sequencer ---------------------------------------------------- */
+
+.cw-sequencer { position: relative; aspect-ratio: 16 / 7.4; width: 100%; }
+.cw-sequencer canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* Static fallback: five sections of a timeline, drafted and locked, one
+   still under a warm revision mark — the same claim the animation makes,
+   held still. */
+.cw-sequencer__static {
+  position: absolute;
+  inset: 26px 70px 30px 16px;
+  background:
+    linear-gradient(90deg, var(--signal-dim) 0 13%, transparent 13% 19%,
+      rgba(242, 239, 230, .16) 19% 39%, transparent 39% 45%,
+      rgba(255, 104, 70, .22) 45% 73%, transparent 73% 79%,
+      var(--signal-dim) 79% 101%) 0 42% / 100% 10px no-repeat;
+  border-bottom: 1px solid var(--edge);
+}
+
+/* --- Render line ---------------------------------------------------------- */
+
+.cw-line { position: relative; aspect-ratio: 16 / 7.4; width: 100%; }
+.cw-line canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* Static fallback: a master block sitting past six gate stations, all lit,
+   under an approval frame — the same claim the animation makes, held still. */
+.cw-line__static {
+  position: absolute;
+  inset: 26px 66px 30px 18px;
+  background:
+    linear-gradient(90deg, transparent 0 78%, var(--signal-dim) 78% 82%, transparent 82% 100%) 0 46% / 100% 2px no-repeat,
+    repeating-linear-gradient(90deg, rgba(216, 255, 62, .22) 0 2px, transparent 2px calc(100% / 6)) 6% 20% / 88% 62% no-repeat;
+  border-bottom: 1px solid var(--edge);
+}
+
+/* --- Release compositor --------------------------------------------------- */
+
+.cw-console { position: relative; aspect-ratio: 16 / 7.4; width: 100%; }
+.cw-console canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* Static fallback: two candidate racks — title, thumbnail — one row in each
+   lit and beamed to a locked compositor frame at the right edge, the rest
+   held dim in the record — the same claim the animation makes, held still. */
+.cw-console__static {
+  position: absolute;
+  inset: 18px 78px 18px 18px;
+  background:
+    linear-gradient(90deg, rgba(242, 239, 230, .14) 0 42%, transparent 42% 100%) 0 22% / 66% 5px no-repeat,
+    linear-gradient(90deg, var(--signal-dim) 0 30%, transparent 30% 100%) 0 38% / 66% 5px no-repeat,
+    linear-gradient(90deg, rgba(242, 239, 230, .14) 0 54%, transparent 54% 100%) 0 68% / 66% 5px no-repeat,
+    linear-gradient(90deg, var(--signal-dim) 0 26%, transparent 26% 100%) 0 84% / 66% 5px no-repeat;
+  border-right: 1px solid var(--edge);
+}
+
+/* --- Research stream ---------------------------------------------------- */
+
+.cw-stream { display: grid; gap: 0; }
+.cw-stream__step {
+  --lit: clamp(0, calc((var(--p, 1) - var(--at)) * 14), 1);
+  display: grid;
+  grid-template-columns: 15px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--edge);
+  color: var(--lume-4);
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.cw-stream__step:last-child { border-bottom: 0; }
+.cw-studios[data-ready="true"] .cw-stream__step { color: color-mix(in srgb, var(--lume) calc(var(--lit) * 78%), var(--lume-4)); }
+.cw-stream__pip {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: calc(.3 + var(--lit) * .7);
+  box-shadow: 0 0 calc(var(--lit) * 10px) currentColor;
+}
+/* The approval gate is the point of the sequence, so it keeps the signal
+   colour once lit rather than being flattened by the generic ramp above. */
+.cw-stream__step[data-role="human"] { color: var(--signal); }
+.cw-studios[data-ready="true"] .cw-stream__step[data-role="human"] {
+  color: color-mix(in srgb, var(--signal) calc(var(--lit) * 92%), var(--lume-4));
+}
+.cw-stream__tag { font-size: 9px; letter-spacing: .16em; color: var(--lume-4); }
+
+/* --- Evidence ledger ---------------------------------------------------- */
+
+.cw-ledger {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--edge);
+}
+.cw-ledger__cell { padding: 12px 14px; border-right: 1px solid var(--edge); }
+.cw-ledger__cell:last-child { border-right: 0; }
+.cw-ledger__value {
+  display: block;
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .17em;
+  text-transform: uppercase;
+  line-height: 1;
+  margin-bottom: 7px;
+  color: var(--lume-2);
+}
+.cw-ledger__cell[data-tone="warn"] .cw-ledger__value { color: rgba(255, 104, 70, .85); }
+.cw-ledger__cell[data-tone="signal"] .cw-ledger__value { color: var(--signal); }
+
+
+/* --- Instrument read-out ------------------------------------------------ */
+
+/* Says in words what the field is doing, so motion is never the only thing
+   carrying a claim — and so the reduced-motion rendering loses nothing. */
+.cw-readout {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--edge);
+}
+.cw-readout__cell {
+  --lit: clamp(0, calc((var(--p, 1) - var(--at)) * 9), 1);
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 3px;
+  padding: 10px 12px;
+  border-right: 1px solid var(--edge);
+  opacity: calc(.24 + var(--lit) * .76);
+}
+.cw-readout__cell:last-child { border-right: 0; }
+.cw-readout__value {
+  font-family: var(--font-display), sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -.02em;
+  line-height: 1;
+}
+.cw-readout__cell[data-terminal="true"] .cw-readout__value {
+  color: color-mix(in srgb, var(--signal) calc(var(--lit) * 100%), var(--lume));
+}
+.cw-readout__label {
+  font-family: var(--font-mono), monospace;
+  font-size: 8.5px;
+  letter-spacing: .17em;
+  text-transform: uppercase;
+  color: var(--lume-4);
+}
+
+/* --- Verdict ------------------------------------------------------------ */
+
+/* The room's one raised voice, and it is immediately qualified by what was
+   rejected. A verified opportunity is a judgement, never a promise. */
+.cw-instrument { position: relative; display: grid; gap: 16px; align-content: center; }
+
+.cw-verdict {
+  /* The room's one raised voice, and it has to be *read*.
+     Measured across a continuous traversal, three of the five departments
+     never got their verdict above half opacity: at eight the ramp needs .125
+     of scene progress to reach full, and the copy block starts lifting before
+     that lands — Beat 5's line peaked at .21 for a single frame. Fourteen
+     completes it in .071, which fits comfortably inside the room's own hold. */
+  --lit: clamp(0, calc((var(--p, 1) - var(--at)) * 14), 1);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 6px 12px;
+  opacity: var(--lit);
+  transform: translate3d(0, calc((1 - var(--lit)) * 12px), 0);
+}
+.cw-verdict__mark {
+  width: 7px;
+  height: 7px;
+  align-self: center;
+  background: var(--signal);
+  box-shadow: 0 0 calc(var(--lit) * 14px) rgba(216, 255, 62, .8);
+}
+.cw-verdict__line {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: .24em;
+  text-transform: uppercase;
+  color: var(--signal);
+}
+.cw-verdict__note {
+  grid-column: 2;
+  font-family: var(--font-mono), monospace;
+  font-size: 9.5px;
+  letter-spacing: .1em;
+  color: var(--lume-3);
+  line-height: 1.5;
+}
+
+/* --- Strategy record ---------------------------------------------------- */
+
+.cw-record { display: grid; margin: 0; }
+.cw-record__row {
+  --lit: clamp(0, calc((var(--p, 1) - var(--at, 0)) * 9), 1);
+  display: grid;
+  grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+  gap: 14px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--edge);
+  opacity: calc(.3 + var(--lit) * .7);
+}
+.cw-record__row:last-child { border-bottom: 0; }
+.cw-record__row dt,
+.cw-record__row dd {
+  margin: 0;
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.cw-record__row dt { color: var(--lume-3); }
+.cw-record__row dd { color: var(--lume-2); }
+.cw-record__foot { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--edge); }
+
+/* --- Capability strip --------------------------------------------------- */
+
+/* Mounted on the wall rather than floating on the page: the same corner
+   bracket the instrument panels use, at rest instead of lit. */
+.cw-capability { position: relative; display: grid; gap: 10px; padding: 16px 0 16px 14px; border-top: 1px solid var(--edge); }
+.cw-capability::before {
+  content: "";
+  position: absolute;
+  top: 15px;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  border-left: 1px solid var(--edge-2);
+  border-top: 1px solid var(--edge-2);
+}
+.cw-capability__head { display: flex; align-items: center; gap: 16px; }
+.cw-capability__head::after { content: ""; order: 1; flex: 1; height: 1px; background: var(--edge); }
+.cw-capability__head .cw-status { order: 2; }
+.cw-capability__name { font-family: var(--font-display), sans-serif; font-size: 1rem; font-weight: 600; letter-spacing: -.01em; }
+.cw-capability__claim { color: var(--lume-2); font-size: .93rem; line-height: 1.5; max-width: 62ch; }
+.cw-capability__boundary { color: var(--lume-3); font-size: .84rem; line-height: 1.5; max-width: 62ch; }
+.cw-capability__boundary::before { content: "Boundary — "; color: var(--lume-4); font-family: var(--font-mono), monospace; font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase; }
+
+/* ============================================================================
+   REGISTER + FOOTER — flow sections, no scroll choreography
+   ----------------------------------------------------------------------------
+   The cinematic journey ends at Department 02, but the building does not: the
+   visitor has simply walked into the records room behind it. A static sliver
+   of the same hall — the overhead rig, the back wall, the floor datum — stays
+   pinned behind this whole flow so the register reads as one more room in the
+   facility rather than a return to a website.
+   ============================================================================ */
+
+.cw-archive {
+  position: relative;
+  /* The records room is still inside the building: without a ground the flow
+     dropped to pure void the moment the pinned hall released, which read as a
+     page seam rather than as the far end of a room. */
+  background: linear-gradient(to bottom, rgba(13, 16, 21, .95), rgba(9, 11, 15, .6) 40%, transparent 76%);
+}
+.cw-archive__hall {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  margin-bottom: calc(-1 * 100vh);
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--lume);
+  /* Released rather than cut: the hall fades out of the bottom of the frame so
+     unpinning is never a visible horizontal edge across the register. */
+  mask-image: linear-gradient(to bottom, #000 72%, transparent 99%);
+}
+.cw-archive__hall .cw-plane { position: absolute; left: 0; right: 0; }
+/* The shell is not scroll-driven here — the journey has ended — so it is held
+   at the working light the visitor arrived under. */
+.cw-archive__hall .cw-world__ceiling,
+.cw-archive__hall .cw-world__jambs { --wake: 1; opacity: .55; }
+.cw-archive__hall .cw-plane--far { top: 8%; height: 40%; opacity: .14; }
+.cw-archive__hall .cw-plane--near { top: 0; height: 22%; opacity: .3; }
+.cw-archive__floor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 46%;
+  /* The floor datum reads as a horizon, not as a page seam: a hard hairline
+     ruled edge to edge behind the register cut the capability list in half. */
+  background:
+    linear-gradient(to bottom, rgba(242, 239, 230, .16) 0 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(20, 24, 30, .75), transparent 82%);
+  mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+}
+.cw-archive__wash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 70% at 50% 100%, rgba(172, 154, 120, .1), transparent 68%);
+}
+.cw-archive__hall .cw-world__haze,
+.cw-archive__hall .cw-world__vignette { position: absolute; inset: 0; }
+
+.cw-block { position: relative; z-index: 1; padding-block: clamp(90px, 12vw, 170px); background: transparent; }
+.cw-block--deep { border-top: 1px solid var(--edge); }
+.cw-block__head { display: grid; gap: 18px; max-width: 68ch; margin-bottom: clamp(40px, 6vw, 72px); }
+
+.cw-register { display: grid; gap: 0; border-top: 1px solid var(--edge-2); }
+.cw-register__row { display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: clamp(16px, 3vw, 40px); padding-block: 26px; border-bottom: 1px solid var(--edge); }
+.cw-register__dept { font-family: var(--font-mono), monospace; font-size: 12px; letter-spacing: .18em; color: var(--lume-3); padding-top: 4px; }
+
+.cw-tally { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.cw-footer { position: relative; z-index: 1; padding: clamp(60px, 8vw, 96px) 0 44px; background: transparent; border-top: 1px solid var(--edge); }
+.cw-footer__grid { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 30px; }
+.cw-footer__note { color: var(--lume-3); font-size: .85rem; max-width: 52ch; line-height: 1.6; }
+
+.cw-preview-flag {
+  position: fixed;
+  left: 14px;
+  bottom: 12px;
+  z-index: 60;
+  padding: 6px 13px;
+  border: 1px solid var(--edge-2);
+  background: rgba(5, 6, 7, .9);
+  color: var(--lume-4);
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  pointer-events: none;
+  opacity: .7;
+}
+
+/* ============================================================================
+   STATIC MODE — served to prefers-reduced-motion, and to no-JS visitors
+   Same narrative, same copy, no travel.
+   ============================================================================ */
+
+.cw-static__act { padding-block: clamp(72px, 10vw, 128px); border-bottom: 1px solid var(--edge); }
+.cw-static__act:last-of-type { border-bottom: 0; }
+/* The artifact, quoted, in the reduced-motion document: the cinematic path
+   opens on the sentence itself, so the static path has to as well. */
+.cw-static__artifact {
+  margin: 0;
+  padding-left: 16px;
+  border-left: 1px solid var(--signal-dim);
+  font-size: clamp(1.02rem, 1.5vw, 1.24rem);
+  line-height: 1.4;
+  color: var(--lume);
+}
+.cw-static__body { display: grid; gap: 22px; max-width: 62ch; margin-top: 26px; }
+.cw-static__panel { margin-top: 40px; max-width: 640px; }
+
+/* ============================================================================
+   RESPONSIVE
+   ============================================================================ */
+
+@media (max-width: 1080px) {
+  .cw-room__grid { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+  .cw-readout { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .cw-sign { top: 22%; }
+  /* The back wall carries no useful detail once it is this small. */
+  .cw-plane--far { opacity: calc(var(--wake) * .13); }
+  .cw-rail { display: none; }
+  .cw-ledger { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .cw-studios { --gutter: 20px; }
+  .cw-stage { height: 100svh; }
+
+  /* The facility stays, at a scale a phone can actually read: one depth plane
+     of structure overhead, the floor, the route and the signal. The back wall
+     and the equipment gallery are dropped rather than shrunk into mush. */
+  .cw-plane--far { display: none; }
+  .cw-plane--mid { opacity: calc(var(--wake) * .26); }
+  .cw-plane--near { opacity: calc(var(--wake) * .34); }
+  .cw-world__floor { inset: 58% -80% -40%; }
+  .cw-conveyance { top: 93%; }
+  .cw-partition { display: none; }
+  .cw-fixture { display: none; }
+  /* The doorway is the whole of Beat 2 on a phone: the back wall, the wall
+     signage, the partitions and the installed equipment are all dropped at
+     this width, so the reveal is carried by the aperture, the two surviving
+     depth planes, the route and the artifact. It starts smaller and finishes
+     wider than on desktop for exactly that reason. */
+  /* Narrower in proportion than the desktop opening, not merely smaller. A
+     390 × 844 frame is far taller than it is wide, so a doorway cut to desktop
+     proportions is past both edges long before it is past the top — and the
+     crossing then reads as the screen going dark rather than as going through
+     something. At this ratio the jambs arrive at the frame edges exactly as
+     the head of the opening passes overhead. */
+  .cw-threshold { width: min(26vw, 14vh); height: 27vh; top: 50%; }
+  /* The room plate names the department on a phone, so the wall sign would be
+     a second copy of the same information inside a 390px frame — and it landed
+     directly behind the headline. Wayfinding on the wall is a desktop
+     affordance; here the room states its own identity.
+
+     The Return is the exception, and the reason this is now a variable rather
+     than `display: none`. It arrives in a room whose copy does not name it,
+     and every other landmark a phone could have recognised it by — the back
+     wall, the partitions, the installed equipment — is dropped at this width.
+     The sign is the only wayfinding left, so it comes back with the camera and
+     goes again with it. */
+  /* A tighter reach and a wider drift than the desktop wall: the returning
+     camera passes four departments in a few hundred milliseconds, and at the
+     desktop values two numerals sit on top of each other inside a 390px frame.
+     One sign at a time, clearly separated as it goes by. */
+  .cw-sign { --vis: var(--rev); --reach: .05; --rate: 260; top: 9%; }
+  .cw-sign__index { font-size: clamp(2.2rem, 6.4vh, 3.4rem); }
+  /* One piece of environmental lettering at a time on a 390px frame: the
+     lintel names the building, the sub-label is dropped. */
+  .cw-threshold__label { display: none; }
+  /* The lintel is painted on the doorway, so it grows with it — and a 390px
+     frame runs out of room long before a 1440px one does. Here the name wraps
+     inside the opening instead of running off both sides of it, and clears
+     early, well before the aperture is larger than the phone. */
+  .cw-threshold__mark {
+    width: 76%;
+    text-align: center;
+    font-size: .78vh;
+    letter-spacing: .1em;
+    line-height: 1.4;
+    white-space: normal;
+    opacity: clamp(0, calc(1 - var(--close) * 2), 1);
+  }
+  .cw-threshold {
+    /* A low drift rate: this is a doorway the camera walks straight into, and
+       at the pass-2 rate it swung to the edge of the frame on the approach. */
+    --rate: 120;
+    /* A longer, gentler last stretch than desktop. A 390px frame runs out of
+       width almost immediately, so at the desktop rate the aperture is past
+       both edges before the crossing reads as one — the visitor sees a dark
+       frame rather than a doorway going by. Here the opening reaches the frame
+       edges at its widest and only just clears them at the crossing. */
+    --close: clamp(0, calc((.05 - var(--d)) * 20), 1);
+    transform:
+      translate3d(calc(var(--d) * var(--rate) * 1vw), -50%, 0)
+      scale(calc(.34 + var(--near) * 1.15 + var(--close) * 2.4));
+  }
+  /* The jambs are most of the foreground on a phone; clearing them entirely
+     would empty the frame, so they part rather than leave. */
+  .cw-world__jambs::before { transform: translate3d(calc(var(--dolly, 0) * -58%), 0, 0); }
+  .cw-world__jambs::after { transform: translate3d(calc(var(--dolly, 0) * 58%), 0, 0); }
+  /* Beat 1 has to give the artifact and its sentence the middle of a 390px
+     frame, so the line sits above them rather than through them. */
+  .cw-stage .cw-shell.cw-open__frame { justify-content: flex-start; padding-top: 17vh; padding-bottom: 0; }
+  .cw-open__line { font-size: clamp(1.45rem, 7.4vw, 1.95rem); max-width: 15ch; }
+  .cw-stage .cw-shell.cw-open__frame--turn { padding-top: 15vh; }
+  .cw-open__line--turn { font-size: 1rem; max-width: 22ch; }
+  /* The room has one instrument and one verdict. The evidence ledger and the
+     step list are carried in full by the capability register further down, so
+     dropping them here costs the visitor nothing and buys a composed frame. */
+  .cw-ledger { display: none; }
+  .cw-room .cw-stage .cw-shell { padding-top: 56px; }
+  .cw-display--xl { font-size: clamp(2rem, 9vw, 2.6rem); }
+  .cw-lede { font-size: .92rem; line-height: 1.5; }
+  .cw-instrument { gap: 10px; }
+  .cw-verdict__line { font-size: 10px; letter-spacing: .18em; }
+  .cw-verdict__note { font-size: 8.5px; letter-spacing: .06em; }
+  .cw-heading { font-size: clamp(1.35rem, 6.6vw, 1.82rem); }
+  .cw-lede { font-size: .88rem; }
+  .cw-room__brief { gap: 10px; }
+  /* Shorter lateral throw: the phone's frame is narrow, so desktop distances
+     would fling every landmark off-screen before it could be read. */
+  .cw-artifact { top: 54%; --throw: .5; --drop: 8; }
+  .cw-artifact__ring { width: 84px; height: 84px; }
+  .cw-artifact__tether { height: 18vh; }
+  /* A 390px frame cannot hang a readable sentence off a point that roams
+     either side of centre: anchored left it clips right, anchored right it
+     clips left. So on a phone the plate holds a fixed gutter while the
+     artifact still travels under it — it counter-translates by exactly the
+     artifact's own lateral offset. The object keeps moving; the sentence
+     stays legible, which is the invariant that matters. */
+  .cw-artifact__plate {
+    /* Solid, not a gradient: pinned across the frame the gradient's tail left
+       the right-hand half of every line sitting on the lit deck with almost no
+       contrast behind it. */
+    background: rgba(9, 11, 15, .93);
+    border-left-color: var(--signal);
+    left: calc(-50vw + 18px);
+    bottom: 10px;
+    max-width: calc(100vw - 36px);
+    translate: calc((var(--ax)) * var(--throw) * -1vw) 0;
+    padding: 8px 11px 9px;
+  }
+  /* The artifact is the protagonist; at 12.5px on a dark ground it read as a
+     caption. */
+  .cw-artifact__line { font-size: 13.5px; line-height: 1.32; }
+  .cw-readout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cw-readout__cell:nth-child(2n) { border-right: 0; }
+  .cw-readout__cell:nth-child(-n + 2) { border-bottom: 1px solid var(--edge); }
+  .cw-verdict__note { font-size: 9px; }
+  .cw-record__row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  /* Scenes cost less travel on a phone: the same choreography at desktop
+     length reads as an unresponsive page rather than a slow reveal. */
+  .cw-studios [data-cw-scene] { height: calc(var(--travel) * 68svh); }
+  .cw-topbar { padding: 12px var(--gutter); }
+  .cw-topbar__mark { font-size: 11px; }
+  .cw-topbar__mark span { display: none; }
+  .cw-topbar__right .cw-cta--ghost { display: none; }
+  .cw-topbar__right .cw-cta { min-height: 36px; padding: 8px 13px; font-size: 11px; }
+  .cw-room .cw-stage .cw-shell { padding-top: 60px; }
+  /* Beat 5 anchors its copy low on a wide viewport so it sits beside the shape
+     forming on the plate, in the other column. A phone has one column and the
+     plate is pinned across the whole of it, so "low" means "on top of the
+     sentence the plate is carrying" — measured across a continuous traversal,
+     the Writers' Room headline was printed straight through it for a fifth of
+     the room. Here the copy takes the top band like every other room. */
+  .cw-room__frame[data-beat="b5"] { align-content: start; padding-top: 9vh; padding-bottom: 0; }
+
+  /* Clear of the wall sign the Return brings back above it. */
+  .cw-room__frame[data-beat="b8"] { padding-top: 24vh; }
+  /* One column, so the finale stacks rather than sitting side by side: the
+     proposition at the top, the door and the object standing in it through the
+     middle, and the action at the bottom of the frame where a thumb is. */
+  .cw-room__frame[data-beat="b9"] {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding-top: 11vh;
+    padding-bottom: 7vh;
+  }
+  .cw-room__frame[data-beat="b9"] .cw-verdict { margin-top: 12px; }
+  .cw-room__frame[data-beat="b9"] .cw-finale__action { margin-top: auto; }
+  .cw-finale__line { font-size: .98rem; max-width: 24ch; }
+  .cw-finale__action { gap: 14px; }
+  /* The status on the lintel is the honest half of this door; the sub-label is
+     dropped elsewhere on a phone, but not here. */
+  .cw-threshold[data-kind="seam"] { width: min(34vw, 18vh); top: 56%; }
+  .cw-threshold[data-kind="seam"] .cw-threshold__label {
+    display: block;
+    top: 20%;
+    font-size: .62vh;
+    letter-spacing: .14em;
+  }
+  .cw-heading { font-size: clamp(1.5rem, 7.4vw, 2rem); }
+  .cw-lede { font-size: .95rem; }
+  .cw-room__grid { align-content: start; padding-top: 36px; }
+  .cw-ledger { grid-template-columns: minmax(0, 1fr); }
+  .cw-ledger__cell { border-right: 0; border-bottom: 1px solid var(--edge); }
+  .cw-ledger__cell:last-child { border-bottom: 0; }
+  .cw-register__row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .cw-capability__head { flex-direction: column; align-items: flex-start; gap: 8px; }
+}
+
+/* Short phones: trim the instrument, never the honest copy beneath it. */
+@media (max-width: 720px) and (max-height: 780px) {
+  .cw-plot { aspect-ratio: 16 / 6.4; }
+  .cw-gate { aspect-ratio: 16 / 7; }
+  .cw-sequencer { aspect-ratio: 16 / 6.4; }
+  .cw-line { aspect-ratio: 16 / 6.4; }
+  .cw-console { aspect-ratio: 16 / 7.8; }
+  .cw-lede { font-size: .89rem; }
+  .cw-room .cw-stage .cw-shell { padding-top: 52px; }
+}
+
+/* Short desktop and laptop viewports: the department has to fit the stage, so
+   the instrument gives up height before the copy gives up legibility. */
+@media (min-width: 721px) and (max-height: 900px) {
+  .cw-heading { font-size: clamp(1.45rem, 2.9vw, 2.15rem); }
+  .cw-lede { font-size: .97rem; line-height: 1.5; }
+  .cw-room .cw-stage .cw-shell { padding-top: 62px; }
+  .cw-room__grid { gap: clamp(18px, 3vw, 40px); }
+  .cw-room__brief { gap: 13px; }
+  .cw-plot { aspect-ratio: 16 / 7.6; }
+  .cw-gate { aspect-ratio: 16 / 7.6; }
+  .cw-sequencer { aspect-ratio: 16 / 7.6; }
+  .cw-line { aspect-ratio: 16 / 7.6; }
+  .cw-console { aspect-ratio: 16 / 7.6; }
+  .cw-stream__step { padding: 6px 13px; }
+  .cw-readout__cell { padding: 7px 12px; }
+  .cw-ledger__cell { padding: 9px 13px; }
+  .cw-conveyance { top: 94%; }
+  .cw-instrument { gap: 11px; }
+}
+
+/* ============================================================================
+   SHORT PHONES
+   ----------------------------------------------------------------------------
+   Every room was composed against 390 x 844. At 667 the same layout fails, and
+   it fails in one specific way: the artifact plate is the tallest object in the
+   run — 253px by Beat 8, 38% of the frame — and on a phone it is pinned across
+   the full width, so anything the room puts in the middle band lands on top of
+   it. Measured end to end at 390 x 667, four rooms collided: the Writers' Room
+   printed its headline straight through the plate's sentences, and the finale
+   put its verdict on the plate's top edge and its call to action below the fold.
+
+   The correction is composition, not scale. Every room's copy moves into the
+   top band and the artifact's route runs lower, so the two never share the
+   middle. Nothing is shrunk and nothing is hidden.
+   ============================================================================ */
+
+@media (max-width: 720px) and (max-height: 740px) {
+  /* One band for copy, at the top. The per-beat vertical placement that gives
+     each room its character on a taller phone is what breaks here, so it is
+     flattened rather than nudged. */
+  .cw-room__frame[data-beat="b3"],
+  .cw-room__frame[data-beat="b4"],
+  .cw-room__frame[data-beat="b5"],
+  .cw-room__frame[data-beat="b6"],
+  .cw-room__frame[data-beat="b7"],
+  .cw-room__frame[data-beat="b8"] {
+    align-content: start;
+    text-align: left;
+    justify-items: start;
+    padding-top: 7vh;
+    padding-bottom: 0;
+  }
+  /* The finale stacks in reading order instead of pinning its action to the
+     bottom of the frame: at this height the bottom of the frame is where the
+     plate is standing, and the action was falling off the screen entirely. */
+  .cw-room__frame[data-beat="b9"] {
+    display: grid;
+    align-content: start;
+    padding-top: 7vh;
+    padding-bottom: 0;
+  }
+  .cw-room__frame[data-beat="b9"] .cw-finale__action { margin-top: 4px; }
+  .cw-room__frame[data-beat="b9"] .cw-verdict { margin-top: 0; }
+
+  /* The route runs lower, which is what buys the copy band above it. Stated
+     once here rather than per beat, because the artifact's vertical offsets
+     are journey-derived and must stay that way. */
+  .cw-artifact { top: 62%; --drop: 14; }
+
+  /* The last door drops below the copy band with everything else, so its
+     lintel is read against the hall rather than through the call to action. */
+  .cw-threshold[data-kind="seam"] { top: 70%; }
+
+  /* A shorter frame reads a shorter measure. */
+  .cw-room .cw-stage .cw-shell { padding-top: 46px; }
+  .cw-heading { font-size: clamp(1.3rem, 6.6vw, 1.7rem); }
+  .cw-finale__line { font-size: .92rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-studios *, .cw-studios *::before, .cw-studios *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* --- Act-level detail added alongside the components ------------------- */
+
+.cw-studios[data-ready="true"] .cw-pulse { opacity: var(--tw); }
+
+.cw-room__heading-line { display: block; }
+
+/* A room's headline is Level 1 inside its own scene, not the cold open's
+   title. Held a step below the display scale so a long proposition resolves
+   in three or four lines and the record beneath it still fits the stage. */
+.cw-room .cw-heading { font-size: clamp(1.5rem, 2.7vw, 2.45rem); }
+.cw-room__brief .cw-lede { max-width: 47ch; font-size: clamp(.95rem, 1.2vw, 1.08rem); }
+
+.cw-stream-panel { margin-top: 6px; }
+.cw-stream__digest { display: none; padding: 12px 14px; color: var(--lume-2); line-height: 1.7; }
+.cw-ledger__note { display: block; color: var(--lume-3); letter-spacing: .06em; text-transform: none; font-size: 10px; line-height: 1.5; }
+
+@media (max-width: 1080px) {
+  .cw-stream { display: none; }
+  .cw-stream__digest { display: block; }
+  .cw-plot { aspect-ratio: 16 / 7; }
+  .cw-gate { aspect-ratio: 16 / 7; }
+  .cw-sequencer { aspect-ratio: 16 / 7; }
+  .cw-line { aspect-ratio: 16 / 7; }
+  .cw-console { aspect-ratio: 16 / 7; }
+}
+
+@media (max-width: 720px) {
+  .cw-open__actions { margin-top: 24px; }
+  /* The instruments now carry named rows, measured values and states, and a
+     122px strip cannot hold them without collision. The height is bought back
+     from the brief's record panel below, which the capability register repeats
+     in full further down the page. */
+  .cw-plot { aspect-ratio: 16 / 8; }
+  .cw-gate { aspect-ratio: 16 / 8.6; }
+  .cw-sequencer { aspect-ratio: 16 / 8; }
+  .cw-line { aspect-ratio: 16 / 8; }
+  .cw-console { aspect-ratio: 16 / 9.4; }
+  .cw-ledger__value { font-size: 1rem; }
+  .cw-ledger__cell { padding: 8px 12px; }
+  .cw-ledger__note { font-size: 9.5px; }
+  /* One instrument per viewport. The brief's record panel states in words what
+     the instrument states in marks, and the capability register carries it in
+     full below — so on a phone the room shows the instrument and the verdict,
+     and nothing has to be squeezed to fit both. */
+  .cw-stream-panel { display: none; }
+  .cw-room__brief > .cw-panel { display: none; }
+  .cw-room__brief { gap: 12px; }
+}
