@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { originalContributionKindSchema, viewerNeedKindSchema, viewerValueAssessmentSchema, viewerValueProvenanceSchema } from "./viewer-value";
 
-export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING", "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE", "CHANNEL_VIDEO_DIAGNOSIS", "CHANNEL_VIDEO_DECISION"]);
+export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING", "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE", "CHANNEL_VIDEO_DIAGNOSIS", "CHANNEL_VIDEO_DECISION", "CHANNEL_VIDEO_EXPERIMENT"]);
 export type ProductionWorkflowType = z.infer<typeof workflowTypeSchema>;
 
 export const workflowStatusSchema = z.enum(["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL", "BLOCKED", "COMPLETED", "FAILED", "CANCELED"]);
@@ -2550,6 +2550,375 @@ export const channelVideoDecisionResultSchema = z.object({
   modelProvenance: z.array(modelAttributionSchema).length(2),
 }).strict();
 
+// ---------------------------------------------------------------------------
+// CHANNEL_VIDEO_EXPERIMENT
+//
+// The controlled-test-design boundary after one exact approved, experiment-
+// eligible CHANNEL_VIDEO_DECISION. Experiment converts an approved decision
+// (INVESTIGATE or PRIORITIZE_CHANGE only) into a single human-approved,
+// immutable experiment DESIGN: what changes, what is held constant, what is
+// measured, and the success / failure / invalidation / stopping / rollback
+// criteria that keep the result causally interpretable and Viewer Value safe.
+//
+// It never re-diagnoses, never rewrites the approved Decision, never designs a
+// portfolio or channel strategy, and never executes anything (no publish,
+// upload, schedule, notification, ad spend, or provider call). It carries no
+// experiment execution / lifecycle / analytics-ingestion state -- only the
+// design artifact and its own approval lifecycle. `experimentReady` and
+// `portfolioEligible` are the only downstream-facing contracts it defines.
+// ---------------------------------------------------------------------------
+
+export const experimentLineageWorkflowTypeSchema = z.enum([
+  "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE",
+  "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING",
+  "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE", "CHANNEL_VIDEO_DIAGNOSIS",
+  "CHANNEL_VIDEO_DECISION",
+]);
+
+export const experimentArtifactIdentitySchema = z.object({
+  workflowType: experimentLineageWorkflowTypeSchema,
+  runId: z.string().uuid(),
+  artifactHash: sha256Schema,
+  schemaVersion: z.number().int().positive(),
+}).strict();
+
+export const videoExperimentScopeSchema = z.object({
+  artifacts: z.array(experimentArtifactIdentitySchema).min(10).max(10),
+  entries: z.array(decisionLineageEntrySchema).min(1).max(260),
+  facts: z.array(z.object({
+    key: z.string().regex(/^fact:[a-z0-9][a-z0-9:._-]{0,118}$/),
+    value: z.union([z.string().max(2_000), z.number(), z.boolean(), z.null()]),
+    sourceRef: z.string().min(1).max(300),
+  }).strict()).min(1).max(96),
+}).strict().superRefine((scope, context) => {
+  const requiredArtifactTypes = new Set(experimentLineageWorkflowTypeSchema.options);
+  const artifactTypes = new Set(scope.artifacts.map((artifact) => artifact.workflowType));
+  if (artifactTypes.size !== requiredArtifactTypes.size || [...requiredArtifactTypes].some((type) => !artifactTypes.has(type))) {
+    context.addIssue({ code: "custom", path: ["artifacts"], message: "Experiment scope must contain exactly one artifact from every approved lineage workflow, including Decision." });
+  }
+  const keys = new Set<string>();
+  const locatorIdentities = new Set<string>();
+  for (const [index, entry] of scope.entries.entries()) {
+    if (keys.has(entry.key)) context.addIssue({ code: "custom", path: ["entries", index, "key"], message: "Lineage keys must be unique." });
+    keys.add(entry.key);
+    const locatorIdentity = entry.locator.kind === "STABLE_ID"
+      ? `${entry.locator.kind}:${entry.locator.entityType}:${entry.locator.id}`
+      : `${entry.locator.kind}:${entry.locator.workflowType}:${entry.locator.runId}:${entry.locator.artifactHash}:${entry.locator.schemaVersion}:${entry.locator.jsonPointer}`;
+    if (locatorIdentities.has(locatorIdentity)) context.addIssue({ code: "custom", path: ["entries", index, "locator"], message: "Lineage locators must be unique." });
+    locatorIdentities.add(locatorIdentity);
+    if (entry.locator.kind === "ARTIFACT_LOCAL") {
+      const locator = entry.locator;
+      if (!scope.artifacts.some((artifact) => artifact.workflowType === locator.workflowType && artifact.runId === locator.runId && artifact.artifactHash === locator.artifactHash && artifact.schemaVersion === locator.schemaVersion)) {
+        context.addIssue({ code: "custom", path: ["entries", index, "locator"], message: "Artifact-local locator identity must match an authoritative scope artifact." });
+      }
+    }
+  }
+  for (const [index, entry] of scope.entries.entries()) {
+    for (const parent of entry.parentKeys) if (!keys.has(parent)) context.addIssue({ code: "custom", path: ["entries", index, "parentKeys"], message: `Unknown lineage parent ${parent}.` });
+  }
+  const factKeys = new Set<string>();
+  for (const [index, fact] of scope.facts.entries()) {
+    if (factKeys.has(fact.key)) context.addIssue({ code: "custom", path: ["facts", index, "key"], message: "Fact keys must be unique." });
+    factKeys.add(fact.key);
+  }
+});
+
+export const approvedVideoDecisionReferenceSchema = z.object({
+  decisionWorkflowId: z.string().uuid(),
+  decisionRunId: z.string().uuid(),
+  workflowDefinitionVersion: z.number().int().positive(),
+  outputSchemaVersion: z.literal(1),
+  approvalId: z.string().uuid(),
+  approvedBy: z.string().uuid(),
+  approvedAt: z.string().datetime(),
+  finalQaState: z.enum(["accept", "human_review_required"]),
+  finalQaScore: z.number().int().min(0).max(100),
+  decisionArtifactHash: sha256Schema,
+  decisionProvenanceHash: sha256Schema,
+  parentRunId: z.string().uuid().nullable(),
+  rootRunId: z.string().uuid(),
+  decisionType: decisionTypeSchema,
+  experimentEligible: z.literal(true),
+  upstreamVideoDiagnosis: approvedVideoDiagnosisReferenceSchema,
+}).strict();
+
+export const videoExperimentRequestInputSchema = z.object({
+  videoDecisionWorkflowId: z.string().uuid(),
+  videoDecisionRunId: z.string().uuid(),
+}).strict();
+
+export const approvedVideoDecisionArtifactSchema = z.object({
+  reference: approvedVideoDecisionReferenceSchema,
+  decisionResult: channelVideoDecisionResultSchema,
+  experimentScope: videoExperimentScopeSchema,
+}).strict();
+
+/** The bounded experiment-shape taxonomy. No numeric sample size, lift, power, or significance field exists anywhere in this contract. */
+export const experimentTypeSchema = z.enum([
+  "CONTROLLED_COMPARISON",
+  "SEQUENTIAL_COMPARISON",
+  "HOLDOUT_COMPARISON",
+  "OBSERVATIONAL_PROBE",
+]);
+
+export const experimentDispositionSchema = z.enum(["RUN_COMPARISON", "RUN_HOLDOUT", "OBSERVE_ONLY"]);
+export const experimentControlKindSchema = z.enum(["SIMULTANEOUS_CONTROL", "HISTORICAL_BASELINE", "HOLDOUT", "NONE_OBSERVATIONAL"]);
+
+export const experimentMetricSchema = z.enum([
+  "IMPRESSIONS", "IMPRESSION_CLICK_THROUGH_RATE", "VIEWS", "UNIQUE_VIEWERS",
+  "AVERAGE_VIEW_DURATION", "AVERAGE_PERCENTAGE_VIEWED", "WATCH_TIME_HOURS",
+  "RETURNING_VIEWERS_RATE", "SUBSCRIBERS_GAINED", "LIKES_RATE", "COMMENTS_RATE",
+  "SHARES", "SURVEY_SATISFACTION", "SEARCH_IMPRESSION_SHARE", "OTHER",
+]);
+export const experimentMetricUnitSchema = z.enum(["COUNT", "PERCENT", "SECONDS", "HOURS", "RATIO", "SCORE", "NONE"]);
+
+export const videoExperimentConstraintsSchema = z.object({
+  decisionId: z.string().regex(/^decision:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  decisionType: decisionTypeSchema,
+  decisionCategory: diagnosisCategorySchema,
+  decisionStatement: z.string().min(1).max(1_200),
+  decisionReversibility: z.enum(["EASILY_REVERSIBLE", "MODERATELY_REVERSIBLE", "HARD_TO_REVERSE"]),
+  evidenceStrength: decisionEvidenceStrengthSchema,
+  categoryConfidenceCeiling: z.enum(["high", "medium", "low"]),
+  globalConfidenceCeiling: z.enum(["high", "medium", "low"]),
+  viewerValueState: z.enum(["PRESERVED", "AT_RISK", "UNKNOWN"]),
+  promiseIntegrityRisk: z.enum(["NONE", "POSSIBLE", "LIKELY"]),
+  viewerValueEscalationRequired: z.boolean(),
+  permittedExperimentTypes: z.array(experimentTypeSchema).min(1).max(4),
+  evidenceRequirements: z.array(z.string().min(1).max(500)).max(48),
+  citableFindingIds: z.array(z.string().regex(/^diag:/)).max(24),
+  citableUnknownIds: z.array(z.string().regex(/^unknown:/)).max(24),
+  citableObservationIds: z.array(z.string().regex(/^obs:/)).max(80),
+  citableLineageKeys: z.array(z.string().regex(/^lin:/)).max(260),
+  unavailableCategories: z.array(diagnosisCategorySchema).max(9),
+}).strict();
+
+export const experimentDecisionLinkageSchema = z.object({
+  decisionId: z.string().regex(/^decision:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  decisionType: decisionTypeSchema,
+  hypothesisUnderTest: z.string().min(1).max(1_200),
+  testsDecisionStatement: z.string().min(1).max(1_200),
+}).strict();
+
+export const experimentControlConditionSchema = z.object({
+  kind: experimentControlKindSchema,
+  description: z.string().min(1).max(1_200),
+  comparability: z.string().min(1).max(1_200),
+}).strict();
+
+export const experimentTreatmentConditionSchema = z.object({
+  description: z.string().min(1).max(1_200),
+  whatChanges: z.string().min(1).max(1_200),
+  whatStaysConstant: z.array(z.string().min(1).max(400)).max(20),
+}).strict();
+
+export const experimentConfounderSchema = z.object({
+  confounder: z.string().min(1).max(600),
+  mitigation: z.string().min(1).max(800),
+  residualRisk: z.enum(["LOW", "MEDIUM", "HIGH"]),
+}).strict();
+
+export const experimentGuardrailMetricSchema = z.object({
+  metric: experimentMetricSchema,
+  unit: experimentMetricUnitSchema,
+  protects: z.string().min(1).max(600),
+  degradationSignal: z.string().min(1).max(600),
+}).strict();
+
+export const experimentDirectionSchema = z.object({
+  statedDirection: z.enum(["INCREASE", "DECREASE", "NO_CHANGE", "UNKNOWN"]),
+  magnitudeClaim: z.literal("QUALITATIVE_ONLY"),
+  justification: z.string().min(1).max(1_200),
+}).strict();
+
+export const experimentObservationWindowSchema = z.object({
+  description: z.string().min(1).max(800),
+  rationale: z.string().min(1).max(1_200),
+  minimumBeforeReading: z.string().min(1).max(400),
+}).strict();
+
+export const experimentExposureRequirementSchema = z.object({
+  description: z.string().min(1).max(1_000),
+  sufficiencyBasis: z.enum(["QUALITATIVE_JUDGMENT", "OPERATOR_MUST_CONFIRM"]),
+  caveat: z.string().min(1).max(800),
+}).strict();
+
+export const experimentInterpretationPlanSchema = z.object({
+  ifPrimaryFavorable: z.string().min(1).max(1_000),
+  ifPrimaryUnfavorable: z.string().min(1).max(1_000),
+  ifInconclusive: z.string().min(1).max(1_000),
+  guardrailPrecedence: z.literal(true),
+}).strict();
+
+export const experimentRollbackPlanSchema = z.object({
+  trigger: z.string().min(1).max(800),
+  action: z.string().min(1).max(1_200),
+  reversibility: z.enum(["EASILY_REVERSIBLE", "MODERATELY_REVERSIBLE"]),
+}).strict();
+
+export const experimentSchema = z.object({
+  id: z.string().regex(/^experiment:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  experimentType: experimentTypeSchema,
+  disposition: experimentDispositionSchema,
+  measurementOnly: z.boolean(),
+  category: diagnosisCategorySchema,
+  title: z.string().min(1).max(200),
+  hypothesis: z.string().min(1).max(1_600),
+  decisionLinkage: experimentDecisionLinkageSchema,
+  targetVariable: z.string().min(1).max(800),
+  unitOfAssignment: z.enum(["VIDEO", "THUMBNAIL_SLOT", "PUBLISH_WINDOW", "CHANNEL_SEGMENT", "TRAFFIC_SURFACE", "NONE_OBSERVATIONAL"]),
+  controlCondition: experimentControlConditionSchema,
+  treatmentCondition: experimentTreatmentConditionSchema,
+  heldConstant: z.array(z.string().min(1).max(400)).max(24),
+  knownConfounders: z.array(experimentConfounderSchema).max(16),
+  primaryMetric: z.object({
+    metric: experimentMetricSchema,
+    unit: experimentMetricUnitSchema,
+    direction: z.enum(["INCREASE", "DECREASE", "CHANGE"]),
+    rationale: z.string().min(1).max(800),
+  }).strict(),
+  guardrailMetrics: z.array(experimentGuardrailMetricSchema).min(1).max(12),
+  viewerValueGuardrails: z.array(z.string().min(1).max(600)).min(1).max(12),
+  expectedDirection: experimentDirectionSchema,
+  observationWindow: experimentObservationWindowSchema,
+  exposureRequirement: experimentExposureRequirementSchema,
+  stoppingConditions: z.array(z.string().min(1).max(600)).min(2).max(12),
+  failureConditions: z.array(z.string().min(1).max(600)).min(1).max(12),
+  invalidationConditions: z.array(z.string().min(1).max(600)).min(1).max(12),
+  rollbackPlan: experimentRollbackPlanSchema.nullable(),
+  evidenceRequiredToInterpret: z.array(z.string().min(1).max(600)).min(1).max(16),
+  interpretationPlan: experimentInterpretationPlanSchema,
+  knownUnknowns: z.array(z.string().min(1).max(600)).max(16),
+  supportingDecisionFindingIds: z.array(z.string().regex(/^diag:/)).max(24),
+  supportingObservationIds: z.array(z.string().regex(/^obs:/)).max(24),
+  constrainingUnknownIds: z.array(z.string().regex(/^unknown:/)).max(24),
+  evidenceStrength: decisionEvidenceStrengthSchema,
+  confidenceInDesign: z.enum(["high", "medium", "low"]),
+  requiresHumanJudgment: z.boolean(),
+  executionDeferred: z.literal(true),
+}).strict().superRefine((experiment, context) => {
+  if (experiment.experimentType === "OBSERVATIONAL_PROBE") {
+    if (experiment.unitOfAssignment !== "NONE_OBSERVATIONAL") context.addIssue({ code: "custom", path: ["unitOfAssignment"], message: "An observational probe assigns no treatment." });
+  } else {
+    if (experiment.unitOfAssignment === "NONE_OBSERVATIONAL") context.addIssue({ code: "custom", path: ["unitOfAssignment"], message: "A manipulation experiment requires a concrete unit of assignment." });
+    if (experiment.rollbackPlan === null) context.addIssue({ code: "custom", path: ["rollbackPlan"], message: "A manipulation experiment requires a rollback plan." });
+    if (experiment.heldConstant.length === 0) context.addIssue({ code: "custom", path: ["heldConstant"], message: "A manipulation experiment must hold something constant to keep the comparison interpretable." });
+    if (experiment.treatmentCondition.whatChanges.trim().length === 0) context.addIssue({ code: "custom", path: ["treatmentCondition", "whatChanges"], message: "A manipulation experiment must state what changes." });
+  }
+});
+
+export const experimentAlternativeSchema = z.object({
+  id: z.string().regex(/^alt:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  experimentType: experimentTypeSchema,
+  statement: z.string().min(1).max(1_200),
+  targetVariable: z.string().min(1).max(800),
+  notSelectedBecause: z.enum(["WEAKER_CAUSAL_INFERENCE", "HIGHER_VIEWER_VALUE_RISK", "SLOWER_LEARNING", "INFEASIBLE_EXPOSURE", "REDUNDANT_WITH_PRIMARY", "PREMATURE", "OTHER"]),
+  notSelectedReason: z.string().min(1).max(800),
+}).strict();
+
+export const experimentDecisionDisagreementSchema = z.object({
+  id: z.string().regex(/^disagreement:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  disputedElement: z.enum(["DECISION_STATEMENT", "SUPPORTING_FINDING", "CONSTRAINING_UNKNOWN", "VIEWER_VALUE_ASSESSMENT", "REVERSIBILITY", "URGENCY"]),
+  disputedFindingId: z.string().regex(/^diag:/).nullable(),
+  objection: z.string().min(1).max(1_200),
+  basis: z.string().min(1).max(1_200),
+}).strict();
+
+export const experimentViewerValueSafeguardsSchema = z.object({
+  inheritedState: z.enum(["PRESERVED", "AT_RISK", "UNKNOWN"]),
+  promiseIntegrityRisk: z.enum(["NONE", "POSSIBLE", "LIKELY"]),
+  metricGamingRisk: z.string().min(1).max(1_200),
+  guardedMetricGaming: z.string().min(1).max(1_200),
+  escalationRequired: z.boolean(),
+}).strict();
+
+export const videoExperimentCrossModelReviewSchema = z.object({
+  analyst: modelAttributionSchema,
+  critic: modelAttributionSchema,
+  outcome: z.enum(["AGREED", "CRITIC_RAISED_ISSUE", "HUMAN_REVIEW_REQUIRED"]),
+  safeToFinalize: z.boolean(),
+  findings: z.array(z.object({
+    code: z.string().regex(/^[A-Z][A-Z0-9_]{2,79}$/),
+    severity: z.enum(["error", "warning", "info"]),
+    affectedField: z.string().min(1).max(200),
+    rationale: z.string().min(1).max(900),
+    evidenceRefs: z.array(z.string().min(1).max(200)).max(20),
+  }).strict()).max(20),
+  summary: z.string().min(1).max(2_500),
+}).strict();
+
+export const videoExperimentContentSchema = z.object({
+  experiment: experimentSchema,
+  alternatives: z.array(experimentAlternativeSchema).min(1).max(6),
+  decisionDisagreements: z.array(experimentDecisionDisagreementSchema).max(8),
+  viewerValueSafeguards: experimentViewerValueSafeguardsSchema,
+  experimentReady: z.boolean(),
+  portfolioEligible: z.boolean(),
+}).strict().superRefine((content, context) => {
+  const ids = new Set<string>([content.experiment.id]);
+  for (const [index, alternative] of content.alternatives.entries()) {
+    if (ids.has(alternative.id)) context.addIssue({ code: "custom", path: ["alternatives", index, "id"], message: "Experiment and alternative IDs must be unique." });
+    ids.add(alternative.id);
+  }
+});
+
+export const videoExperimentInputSchema = videoExperimentRequestInputSchema.extend({
+  approvedVideoDecisionReference: approvedVideoDecisionReferenceSchema,
+  humanRevisionNote: z.string().trim().min(1).max(2_000).optional(),
+}).strict();
+
+export const videoExperimentDraftSchema = z.object({
+  content: videoExperimentContentSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+  analyst: modelAttributionSchema,
+}).strict();
+
+export const videoExperimentCritiqueSchema = z.object({
+  safeToFinalize: z.boolean(),
+  summary: z.string().min(1).max(2_500),
+  findings: videoExperimentCrossModelReviewSchema.shape.findings,
+}).strict();
+
+export const videoExperimentCritiqueStepSchema = z.object({
+  critique: videoExperimentCritiqueSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+  critic: modelAttributionSchema,
+}).strict();
+
+export const videoExperimentQAResultSchema = researchQAResultSchema;
+export const videoExperimentQAStepSchema = z.object({
+  qa: videoExperimentQAResultSchema,
+  crossModelReview: videoExperimentCrossModelReviewSchema,
+  result: z.unknown(),
+}).strict();
+
+export const channelVideoExperimentResultSchema = z.object({
+  schemaVersion: z.literal(1),
+  workflowType: z.literal("CHANNEL_VIDEO_EXPERIMENT"),
+  designedAt: z.string().datetime(),
+  source: z.object({
+    decisionWorkflowId: z.string().uuid(),
+    decisionRunId: z.string().uuid(),
+    diagnosisWorkflowId: z.string().uuid(),
+    diagnosisRunId: z.string().uuid(),
+    performanceWorkflowId: z.string().uuid(),
+    performanceRunId: z.string().uuid(),
+    releaseWorkflowId: z.string().uuid(),
+    releaseRunId: z.string().uuid(),
+    topicId: topicIdSchema,
+    pillarId: pillarIdSchema,
+    finalTitle: z.string().min(1).max(100),
+    subjectIdentity: z.string().min(1).max(300),
+  }).strict(),
+  approvedVideoDecisionReference: approvedVideoDecisionReferenceSchema,
+  experimentScope: videoExperimentScopeSchema,
+  experimentConstraints: videoExperimentConstraintsSchema,
+  content: videoExperimentContentSchema,
+  viewerValueProvenance: viewerValueProvenanceSchema,
+  crossModelReview: videoExperimentCrossModelReviewSchema,
+  modelProvenance: z.array(modelAttributionSchema).length(2),
+}).strict();
+
 export const channelConceptValidationInputSchema = z.object({
   proposedConcept: z.string().trim().min(20).max(2_000),
   audienceContext: z.string().trim().min(3).max(2_000).optional(),
@@ -2573,7 +2942,8 @@ export const workflowStartRequestSchema = z.object({
                 : request.workflowType === "CHANNEL_VIDEO_PERFORMANCE" ? videoPerformanceRequestInputSchema
                   : request.workflowType === "CHANNEL_VIDEO_DIAGNOSIS" ? videoDiagnosisRequestInputSchema
                     : request.workflowType === "CHANNEL_VIDEO_DECISION" ? videoDecisionRequestInputSchema
-                      : channelConceptValidationInputSchema;
+                      : request.workflowType === "CHANNEL_VIDEO_EXPERIMENT" ? videoExperimentRequestInputSchema
+                        : channelConceptValidationInputSchema;
   const parsed = schema.safeParse(request.input);
   if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue, path: ["input", ...issue.path] });
 }).transform((request) => request as
@@ -2587,7 +2957,8 @@ export const workflowStartRequestSchema = z.object({
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_RELEASE"; definitionVersion: 1; input: VideoReleaseRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_PERFORMANCE"; definitionVersion: 1; input: VideoPerformanceRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_DIAGNOSIS"; definitionVersion: 1; input: VideoDiagnosisRequestInput }
-  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_DECISION"; definitionVersion: 1; input: VideoDecisionRequestInput });
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_DECISION"; definitionVersion: 1; input: VideoDecisionRequestInput }
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_EXPERIMENT"; definitionVersion: 1; input: VideoExperimentRequestInput });
 
 export const workflowApprovalDecisionSchema = z.object({
   decision: z.enum(["APPROVE", "REJECT", "REQUEST_REVISION"]),
@@ -2727,6 +3098,24 @@ export type VideoDecisionContent = z.infer<typeof videoDecisionContentSchema>;
 export type VideoDecisionCritique = z.infer<typeof videoDecisionCritiqueSchema>;
 export type VideoDecisionQAResult = z.infer<typeof videoDecisionQAResultSchema>;
 export type ChannelVideoDecisionResult = z.infer<typeof channelVideoDecisionResultSchema>;
+export type ApprovedVideoDecisionReference = z.infer<typeof approvedVideoDecisionReferenceSchema>;
+export type ApprovedVideoDecisionArtifact = z.infer<typeof approvedVideoDecisionArtifactSchema>;
+export type VideoExperimentRequestInput = z.infer<typeof videoExperimentRequestInputSchema>;
+export type VideoExperimentInput = z.infer<typeof videoExperimentInputSchema>;
+export type VideoExperimentScope = z.infer<typeof videoExperimentScopeSchema>;
+export type ExperimentType = z.infer<typeof experimentTypeSchema>;
+export type ExperimentMetric = z.infer<typeof experimentMetricSchema>;
+export type ExperimentControlKind = z.infer<typeof experimentControlKindSchema>;
+export type ExperimentDisposition = z.infer<typeof experimentDispositionSchema>;
+export type VideoExperimentConstraints = z.infer<typeof videoExperimentConstraintsSchema>;
+export type Experiment = z.infer<typeof experimentSchema>;
+export type ExperimentAlternative = z.infer<typeof experimentAlternativeSchema>;
+export type ExperimentDecisionDisagreement = z.infer<typeof experimentDecisionDisagreementSchema>;
+export type ExperimentViewerValueSafeguards = z.infer<typeof experimentViewerValueSafeguardsSchema>;
+export type VideoExperimentContent = z.infer<typeof videoExperimentContentSchema>;
+export type VideoExperimentCritique = z.infer<typeof videoExperimentCritiqueSchema>;
+export type VideoExperimentQAResult = z.infer<typeof videoExperimentQAResultSchema>;
+export type ChannelVideoExperimentResult = z.infer<typeof channelVideoExperimentResultSchema>;
 export type WorkflowStartRequest = z.infer<typeof workflowStartRequestSchema>;
 export type WorkflowApprovalDecision = z.infer<typeof workflowApprovalDecisionSchema>;
 
@@ -2937,6 +3326,23 @@ const channelVideoDecisionDefinition: WorkflowDefinition<VideoDecisionRequestInp
   ],
 };
 
+const channelVideoExperimentDefinition: WorkflowDefinition<VideoExperimentRequestInput, ChannelVideoExperimentResult> = {
+  type: "CHANNEL_VIDEO_EXPERIMENT",
+  version: 1,
+  objective: "Convert one exact approved, experiment-eligible CHANNEL_VIDEO_DECISION artifact into a single controlled, measurable, independently critiqued, human-approved experiment design without re-diagnosing, rewriting the decision, or executing anything",
+  inputSchema: videoExperimentRequestInputSchema,
+  outputSchema: channelVideoExperimentResultSchema,
+  steps: [
+    { key: "validate-approved-decision", kind: "WORKER", capability: "approved-decision-validation", dependsOn: [], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "derive-experiment-constraints", kind: "WORKER", capability: "deterministic-experiment-constraints", dependsOn: ["validate-approved-decision"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "draft-video-experiment", kind: "WORKER", capability: "video-experiment-design", dependsOn: ["derive-experiment-constraints"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "critique-video-experiment", kind: "WORKER", capability: "independent-video-experiment-critique", dependsOn: ["draft-video-experiment"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "final-video-experiment-qa", kind: "WORKER", capability: "deterministic-video-experiment-qa", dependsOn: ["critique-video-experiment"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "finalize-video-experiment", kind: "WORKER", capability: "video-experiment-finalizer", dependsOn: ["final-video-experiment-qa"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "review-video-experiment", kind: "APPROVAL", capability: "human", dependsOn: ["finalize-video-experiment"], maxAttempts: 1, retryBaseSeconds: 0 },
+  ],
+};
+
 const registry = new Map<string, WorkflowDefinition>([
   [`${channelConceptValidationDefinition.type}:${channelConceptValidationDefinition.version}`, channelConceptValidationDefinition],
   [`${channelResearchDefinition.type}:${channelResearchDefinition.version}`, channelResearchDefinition],
@@ -2949,6 +3355,7 @@ const registry = new Map<string, WorkflowDefinition>([
   [`${channelVideoPerformanceDefinition.type}:${channelVideoPerformanceDefinition.version}`, channelVideoPerformanceDefinition],
   [`${channelVideoDiagnosisDefinition.type}:${channelVideoDiagnosisDefinition.version}`, channelVideoDiagnosisDefinition],
   [`${channelVideoDecisionDefinition.type}:${channelVideoDecisionDefinition.version}`, channelVideoDecisionDefinition],
+  [`${channelVideoExperimentDefinition.type}:${channelVideoExperimentDefinition.version}`, channelVideoExperimentDefinition],
 ]);
 
 /** Canonical finalizer per workflow type; its output becomes the run's durable `output_payload`. */
@@ -2964,6 +3371,7 @@ export const WORKFLOW_FINALIZER_STEP: Record<ProductionWorkflowType, string> = {
   CHANNEL_VIDEO_PERFORMANCE: "finalize-video-performance",
   CHANNEL_VIDEO_DIAGNOSIS: "finalize-video-diagnosis",
   CHANNEL_VIDEO_DECISION: "finalize-video-decision",
+  CHANNEL_VIDEO_EXPERIMENT: "finalize-video-experiment",
 };
 
 export function getWorkflowDefinition(type: ProductionWorkflowType, version: number) {
