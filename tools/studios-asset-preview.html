@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Studios asset preview harness</title>
+<!--
+  Non-destructive preview harness for Channelwright Studios cinematic assets.
+
+  Standalone. Nothing in src/ imports this, no route is registered, and no
+  application code is touched. Delete the file and the product is unchanged.
+
+  Why it exists: assets for /studios-preview have to be judged *composited* —
+  a plate that looks superb on its own turns to grey mud at the 18-25% opacity
+  the page's contrast budget actually allows. This loads the live page in an
+  iframe and floats a candidate plate over it with the same controls the real
+  world layer would use, so a plate can be rejected before anyone writes CSS.
+
+  The overlay is `position: fixed` on purpose: the real world layer
+  (`.cw-world` in studios.css) is fixed too, so a plate installed there would
+  behave exactly like this while the journey scrolls underneath.
+
+  Usage:
+    1. npm run dev
+    2. open this file directly in a browser (file:// is fine)
+    3. choose a local image, then scroll inside the frame and dial the controls
+    4. copy the emitted CSS into the integration spike if it survives
+
+  Note: the iframe must be same-origin-friendly. If your browser blocks
+  file:// -> localhost framing, serve this file from the same origin, e.g.
+  `npx http-server tools -p 4000` and open http://localhost:4000/studios-asset-preview.html
+-->
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #050607;
+    color: #f2efe6;
+    font: 13px/1.5 ui-sans-serif, system-ui, sans-serif;
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  aside {
+    border-right: 1px solid rgba(242,239,230,.12);
+    padding: 18px 16px;
+    overflow-y: auto;
+    background: #0a0c10;
+  }
+  h1 {
+    font-size: 11px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: rgba(242,239,230,.4);
+    margin: 0 0 4px;
+    font-weight: 600;
+  }
+  .sub { font-size: 11px; color: rgba(242,239,230,.32); margin: 0 0 20px; }
+
+  fieldset { border: 0; padding: 0; margin: 0 0 18px; }
+  legend {
+    font-size: 10px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: #d8ff3e;
+    padding: 0;
+    margin-bottom: 10px;
+  }
+
+  label { display: block; margin-bottom: 12px; }
+  label > span {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: rgba(242,239,230,.55);
+    margin-bottom: 4px;
+  }
+  label > span b { color: #f2efe6; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+  input[type=range] { width: 100%; accent-color: #d8ff3e; }
+  input[type=file], select, input[type=url] {
+    width: 100%;
+    background: #12151b;
+    color: #f2efe6;
+    border: 1px solid rgba(242,239,230,.16);
+    border-radius: 2px;
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 12px;
+  }
+
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+
+  button {
+    width: 100%;
+    background: transparent;
+    color: #f2efe6;
+    border: 1px solid rgba(242,239,230,.24);
+    border-radius: 2px;
+    padding: 7px;
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  button:hover { border-color: #d8ff3e; color: #d8ff3e; }
+
+  pre {
+    background: #12151b;
+    border: 1px solid rgba(242,239,230,.12);
+    border-radius: 2px;
+    padding: 10px;
+    font-size: 10.5px;
+    line-height: 1.5;
+    color: rgba(242,239,230,.72);
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+  }
+
+  main { position: relative; overflow: hidden; }
+  iframe { width: 100%; height: 100%; border: 0; display: block; }
+
+  #plate {
+    position: fixed;
+    pointer-events: none;
+    inset: 0;
+    display: none;
+  }
+  #plate img {
+    position: absolute;
+    display: block;
+    transform-origin: 50% 50%;
+  }
+
+  /* Reading-wash guide: mirrors .cw-layer--copy::before in studios.css, so a
+     plate can be checked against the exact band the page reserves for copy. */
+  #guides {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    display: none;
+  }
+  #guides::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to right,
+      rgba(216,255,62,.10) 0 20%,
+      rgba(216,255,62,.05) 36%,
+      transparent 62%);
+    border-right: 0;
+  }
+  #guides::after {
+    content: "COPY BAND — must stay black in the asset";
+    position: absolute;
+    left: 12px;
+    top: 12px;
+    font-size: 9px;
+    letter-spacing: .16em;
+    color: #d8ff3e;
+    opacity: .7;
+  }
+</style>
+</head>
+<body>
+
+<aside>
+  <h1>Asset preview harness</h1>
+  <p class="sub">Non-destructive. Nothing here is part of the app.</p>
+
+  <fieldset>
+    <legend>Plate</legend>
+    <label><span>Local image file</span>
+      <input type="file" id="file" accept="image/*" />
+    </label>
+    <label><span>…or a URL</span>
+      <input type="url" id="url" placeholder="https://…" />
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Composite</legend>
+    <label><span>Opacity <b id="v-op">0.22</b></span>
+      <input type="range" id="op" min="0" max="1" step="0.01" value="0.22" />
+    </label>
+    <label><span>Blend mode</span>
+      <select id="blend">
+        <option>normal</option>
+        <option selected>screen</option>
+        <option>lighten</option>
+        <option>plus-lighter</option>
+        <option>overlay</option>
+        <option>soft-light</option>
+      </select>
+    </label>
+    <label><span>Saturation <b id="v-sat">0.7</b></span>
+      <input type="range" id="sat" min="0" max="1.4" step="0.05" value="0.7" />
+    </label>
+    <label><span>Contrast <b id="v-con">1</b></span>
+      <input type="range" id="con" min="0.4" max="2" step="0.05" value="1" />
+    </label>
+    <label><span>Brightness <b id="v-bri">1</b></span>
+      <input type="range" id="bri" min="0.2" max="2" step="0.05" value="1" />
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Placement</legend>
+    <label><span>Scale <b id="v-sc">1</b></span>
+      <input type="range" id="sc" min="0.3" max="3" step="0.01" value="1" />
+    </label>
+    <label><span>X <b id="v-x">0</b>vw</span>
+      <input type="range" id="x" min="-60" max="60" step="0.5" value="0" />
+    </label>
+    <label><span>Y <b id="v-y">0</b>vh</span>
+      <input type="range" id="y" min="-60" max="60" step="0.5" value="0" />
+    </label>
+    <label><span>Width <b id="v-w">100</b>vw</span>
+      <input type="range" id="w" min="20" max="180" step="1" value="100" />
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Edge falloff</legend>
+    <label><span>Left fade <b id="v-ml">40</b>%</span>
+      <input type="range" id="ml" min="0" max="80" step="1" value="40" />
+    </label>
+    <label><span>Bottom fade <b id="v-mb">20</b>%</span>
+      <input type="range" id="mb" min="0" max="80" step="1" value="20" />
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Reference</legend>
+    <div class="row">
+      <button id="toggle-guides">Copy band</button>
+      <button id="toggle-plate">Plate on/off</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Emitted CSS</legend>
+    <pre id="out"></pre>
+  </fieldset>
+</aside>
+
+<main>
+  <iframe id="stage" src="http://localhost:3000/studios-preview" title="Studios preview"></iframe>
+  <div id="guides"></div>
+  <div id="plate"><img id="img" alt="" /></div>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const plate = $('plate'), img = $('img'), out = $('out'), guides = $('guides');
+
+  const controls = {
+    op: 'v-op', sat: 'v-sat', con: 'v-con', bri: 'v-bri',
+    sc: 'v-sc', x: 'v-x', y: 'v-y', w: 'v-w', ml: 'v-ml', mb: 'v-mb',
+  };
+
+  function render() {
+    const val = (id) => Number($(id).value);
+    for (const [id, label] of Object.entries(controls)) $(label).textContent = val(id);
+
+    const blend = $('blend').value;
+    const filter = `saturate(${val('sat')}) contrast(${val('con')}) brightness(${val('bri')})`;
+    const mask = `linear-gradient(to right, transparent 0, #000 ${val('ml')}%), ` +
+                 `linear-gradient(to top, transparent 0, #000 ${val('mb')}%)`;
+
+    Object.assign(plate.style, { opacity: val('op'), mixBlendMode: blend });
+    Object.assign(img.style, {
+      width: val('w') + 'vw',
+      left: '50%',
+      top: '50%',
+      filter,
+      maskImage: mask,
+      webkitMaskImage: mask,
+      maskComposite: 'intersect',
+      webkitMaskComposite: 'source-in',
+      transform: `translate(-50%, -50%) translate(${val('x')}vw, ${val('y')}vh) scale(${val('sc')})`,
+    });
+
+    out.textContent =
+`.cw-plate--<name> {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: ${val('w')}vw;
+  transform:
+    translate(-50%, -50%)
+    translate(${val('x')}vw, ${val('y')}vh)
+    scale(${val('sc')});
+  opacity: ${val('op')};
+  mix-blend-mode: ${blend};
+  filter: ${filter};
+  mask-image: ${mask};
+  mask-composite: intersect;
+}`;
+  }
+
+  for (const id of [...Object.keys(controls), 'blend']) {
+    $(id).addEventListener('input', render);
+  }
+
+  $('file').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    img.src = URL.createObjectURL(f);
+    plate.style.display = 'block';
+  });
+
+  $('url').addEventListener('change', (e) => {
+    if (!e.target.value) return;
+    img.src = e.target.value;
+    plate.style.display = 'block';
+  });
+
+  $('toggle-guides').addEventListener('click', () => {
+    guides.style.display = guides.style.display === 'block' ? 'none' : 'block';
+  });
+
+  $('toggle-plate').addEventListener('click', () => {
+    plate.style.display = plate.style.display === 'block' ? 'none' : 'block';
+  });
+
+  render();
+</script>
+</body>
+</html>
