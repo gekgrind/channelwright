@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { originalContributionKindSchema, viewerNeedKindSchema, viewerValueAssessmentSchema, viewerValueProvenanceSchema } from "./viewer-value";
 
-export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING", "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE", "CHANNEL_VIDEO_DIAGNOSIS"]);
+export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING", "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE", "CHANNEL_VIDEO_DIAGNOSIS", "CHANNEL_VIDEO_DECISION"]);
 export type ProductionWorkflowType = z.infer<typeof workflowTypeSchema>;
 
 export const workflowStatusSchema = z.enum(["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL", "BLOCKED", "COMPLETED", "FAILED", "CANCELED"]);
@@ -2247,6 +2247,309 @@ export const channelVideoDiagnosisResultSchema = z.object({
   modelProvenance: z.array(modelAttributionSchema).length(2),
 }).strict();
 
+// ---------------------------------------------------------------------------
+// CHANNEL_VIDEO_DECISION
+//
+// The human decision-authority boundary after one exact, approved Diagnosis.
+// Decision converts evidence-supported conditions and uncertainty into a
+// single chosen direction from a bounded taxonomy, with cited findings,
+// ranked alternatives, and a confidence the evidence actually entitles it to.
+// It never revises Diagnosis, designs experiments, or executes anything.
+// ---------------------------------------------------------------------------
+
+export const approvedVideoDiagnosisReferenceSchema = z.object({
+  diagnosisWorkflowId: z.string().uuid(),
+  diagnosisRunId: z.string().uuid(),
+  workflowDefinitionVersion: z.number().int().positive(),
+  outputSchemaVersion: z.literal(1),
+  approvalId: z.string().uuid(),
+  approvedBy: z.string().uuid(),
+  approvedAt: z.string().datetime(),
+  finalQaState: z.enum(["accept", "human_review_required"]),
+  finalQaScore: z.number().int().min(0).max(100),
+  diagnosisArtifactHash: sha256Schema,
+  diagnosisProvenanceHash: sha256Schema,
+  parentRunId: z.string().uuid().nullable(),
+  rootRunId: z.string().uuid(),
+  upstreamVideoPerformance: approvedVideoPerformanceReferenceSchema,
+}).strict();
+
+export const videoDecisionRequestInputSchema = z.object({
+  videoDiagnosisWorkflowId: z.string().uuid(),
+  videoDiagnosisRunId: z.string().uuid(),
+}).strict();
+
+export const decisionLineageWorkflowTypeSchema = z.enum([
+  "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE",
+  "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING",
+  "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE", "CHANNEL_VIDEO_DIAGNOSIS",
+]);
+
+export const decisionArtifactIdentitySchema = z.object({
+  workflowType: decisionLineageWorkflowTypeSchema,
+  runId: z.string().uuid(),
+  artifactHash: sha256Schema,
+  schemaVersion: z.number().int().positive(),
+}).strict();
+
+export const decisionLineageLocatorSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("STABLE_ID"),
+    entityType: z.enum(["TITLE_CANDIDATE", "THUMBNAIL_CONCEPT", "CHAPTER", "SCRIPT_SECTION", "BRIEF_BEAT", "BRIEF_CLAIM", "EVIDENCE", "TOPIC", "PILLAR"]),
+    id: z.string().min(1).max(200),
+  }).strict(),
+  z.object({
+    kind: z.literal("ARTIFACT_LOCAL"),
+    entityType: z.enum(["STRATEGY_ASSERTION", "STRATEGY_KPI", "STRATEGY_PILLAR", "SINGLETON", "ARRAY_ELEMENT"]),
+    workflowType: decisionLineageWorkflowTypeSchema,
+    runId: z.string().uuid(),
+    artifactHash: sha256Schema,
+    schemaVersion: z.number().int().positive(),
+    jsonPointer: z.string().regex(/^\/(?:[^/~]|~0|~1)+(?:\/(?:[^/~]|~0|~1)+)*$/).max(500),
+  }).strict(),
+]);
+
+export const decisionLineageEntrySchema = z.object({
+  key: z.string().regex(/^lin:[a-z0-9][a-z0-9:._-]{0,198}$/),
+  locator: decisionLineageLocatorSchema,
+  parentKeys: z.array(z.string().regex(/^lin:/)).max(8),
+  label: z.string().min(1).max(300).nullable(),
+}).strict();
+
+export const videoDecisionScopeSchema = z.object({
+  artifacts: z.array(decisionArtifactIdentitySchema).min(9).max(9),
+  entries: z.array(decisionLineageEntrySchema).min(1).max(260),
+  facts: z.array(z.object({
+    key: z.string().regex(/^fact:[a-z0-9][a-z0-9:._-]{0,118}$/),
+    value: z.union([z.string().max(2_000), z.number(), z.boolean(), z.null()]),
+    sourceRef: z.string().min(1).max(300),
+  }).strict()).min(1).max(90),
+}).strict().superRefine((scope, context) => {
+  const requiredArtifactTypes = new Set(decisionLineageWorkflowTypeSchema.options);
+  const artifactTypes = new Set(scope.artifacts.map((artifact) => artifact.workflowType));
+  if (artifactTypes.size !== requiredArtifactTypes.size || [...requiredArtifactTypes].some((type) => !artifactTypes.has(type))) {
+    context.addIssue({ code: "custom", path: ["artifacts"], message: "Decision scope must contain exactly one artifact from every approved lineage workflow, including Diagnosis." });
+  }
+  const keys = new Set<string>();
+  const locatorIdentities = new Set<string>();
+  for (const [index, entry] of scope.entries.entries()) {
+    if (keys.has(entry.key)) context.addIssue({ code: "custom", path: ["entries", index, "key"], message: "Lineage keys must be unique." });
+    keys.add(entry.key);
+    const locatorIdentity = entry.locator.kind === "STABLE_ID"
+      ? `${entry.locator.kind}:${entry.locator.entityType}:${entry.locator.id}`
+      : `${entry.locator.kind}:${entry.locator.workflowType}:${entry.locator.runId}:${entry.locator.artifactHash}:${entry.locator.schemaVersion}:${entry.locator.jsonPointer}`;
+    if (locatorIdentities.has(locatorIdentity)) context.addIssue({ code: "custom", path: ["entries", index, "locator"], message: "Lineage locators must be unique." });
+    locatorIdentities.add(locatorIdentity);
+    if (entry.locator.kind === "ARTIFACT_LOCAL") {
+      const locator = entry.locator;
+      if (!scope.artifacts.some((artifact) => artifact.workflowType === locator.workflowType && artifact.runId === locator.runId && artifact.artifactHash === locator.artifactHash && artifact.schemaVersion === locator.schemaVersion)) {
+        context.addIssue({ code: "custom", path: ["entries", index, "locator"], message: "Artifact-local locator identity must match an authoritative scope artifact." });
+      }
+    }
+  }
+  for (const [index, entry] of scope.entries.entries()) {
+    for (const parent of entry.parentKeys) if (!keys.has(parent)) context.addIssue({ code: "custom", path: ["entries", index, "parentKeys"], message: `Unknown lineage parent ${parent}.` });
+  }
+  const factKeys = new Set<string>();
+  for (const [index, fact] of scope.facts.entries()) {
+    if (factKeys.has(fact.key)) context.addIssue({ code: "custom", path: ["facts", index, "key"], message: "Fact keys must be unique." });
+    factKeys.add(fact.key);
+  }
+});
+
+export const approvedVideoDiagnosisArtifactSchema = z.object({
+  reference: approvedVideoDiagnosisReferenceSchema,
+  diagnosisResult: channelVideoDiagnosisResultSchema,
+  decisionScope: videoDecisionScopeSchema,
+}).strict();
+
+/** The bounded decision taxonomy. No numeric priority, ROI, lift, or probability field exists anywhere in this contract. */
+export const decisionTypeSchema = z.enum([
+  "PRESERVE_CURRENT_APPROACH",
+  "GATHER_EVIDENCE",
+  "INVESTIGATE",
+  "PRIORITIZE_CHANGE",
+  "DEFER",
+  "ESCALATE_TO_HUMAN_JUDGMENT",
+]);
+
+export const decisionEvidenceStrengthSchema = z.enum(["STRONG", "MODERATE", "WEAK", "NONE"]);
+
+export const decisionCategoryEvidenceSchema = z.object({
+  category: diagnosisCategorySchema,
+  availability: z.enum(["AVAILABLE", "UNAVAILABLE"]),
+  supportedFindingIds: z.array(z.string().regex(/^diag:/)).max(24),
+  hypothesisFindingIds: z.array(z.string().regex(/^diag:/)).max(24),
+  contradictedFindingIds: z.array(z.string().regex(/^diag:/)).max(24),
+  constrainingUnknownIds: z.array(z.string().regex(/^unknown:/)).max(24),
+  confidenceCeiling: z.enum(["high", "medium", "low"]),
+  evidenceStrength: decisionEvidenceStrengthSchema,
+  permittedDecisionTypes: z.array(decisionTypeSchema).min(1).max(6),
+}).strict();
+
+export const videoDecisionEvidenceSchema = z.object({
+  categories: z.array(decisionCategoryEvidenceSchema).min(7).max(9),
+  evidenceRequirements: z.array(z.string().min(1).max(500)).max(48),
+  globalConfidenceCeiling: z.enum(["high", "medium", "low"]),
+  diagnosisOutcome: z.enum(["SUPPORTED_FINDINGS", "MIXED", "INCONCLUSIVE", "INSUFFICIENT_EVIDENCE"]),
+  viewerValueState: z.enum(["PRESERVED", "AT_RISK", "UNKNOWN"]),
+  citableFindingIds: z.array(z.string().regex(/^diag:/)).max(24),
+  citableUnknownIds: z.array(z.string().regex(/^unknown:/)).max(24),
+  citableObservationIds: z.array(z.string().regex(/^obs:/)).max(80),
+  citableLineageKeys: z.array(z.string().regex(/^lin:/)).max(260),
+}).strict();
+
+export const videoDecisionMeasurementObjectiveSchema = z.object({
+  objective: z.string().min(1).max(800),
+  boundedScope: z.string().min(1).max(800),
+  experimentDesignDeferred: z.literal(true),
+}).strict();
+
+export const videoDecisionSchema = z.object({
+  id: z.string().regex(/^decision:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  decisionType: decisionTypeSchema,
+  disposition: z.enum(["MAINTAIN", "LEARN_MORE", "EXPLORE_CHANGE", "CHANGE", "HOLD", "ESCALATE"]),
+  category: diagnosisCategorySchema,
+  statement: z.string().min(1).max(1_200),
+  rationale: z.string().min(1).max(2_000),
+  evidenceBasis: z.string().min(1).max(1_200),
+  supportingFindingIds: z.array(z.string().regex(/^diag:/)).max(24),
+  supportingObservationIds: z.array(z.string().regex(/^obs:/)).max(24),
+  constrainingUnknownIds: z.array(z.string().regex(/^unknown:/)).max(24),
+  acknowledgedContradictions: z.array(z.string().min(1).max(600)).max(12),
+  confidence: z.enum(["high", "medium", "low"]),
+  reversibility: z.enum(["EASILY_REVERSIBLE", "MODERATELY_REVERSIBLE", "HARD_TO_REVERSE"]),
+  risk: z.enum(["low", "medium", "high"]),
+  urgency: z.enum(["low", "medium", "high"]),
+  expectedLearningValue: z.string().min(1).max(800),
+  evidenceStrength: decisionEvidenceStrengthSchema,
+  evidenceToStrengthen: z.array(z.string().min(1).max(500)).max(12),
+  evidenceThatWouldReverse: z.array(z.string().min(1).max(500)).min(1).max(12),
+  measurementObjective: videoDecisionMeasurementObjectiveSchema.nullable(),
+  requiresHumanJudgment: z.boolean(),
+  executionDeferred: z.literal(true),
+}).strict().superRefine((decision, context) => {
+  if (decision.decisionType === "GATHER_EVIDENCE" && decision.measurementObjective === null) {
+    context.addIssue({ code: "custom", path: ["measurementObjective"], message: "GATHER_EVIDENCE requires a bounded measurement objective." });
+  }
+  if (decision.decisionType !== "GATHER_EVIDENCE" && decision.measurementObjective !== null) {
+    context.addIssue({ code: "custom", path: ["measurementObjective"], message: "Only GATHER_EVIDENCE may declare a measurement objective." });
+  }
+  if (decision.decisionType === "ESCALATE_TO_HUMAN_JUDGMENT" && !decision.requiresHumanJudgment) {
+    context.addIssue({ code: "custom", path: ["requiresHumanJudgment"], message: "Escalation must set requiresHumanJudgment." });
+  }
+});
+
+export const videoDecisionAlternativeSchema = z.object({
+  id: z.string().regex(/^alt:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  decisionType: decisionTypeSchema,
+  statement: z.string().min(1).max(1_200),
+  supportingFindingIds: z.array(z.string().regex(/^diag:/)).max(24),
+  contradictingFindingIds: z.array(z.string().regex(/^diag:/)).max(24),
+  blockingUnknownIds: z.array(z.string().regex(/^unknown:/)).max(24),
+  notSelectedBecause: z.enum(["INSUFFICIENT_EVIDENCE", "HIGHER_RISK", "LOWER_LEARNING_VALUE", "VIEWER_VALUE_CONFLICT", "REDUNDANT_WITH_PRIMARY", "PREMATURE", "OTHER"]),
+  notSelectedReason: z.string().min(1).max(800),
+}).strict();
+
+export const videoDecisionDisagreementSchema = z.object({
+  id: z.string().regex(/^disagreement:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  disputedFindingId: z.string().regex(/^diag:/),
+  disputedUnknownId: z.string().regex(/^unknown:/).nullable(),
+  objection: z.string().min(1).max(1_200),
+  basis: z.string().min(1).max(1_200),
+}).strict();
+
+export const videoDecisionViewerValueImpactSchema = z.object({
+  inheritedState: z.enum(["PRESERVED", "AT_RISK", "UNKNOWN"]),
+  promiseIntegrityRisk: z.enum(["NONE", "POSSIBLE", "LIKELY"]),
+  metricGainVersusViewerBenefit: z.string().min(1).max(1_200),
+  escalationRequired: z.boolean(),
+}).strict();
+
+export const videoDecisionCrossModelReviewSchema = z.object({
+  analyst: modelAttributionSchema,
+  critic: modelAttributionSchema,
+  outcome: z.enum(["AGREED", "CRITIC_RAISED_ISSUE", "HUMAN_REVIEW_REQUIRED"]),
+  safeToFinalize: z.boolean(),
+  findings: z.array(z.object({
+    code: z.string().regex(/^[A-Z][A-Z0-9_]{2,79}$/),
+    severity: z.enum(["error", "warning", "info"]),
+    affectedField: z.string().min(1).max(200),
+    rationale: z.string().min(1).max(900),
+    evidenceRefs: z.array(z.string().min(1).max(200)).max(20),
+  }).strict()).max(20),
+  summary: z.string().min(1).max(2_500),
+}).strict();
+
+export const videoDecisionContentSchema = z.object({
+  decision: videoDecisionSchema,
+  alternatives: z.array(videoDecisionAlternativeSchema).min(1).max(6),
+  diagnosisDisagreements: z.array(videoDecisionDisagreementSchema).max(8),
+  viewerValueImpact: videoDecisionViewerValueImpactSchema,
+  experimentEligible: z.boolean(),
+}).strict().superRefine((content, context) => {
+  const ids = new Set<string>([content.decision.id]);
+  for (const [index, alternative] of content.alternatives.entries()) {
+    if (ids.has(alternative.id)) context.addIssue({ code: "custom", path: ["alternatives", index, "id"], message: "Decision and alternative IDs must be unique." });
+    ids.add(alternative.id);
+  }
+});
+
+export const videoDecisionInputSchema = videoDecisionRequestInputSchema.extend({
+  approvedVideoDiagnosisReference: approvedVideoDiagnosisReferenceSchema,
+  humanRevisionNote: z.string().trim().min(1).max(2_000).optional(),
+}).strict();
+
+export const videoDecisionDraftSchema = z.object({
+  content: videoDecisionContentSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+  analyst: modelAttributionSchema,
+}).strict();
+
+export const videoDecisionCritiqueSchema = z.object({
+  safeToFinalize: z.boolean(),
+  summary: z.string().min(1).max(2_500),
+  findings: videoDecisionCrossModelReviewSchema.shape.findings,
+}).strict();
+
+export const videoDecisionCritiqueStepSchema = z.object({
+  critique: videoDecisionCritiqueSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+  critic: modelAttributionSchema,
+}).strict();
+
+export const videoDecisionQAResultSchema = researchQAResultSchema;
+export const videoDecisionQAStepSchema = z.object({
+  qa: videoDecisionQAResultSchema,
+  crossModelReview: videoDecisionCrossModelReviewSchema,
+  result: z.unknown(),
+}).strict();
+
+export const channelVideoDecisionResultSchema = z.object({
+  schemaVersion: z.literal(1),
+  workflowType: z.literal("CHANNEL_VIDEO_DECISION"),
+  decidedAt: z.string().datetime(),
+  source: z.object({
+    diagnosisWorkflowId: z.string().uuid(),
+    diagnosisRunId: z.string().uuid(),
+    performanceWorkflowId: z.string().uuid(),
+    performanceRunId: z.string().uuid(),
+    releaseWorkflowId: z.string().uuid(),
+    releaseRunId: z.string().uuid(),
+    topicId: topicIdSchema,
+    pillarId: pillarIdSchema,
+    finalTitle: z.string().min(1).max(100),
+    subjectIdentity: z.string().min(1).max(300),
+  }).strict(),
+  approvedVideoDiagnosisReference: approvedVideoDiagnosisReferenceSchema,
+  decisionScope: videoDecisionScopeSchema,
+  decisionEvidence: videoDecisionEvidenceSchema,
+  content: videoDecisionContentSchema,
+  viewerValueProvenance: viewerValueProvenanceSchema,
+  crossModelReview: videoDecisionCrossModelReviewSchema,
+  modelProvenance: z.array(modelAttributionSchema).length(2),
+}).strict();
+
 export const channelConceptValidationInputSchema = z.object({
   proposedConcept: z.string().trim().min(20).max(2_000),
   audienceContext: z.string().trim().min(3).max(2_000).optional(),
@@ -2269,7 +2572,8 @@ export const workflowStartRequestSchema = z.object({
               : request.workflowType === "CHANNEL_VIDEO_RELEASE" ? videoReleaseRequestInputSchema
                 : request.workflowType === "CHANNEL_VIDEO_PERFORMANCE" ? videoPerformanceRequestInputSchema
                   : request.workflowType === "CHANNEL_VIDEO_DIAGNOSIS" ? videoDiagnosisRequestInputSchema
-                    : channelConceptValidationInputSchema;
+                    : request.workflowType === "CHANNEL_VIDEO_DECISION" ? videoDecisionRequestInputSchema
+                      : channelConceptValidationInputSchema;
   const parsed = schema.safeParse(request.input);
   if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue, path: ["input", ...issue.path] });
 }).transform((request) => request as
@@ -2282,7 +2586,8 @@ export const workflowStartRequestSchema = z.object({
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_PACKAGING"; definitionVersion: 1; input: VideoPackagingRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_RELEASE"; definitionVersion: 1; input: VideoReleaseRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_PERFORMANCE"; definitionVersion: 1; input: VideoPerformanceRequestInput }
-  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_DIAGNOSIS"; definitionVersion: 1; input: VideoDiagnosisRequestInput });
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_DIAGNOSIS"; definitionVersion: 1; input: VideoDiagnosisRequestInput }
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_DECISION"; definitionVersion: 1; input: VideoDecisionRequestInput });
 
 export const workflowApprovalDecisionSchema = z.object({
   decision: z.enum(["APPROVE", "REJECT", "REQUEST_REVISION"]),
@@ -2406,6 +2711,22 @@ export type VideoDiagnosisAnalysis = z.infer<typeof videoDiagnosisAnalysisSchema
 export type VideoDiagnosisCritique = z.infer<typeof videoDiagnosisCritiqueSchema>;
 export type VideoDiagnosisQAResult = z.infer<typeof videoDiagnosisQAResultSchema>;
 export type ChannelVideoDiagnosisResult = z.infer<typeof channelVideoDiagnosisResultSchema>;
+export type ApprovedVideoDiagnosisReference = z.infer<typeof approvedVideoDiagnosisReferenceSchema>;
+export type ApprovedVideoDiagnosisArtifact = z.infer<typeof approvedVideoDiagnosisArtifactSchema>;
+export type VideoDecisionRequestInput = z.infer<typeof videoDecisionRequestInputSchema>;
+export type VideoDecisionInput = z.infer<typeof videoDecisionInputSchema>;
+export type VideoDecisionScope = z.infer<typeof videoDecisionScopeSchema>;
+export type DecisionType = z.infer<typeof decisionTypeSchema>;
+export type DecisionCategoryEvidence = z.infer<typeof decisionCategoryEvidenceSchema>;
+export type VideoDecisionEvidence = z.infer<typeof videoDecisionEvidenceSchema>;
+export type VideoDecision = z.infer<typeof videoDecisionSchema>;
+export type VideoDecisionAlternative = z.infer<typeof videoDecisionAlternativeSchema>;
+export type VideoDecisionDisagreement = z.infer<typeof videoDecisionDisagreementSchema>;
+export type VideoDecisionViewerValueImpact = z.infer<typeof videoDecisionViewerValueImpactSchema>;
+export type VideoDecisionContent = z.infer<typeof videoDecisionContentSchema>;
+export type VideoDecisionCritique = z.infer<typeof videoDecisionCritiqueSchema>;
+export type VideoDecisionQAResult = z.infer<typeof videoDecisionQAResultSchema>;
+export type ChannelVideoDecisionResult = z.infer<typeof channelVideoDecisionResultSchema>;
 export type WorkflowStartRequest = z.infer<typeof workflowStartRequestSchema>;
 export type WorkflowApprovalDecision = z.infer<typeof workflowApprovalDecisionSchema>;
 
@@ -2599,6 +2920,23 @@ const channelVideoDiagnosisDefinition: WorkflowDefinition<VideoDiagnosisRequestI
   ],
 };
 
+const channelVideoDecisionDefinition: WorkflowDefinition<VideoDecisionRequestInput, ChannelVideoDecisionResult> = {
+  type: "CHANNEL_VIDEO_DECISION",
+  version: 1,
+  objective: "Convert one exact approved CHANNEL_VIDEO_DIAGNOSIS artifact into a single evidence-cited, independently critiqued, human-approved decision of record without designing an experiment or executing an action",
+  inputSchema: videoDecisionRequestInputSchema,
+  outputSchema: channelVideoDecisionResultSchema,
+  steps: [
+    { key: "validate-approved-diagnosis", kind: "WORKER", capability: "approved-diagnosis-validation", dependsOn: [], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "derive-decision-evidence", kind: "WORKER", capability: "deterministic-decision-evidence", dependsOn: ["validate-approved-diagnosis"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "draft-video-decision", kind: "WORKER", capability: "video-decision-analysis", dependsOn: ["derive-decision-evidence"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "critique-video-decision", kind: "WORKER", capability: "independent-video-decision-critique", dependsOn: ["draft-video-decision"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "final-video-decision-qa", kind: "WORKER", capability: "deterministic-video-decision-qa", dependsOn: ["critique-video-decision"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "finalize-video-decision", kind: "WORKER", capability: "video-decision-finalizer", dependsOn: ["final-video-decision-qa"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "review-video-decision", kind: "APPROVAL", capability: "human", dependsOn: ["finalize-video-decision"], maxAttempts: 1, retryBaseSeconds: 0 },
+  ],
+};
+
 const registry = new Map<string, WorkflowDefinition>([
   [`${channelConceptValidationDefinition.type}:${channelConceptValidationDefinition.version}`, channelConceptValidationDefinition],
   [`${channelResearchDefinition.type}:${channelResearchDefinition.version}`, channelResearchDefinition],
@@ -2610,6 +2948,7 @@ const registry = new Map<string, WorkflowDefinition>([
   [`${channelVideoReleaseDefinition.type}:${channelVideoReleaseDefinition.version}`, channelVideoReleaseDefinition],
   [`${channelVideoPerformanceDefinition.type}:${channelVideoPerformanceDefinition.version}`, channelVideoPerformanceDefinition],
   [`${channelVideoDiagnosisDefinition.type}:${channelVideoDiagnosisDefinition.version}`, channelVideoDiagnosisDefinition],
+  [`${channelVideoDecisionDefinition.type}:${channelVideoDecisionDefinition.version}`, channelVideoDecisionDefinition],
 ]);
 
 /** Canonical finalizer per workflow type; its output becomes the run's durable `output_payload`. */
@@ -2624,6 +2963,7 @@ export const WORKFLOW_FINALIZER_STEP: Record<ProductionWorkflowType, string> = {
   CHANNEL_VIDEO_RELEASE: "finalize-video-release",
   CHANNEL_VIDEO_PERFORMANCE: "finalize-video-performance",
   CHANNEL_VIDEO_DIAGNOSIS: "finalize-video-diagnosis",
+  CHANNEL_VIDEO_DECISION: "finalize-video-decision",
 };
 
 export function getWorkflowDefinition(type: ProductionWorkflowType, version: number) {
