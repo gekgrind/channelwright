@@ -121,6 +121,55 @@ viewer must never be able to locate the back wall of the room.
 Test: at `opacity: .22` over `#050607`, the asset must still read as *black
 metal with lit edges*, not as a grey rectangle.
 
+### 2.1a Compositing is a separate problem from exposure
+
+Owner review of the CRT base plate **at full exposure** found the vintage-CRT
+language present and correct: varied CRT sizes, curved glass, visible knobs and
+dials, irregular stacking, mixed television eras, an asymmetric wall, and
+substantial left-side negative space. The earlier worry that it reads as a
+generic broadcast equipment rack was **an artefact of the compositing
+treatment, not of the asset.** Too much CRT detail was being destroyed on the
+way onto the page.
+
+So §2.1's exposure rule stands — author dark — but the recipe that was paired
+with it does not. `opacity: .22` applied uniformly is the wrong instrument: it
+scales highlights and mid-tones by the same factor, so the specular hits that
+*describe* a curved screen and a knurled knob fall below perceptual threshold
+at exactly the same rate as the bulk of the object. What survives is a mass,
+which is precisely "equipment rack".
+
+The correction is to **crush rather than dim**: keep the plate closer to full
+strength and use contrast to push mid-tones toward black while leaving lit
+edges intact.
+
+Three recipes to test, in order (all over `#050607`):
+
+```css
+/* A — crushed, recommended starting point */
+opacity: .45; mix-blend-mode: screen;
+filter: contrast(1.35) brightness(.85) saturate(.6);
+
+/* B — harder crush, for a plate that still muddies the copy band */
+opacity: .55; mix-blend-mode: screen;
+filter: contrast(1.6) brightness(.7) saturate(.55);
+
+/* C — purely additive; preserves highlights best, lifts blacks least */
+opacity: .5; mix-blend-mode: plus-lighter;
+filter: contrast(1.25) brightness(.75) saturate(.6);
+```
+
+The governing test is unchanged and is *not* "is it dark enough" — it is
+**"can I still tell one television from another, and is the headline still the
+brightest thing in the frame."** Both must be true at once. If they cannot be,
+the crop is wrong before the exposure is.
+
+A consequence worth stating: a *subject* plate (the CRT wall, the cinema
+camera) and a *texture* plate (haze, a dissolving hall) want opposite
+treatments. Texture can be dimmed. Subject must be crushed. The bible's
+exposure clause applies to both; this recipe applies only to subjects.
+
+---
+
 ### 2.2 Environment
 
 Near-black cinematic soundstage. Deep atmospheric haze, used for depth
@@ -700,11 +749,17 @@ All in the Magnific Personal project.
 
 | Working name | Intended location | Ratio | Native |
 |---|---|---|---|
-| `crt-wall-state-a-v1` | Dept 01 back wall, dormant state | 21:9 | 3024×1296 |
-| `crt-wall-state-a-v2` | alternate composition of the same | 21:9 | 3024×1296 |
-| `crt-wall-state-b` | Dept 01 back wall, active state (matched to v1) | 21:9 | 3024×1296 |
-| `soundstage-threshold-v1` | Beat 2, inside `.cw-threshold` | 3:4 | portrait |
-| `soundstage-threshold-v2` | alternate composition of the same | 3:4 | portrait |
+| Working name | Intended location | Seed | Native |
+|---|---|---|---|
+| `crt-wall-state-a-v1` | Dept 01 back wall, dormant | 318661 | 3024×1296 |
+| `crt-wall-state-a-v2` | alternate composition | 617339 | 3024×1296 |
+| `crt-wall-state-b` | Dept 01 back wall, active (matched to v1) | 931176 | 3024×1296 |
+| `soundstage-threshold-v1` | Beat 2, inside `.cw-threshold` | — | portrait |
+| `soundstage-threshold-v2` | alternate composition | — | portrait |
+
+Three distinct seeds, three distinct server-side asset IDs, and two distinct
+batch families for the CRT set — recorded here because a download anomaly (§8a)
+later made that provenance the deciding evidence.
 
 Proposed repo paths when and if a production phase is approved (note: the
 repository currently has **no `public/` directory** — one would be created):
@@ -742,18 +797,19 @@ nothing from `src/` and no application code references it.
 
 **The evaluation to run, in order:**
 
-1. Open each plate at `opacity: .22`, `mix-blend-mode: screen`, `saturate(.7)`
-   over Department 01 (`--j` ≈ 0.16–0.24). **Pass condition:** it still reads
-   as black metal and lit glass. **Fail condition:** it goes grey and flat —
-   which means the exposure clause is not strong enough and the next round
-   needs an explicit "black point crushed, no lifted shadows" instruction.
+1. Open each plate over Department 01 (`--j` ≈ 0.16–0.24) and find a composite
+   that keeps the CRT character — see §2.1a for why `opacity: .22` alone is now
+   known to be the wrong recipe, and for the three settings to try instead.
+   **Pass condition:** curved glass, knobs, mismatched bezels and era
+   differences are still legible. **Fail condition:** the bank flattens into an
+   undifferentiated equipment rack.
 2. Check the headline at that composite. If any part of the plate is readable
    inside the left 36% of the frame, the composition is wrong regardless of
    how good the image is.
-3. Toggle state A against state B at the same placement. **Pass condition:**
-   the bank does not shift — screens change, geometry does not. **Fail
-   condition:** any camera or layout drift, which kills the matched-state
-   technique and forces a rethink of Beats 3, 7 and 8.
+3. **Matched state — currently UNTESTED, see §8a.** Toggle state A against
+   state B at the same placement. **Pass condition:** the bank does not shift —
+   screens change, geometry does not. **Fail condition:** any camera or layout
+   drift. This check has not yet been performed on genuinely distinct files.
 4. Check the acid tally in state B. It must read as an indicator. If it casts
    colour on surrounding surfaces, reject and regenerate.
 5. Put the portrait plate behind the threshold at `--j` ≈ 0.10–0.12 and scroll
@@ -765,6 +821,72 @@ Judgements to be sceptical of when reviewing: an image that looks impressive
 on its own is not evidence — the only question is whether it survives being
 demoted to 22% behind hairline vector without turning to mud, and whether the
 headline is still the brightest thing in the frame afterwards.
+
+---
+
+## 8a. Matched state: UNTESTED, and the duplicate-file investigation
+
+**Status of the matched-state technique: UNTESTED.** Not passed, not failed.
+Nothing downstream may assume either result.
+
+### What happened
+
+Owner comparison of the three downloaded CRT files found all three
+**pixel-identical**, at **2048×877** — dormant variant 1, dormant variant 2,
+and the file believed to be the active state.
+
+### What the platform metadata says
+
+Queried directly. The three CRT creations are distinct server-side objects:
+
+| | asset ID | batch family | seed | reported size | created |
+|---|---|---|---|---|---|
+| A-v1 | 5366566439 | `a2ae2fb5…` | 318661 | 3024×1296 | 10:21:24Z |
+| A-v2 | 5366566268 | `a2ae2fb5…` | 617339 | 3024×1296 | 10:21:24Z |
+| B | 5366581567 | `a2ae30c9…` | 931176 | 3024×1296 | 10:24:25Z |
+
+A project listing returns exactly five creations, no more and no fewer, each
+with its correct prompt stored — the active-state prompt is recorded against B,
+so the request was not silently dropped.
+
+### What follows from that
+
+1. **Distinct URLs were issued.** Three different asset paths with three
+   different signed hashes. The duplication was not caused by handing over the
+   same link three times.
+2. **The sizes do not match.** Every render is 3024×1296; every downloaded file
+   is 2048×877 — the same aspect, downscaled to 2048 wide. So the files in hand
+   did **not** come from the full-resolution asset URLs. Whatever path produced
+   them resized, and that same path is the prime suspect for the duplication.
+3. **A-v1 ≡ A-v2 is the anomaly that matters.** Different seeds, no reference
+   image, separate asset IDs. There is no plausible generation-side story for
+   two different seeds producing identical pixels. A reference pass-through
+   could explain B ≡ A-v1, but nothing explains A-v1 ≡ A-v2 except a
+   retrieval-, cache- or save-side collapse.
+4. **Therefore the weight of evidence points at the download path, not at
+   generation.** Stated as INFERRED, not verified: this session cannot fetch
+   the bytes (the CDN is denied by egress policy), so nobody has yet confirmed
+   whether the three server-side assets actually differ.
+
+### The three checks that settle it, none of which cost credits
+
+- **Control.** Compare the two soundstage files to each other. Same batch
+  shape, different prompt. Both identical → the fault is systemic in the
+  download path. Different → the path works, and something specific happened
+  to the CRT three.
+- **Clean re-fetch.** Download the three full-resolution asset URLs one at a
+  time in a fresh private window, renaming each before starting the next, then
+  hash them. Confirms or eliminates cache collision. Correct files must be
+  **3024×1296**; anything 2048 wide is the wrong asset.
+- **Independent path.** Fetch the three 1024-wide preview variants and hash
+  those. Distinct paths, distinct signatures, different resize pipeline.
+
+If all three server-side assets prove identical, the failure is Magnific's and
+the matched-state approach still has not been tested. If they differ, the
+technique can finally be evaluated on the files already paid for.
+
+Either way: **do not regenerate the base CRT composition.** It has been
+reviewed at full exposure and it is right.
 
 ---
 
@@ -812,10 +934,29 @@ threshold and one CRT crop — and reproduce the *story*, not the geometry.
 Unchanged by the audience-footer reinstatement, and in fact reinforced by it:
 Beat 11 depends on matched-state plates holding across **three** compositions
 containing **human figures**, which is materially harder than holding a static
-monitor bank. The CRT pair in §5 is now the cheap proxy test for the most
-expensive moment in the plan. If matched state fails there, it will certainly
-fail on a crowd, and Beat 11 needs a different production route — a short
-real-footage loop or a commissioned photograph — before any credits go into it.
+monitor bank. The CRT pair in §5 is the cheap proxy test for the most expensive
+moment in the plan. If matched state fails there, it will certainly fail on a
+crowd, and Beat 11 needs a different production route — a short real-footage
+loop or a commissioned photograph — before any credits go into it.
+
+**Two results are now in, and they move the recommendation in opposite
+directions.**
+
+*Better than expected:* the CRT base composition passes on review at full
+exposure — the vintage-television language is there. The base plate is not the
+problem and must not be regenerated. What failed was the compositing recipe,
+corrected in §2.1a: crush the mid-tones, do not uniformly dim.
+
+*Worse than expected:* the matched-state technique is **UNTESTED**, not
+merely unevaluated. Three CRT files that should differ are pixel-identical, and
+§8a shows the platform believes it rendered three distinct assets with three
+distinct seeds. Until the checks in §8a run, the single load-bearing technical
+assumption behind Beats 3, 7, 8 and 11 has no evidence either way.
+
+So the sequencing is now: resolve §8a first (free), then the compositing pass
+in §2.1a (free), and only then decide whether any further generation is
+required. Nothing in the asset plan should be scaled up while the technique it
+rests on is unverified.
 
 Not A, and the reason is not caution about the direction. The direction is
 sound and §3 is specific enough to execute against. It is that **the single
@@ -829,14 +970,16 @@ The refine step is small and bounded:
 
 1. Download the four renders from the Magnific Personal project.
 2. Run the six checks in §8 with `tools/studios-asset-preview.html`.
-3. If checks 1–4 pass: build **one throwaway integration spike** — Department
+3. Run the §8a checks before anything else — they are free and they decide
+   whether there is a matched pair to test at all.
+4. If checks 1–4 pass: build **one throwaway integration spike** — Department
    01 only, both CRT states, behind the existing fixture grid — and look at it
    in the real scroll. That is the honest test of whether photography and
    hairline vector can share a frame. Nothing else gets built until that spike
    is judged.
-4. If checks 1–4 fail on exposure, one more generation round with a crushed
-   black point before any spike.
-5. Only once check 3 (matched state) has passed: generate the auditorium set.
+5. If the plate still cannot hold CRT character after §2.1a's recipes, that is
+   when a regeneration round is justified — and not before.
+6. Only once check 3 (matched state) has passed: generate the auditorium set.
    It is the most expensive and least reversible asset family in the plan, and
    it should never be the thing that discovers the technique does not work.
 
