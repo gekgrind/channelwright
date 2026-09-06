@@ -309,6 +309,165 @@ describe("measurement boundary and scope leaks", () => {
     result.content.decision.rationale = "Change the title and schedule the video for republishing tomorrow.";
     expect(codes(result)).toContain("EXECUTION_LEAKED");
   });
+
+  it("rejects execution language equivalent to editing an asset, not only the exact legacy phrases", () => {
+    for (const phrase of [
+      "The right move is to replace the thumbnail with a higher-contrast option.",
+      "We should swap the thumbnail and rewrite the description before anything else.",
+      "Upload the thumbnail the team already produced.",
+      "Update the opening so it matches the promise.",
+    ]) {
+      const result = clone(channelVideoDecisionResultFixture());
+      result.content.decision.rationale = phrase;
+      expect(codes(result)).toContain("EXECUTION_LEAKED");
+    }
+  });
+
+  it("does not flag ordinary analytical prose that merely names assets or describes past changes", () => {
+    for (const phrase of [
+      "The evidence points to a change in the PACKAGING category rather than the opening.",
+      "The thumbnail contrast hypothesis is unproven and the retention curve is missing.",
+      "A prior title change by the operator preceded this measurement window.",
+      "Retention drops sharply after the opening promise is stated.",
+    ]) {
+      const result = clone(channelVideoDecisionResultFixture());
+      result.content.decision.rationale = phrase;
+      expect(codes(result)).not.toContain("EXECUTION_LEAKED");
+    }
+  });
+
+  it("rejects experiment-design language equivalent to a viewer split, not only the exact literals", () => {
+    for (const phrase of [
+      "Run a two-option viewer split and see which opening wins.",
+      "Split viewers between two thumbnails for a week.",
+      "Compare two versions of the hook with separate viewer groups.",
+      "Test two titles against each other with an even audience allocation.",
+    ]) {
+      const result = clone(channelVideoDecisionResultFixture());
+      result.content.decision.rationale = phrase;
+      expect(codes(result)).toContain("EXPERIMENT_DESIGN_LEAKED");
+    }
+  });
+
+  it("does not flag uncertainty language or mention of a historical experiment where none is being designed", () => {
+    for (const phrase of [
+      "Two categories show weak evidence and several unknowns remain unresolved.",
+      "The operator ran an informal test months ago; its result is not in this artifact.",
+      "Compare this outcome to the channel baseline before deciding.",
+      "The finding conflicts with a separate observation about audience fit.",
+    ]) {
+      const result = clone(channelVideoDecisionResultFixture());
+      result.content.decision.rationale = phrase;
+      expect(codes(result)).not.toContain("EXPERIMENT_DESIGN_LEAKED");
+    }
+  });
+});
+
+describe("hypothesis / evidence laundering into an action mandate", () => {
+  const hypothesisFinding = (id: string, category: "PACKAGING" | "RETENTION_STRUCTURE") => ({
+    id, category, severity: "medium" as const, epistemicStatus: "HYPOTHESIS" as const, confidence: "medium" as const,
+    claim: "A plausible but unproven explanation.", observationIds: ["obs:fact:final-title"], lineageRefs: [],
+    supportingEvidence: ["A weak directional signal."], contradictoryEvidence: [],
+    alternativeExplanations: ["It could be topic fatigue instead."], additionalEvidenceNeeded: ["A retention curve for this exact video."],
+  });
+  const supportedFinding = (id: string, category: "PACKAGING") => ({
+    id, category, severity: "medium" as const, epistemicStatus: "SUPPORTED_INFERENCE" as const, confidence: "medium" as const,
+    claim: "A directly supported inference for this category.", observationIds: ["obs:fact:final-title"], lineageRefs: [],
+    supportingEvidence: ["The category metric sits well below the channel baseline."], contradictoryEvidence: [],
+    alternativeExplanations: [], additionalEvidenceNeeded: [],
+  });
+  const prioritizeChange = (result: ChannelVideoDecisionResult, findingIds: string[]) => {
+    result.content.decision.decisionType = "PRIORITIZE_CHANGE";
+    result.content.decision.disposition = "CHANGE";
+    result.content.decision.category = "PACKAGING";
+    result.content.decision.measurementObjective = null;
+    result.content.decision.supportingFindingIds = findingIds;
+  };
+
+  it("rejects PRIORITIZE_CHANGE supported only by a cross-category hypothesis", () => {
+    const withFinding = clone(artifact);
+    withFinding.diagnosisResult.analysis.findings = [hypothesisFinding("diag:cross-cat-hypo", "RETENTION_STRUCTURE")];
+    const result = clone(channelVideoDecisionResultFixture());
+    prioritizeChange(result, ["diag:cross-cat-hypo"]);
+    const found = deterministicVideoDecisionValidation(result, withFinding).map((item) => item.code);
+    expect(found).toContain("SUPPORTING_FINDING_CATEGORY_MISMATCH");
+    expect(found).toContain("ACTION_RESTS_ON_HYPOTHESIS_ONLY");
+  });
+
+  it("rejects PRIORITIZE_CHANGE supported only by a same-category hypothesis", () => {
+    const withFinding = clone(artifact);
+    withFinding.diagnosisResult.analysis.findings = [hypothesisFinding("diag:packaging-hypo", "PACKAGING")];
+    const result = clone(channelVideoDecisionResultFixture());
+    prioritizeChange(result, ["diag:packaging-hypo"]);
+    const found = deterministicVideoDecisionValidation(result, withFinding).map((item) => item.code);
+    expect(found).not.toContain("SUPPORTING_FINDING_CATEGORY_MISMATCH");
+    expect(found).toContain("ACTION_RESTS_ON_HYPOTHESIS_ONLY");
+  });
+
+  it("accepts PRIORITIZE_CHANGE backed by a category-relevant supported inference", () => {
+    const withFinding = clone(artifact);
+    withFinding.diagnosisResult.analysis.findings = [
+      supportedFinding("diag:packaging-supported", "PACKAGING"),
+      hypothesisFinding("diag:packaging-hypo", "PACKAGING"),
+    ];
+    const result = clone(channelVideoDecisionResultFixture());
+    prioritizeChange(result, ["diag:packaging-supported", "diag:packaging-hypo"]);
+    const found = deterministicVideoDecisionValidation(result, withFinding).map((item) => item.code);
+    expect(found).not.toContain("SUPPORTING_FINDING_CATEGORY_MISMATCH");
+    expect(found).not.toContain("ACTION_RESTS_ON_HYPOTHESIS_ONLY");
+  });
+
+  it("does not constrain exploratory / uncertainty-preserving types that may legitimately cite a hypothesis", () => {
+    const withFinding = clone(artifact);
+    withFinding.diagnosisResult.analysis.findings = [hypothesisFinding("diag:cross-cat-hypo", "RETENTION_STRUCTURE")];
+    for (const decisionType of ["GATHER_EVIDENCE", "INVESTIGATE"] as const) {
+      const result = clone(channelVideoDecisionResultFixture());
+      result.content.decision.decisionType = decisionType;
+      result.content.decision.disposition = decisionType === "GATHER_EVIDENCE" ? "LEARN_MORE" : "EXPLORE_CHANGE";
+      result.content.decision.category = "RETENTION_STRUCTURE";
+      if (decisionType === "INVESTIGATE") result.content.decision.measurementObjective = null;
+      result.content.decision.supportingFindingIds = ["diag:cross-cat-hypo"];
+      const found = deterministicVideoDecisionValidation(result, withFinding).map((item) => item.code);
+      expect(found).not.toContain("SUPPORTING_FINDING_CATEGORY_MISMATCH");
+      expect(found).not.toContain("ACTION_RESTS_ON_HYPOTHESIS_ONLY");
+    }
+  });
+});
+
+describe("Viewer Value promise-integrity consistency", () => {
+  it("rejects an AT_RISK inherited state paired with a NONE promise-integrity risk", () => {
+    const atRiskArtifact = clone(artifact);
+    atRiskArtifact.diagnosisResult.analysis.viewerValueAnalysis.state = "AT_RISK";
+    const result = clone(channelVideoDecisionResultFixture());
+    result.content.decision.decisionType = "ESCALATE_TO_HUMAN_JUDGMENT";
+    result.content.decision.disposition = "ESCALATE";
+    result.content.decision.measurementObjective = null;
+    result.content.decision.requiresHumanJudgment = true;
+    result.content.viewerValueImpact.inheritedState = "AT_RISK";
+    result.content.viewerValueImpact.promiseIntegrityRisk = "NONE";
+    result.content.viewerValueImpact.escalationRequired = true;
+    expect(deterministicVideoDecisionValidation(result, atRiskArtifact).map((item) => item.code)).toContain("PROMISE_INTEGRITY_RISK_INCONSISTENT");
+  });
+
+  it("accepts an AT_RISK inherited state with a POSSIBLE or LIKELY promise-integrity risk", () => {
+    const atRiskArtifact = clone(artifact);
+    atRiskArtifact.diagnosisResult.analysis.viewerValueAnalysis.state = "AT_RISK";
+    for (const risk of ["POSSIBLE", "LIKELY"] as const) {
+      const result = clone(channelVideoDecisionResultFixture());
+      result.content.decision.decisionType = "ESCALATE_TO_HUMAN_JUDGMENT";
+      result.content.decision.disposition = "ESCALATE";
+      result.content.decision.measurementObjective = null;
+      result.content.decision.requiresHumanJudgment = true;
+      result.content.viewerValueImpact.inheritedState = "AT_RISK";
+      result.content.viewerValueImpact.promiseIntegrityRisk = risk;
+      result.content.viewerValueImpact.escalationRequired = true;
+      expect(deterministicVideoDecisionValidation(result, atRiskArtifact).map((item) => item.code)).not.toContain("PROMISE_INTEGRITY_RISK_INCONSISTENT");
+    }
+  });
+
+  it("leaves the PRESERVED + NONE fixture (and other non-at-risk states) valid", () => {
+    expect(codes(channelVideoDecisionResultFixture())).not.toContain("PROMISE_INTEGRITY_RISK_INCONSISTENT");
+  });
 });
 
 describe("derived-field tampering", () => {

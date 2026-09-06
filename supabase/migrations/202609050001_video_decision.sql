@@ -49,7 +49,7 @@ create unique index workflow_runs_active_video_decision_uniq
 -- Exact approved-Diagnosis resolution for CHANNEL_VIDEO_DECISION. The RPC is
 -- the sole authority for upstream identity and compact transitive lineage.
 --
--- Fifteen invariants, all pre-spend: existence + owner (cross-owner ->
+-- Sixteen invariants, all pre-spend: existence + owner (cross-owner ->
 -- NOT_FOUND, never FORBIDDEN); COMPLETED with output; not superseded
 -- (workflow.current_run_id plus no previousRunId successor); human APPROVED by
 -- owner; finalizer output identical to run.output_payload; final QA passed
@@ -58,7 +58,10 @@ create unique index workflow_runs_active_video_decision_uniq
 -- with the finalized output; recomputed artifact + provenance hashes match
 -- stored; parent/root lineage well-formed; and the full nine-artifact
 -- transitive chain (the eight Diagnosis already verified, plus Diagnosis
--- itself) is re-hashed here rather than trusted. The Diagnosis resolver's own
+-- itself) is re-hashed AND re-checked for supersession here rather than
+-- trusted -- each link must still be its workflow's current_run_id with no
+-- previousRunId successor, the same test the direct run is held to. The
+-- Diagnosis resolver's own
 -- semantic checks (KPI-framework membership, duplicate stable identity,
 -- snapshot timestamps) are not repeated -- they are pinned by
 -- diagnosisProvenanceHash, which this re-hash re-derives. Correctness without
@@ -103,6 +106,16 @@ begin
   for v_link in select value from jsonb_array_elements(v_full_artifacts) loop
     select * into v_chain_run from channelwright.workflow_runs where id=(v_link->>'runId')::uuid and owner_id=v_run.owner_id and workflow_type=v_link->>'workflowType';
     if not found or v_chain_run.status<>'COMPLETED' or v_chain_run.output_payload is null or encode(digest(v_chain_run.output_payload::text,'sha256'),'hex')<>v_link->>'artifactHash' or (v_chain_run.output_payload->>'schemaVersion')::integer<>(v_link->>'schemaVersion')::integer then raise exception 'UPSTREAM_DIAGNOSIS_LINEAGE_INVALID: transitive artifact mismatch'; end if;
+    -- Every transitive link must also be the current, non-superseded run of its
+    -- own workflow -- the identical invariant the direct Diagnosis run is held
+    -- to at line 81 (current_run_id match plus no previousRunId successor). A
+    -- structurally superseded upstream (e.g. a Performance run its own resolver
+    -- would now reject as UPSTREAM_PERFORMANCE_SUPERSEDED) must not be laundered
+    -- into an approvable Decision lineage just because its frozen hash still
+    -- matches the Diagnosis projection.
+    if not exists(select 1 from channelwright.workflows w where w.id=v_chain_run.workflow_id and w.owner_id=v_run.owner_id and w.current_run_id=v_chain_run.id)
+      or exists(select 1 from channelwright.workflow_runs r where r.workflow_id=v_chain_run.workflow_id and r.owner_id=v_run.owner_id and r.context_payload->>'previousRunId'=v_chain_run.id::text)
+      then raise exception 'UPSTREAM_DIAGNOSIS_LINEAGE_INVALID: transitive artifact superseded'; end if;
   end loop;
 
   v_facts:=coalesce(v_run.output_payload->'diagnosisScope'->'facts','[]'::jsonb) || jsonb_build_array(

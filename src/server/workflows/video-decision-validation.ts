@@ -26,8 +26,41 @@ export type DecisionValidationContext = {
 export type DecisionRule = { code: string; severity: Finding["severity"]; check: (ctx: DecisionValidationContext) => string[] };
 
 const CAUSAL_CERTAINTY = /\b(?:causes?|caused|proves?|proven cause|resulted in|led to|is the reason|responsible for|directly driv(?:e|es|en|ing)|made viewers|definitively explains)\b/i;
-const EXPERIMENT_DESIGN_LEAKED = /\b(?:variant[s]?|treatment group|control group|a\/b test|traffic split|sample size|statistical significance|holdout|canary rollout|rollout sequence)\b/i;
-const EXECUTION_LEAKED = /\b(?:publish|unpublish|re-?upload|schedule (?:the|a) (?:publish|video)|change the title|edit the (?:description|thumbnail|tags|script)|boost|promote this video|send (?:a )?notification|spend (?:on )?ads?)\b/i;
+
+// --- Boundary-leak detection ------------------------------------------------
+// Decision selects one bounded-taxonomy action plus a category. It never
+// designs an experiment (reserved for CHANNEL_VIDEO_EXPERIMENT) and never
+// issues an execution / publishing / content-mutation instruction. Both
+// detectors below keep the original exact-phrase set for backward
+// compatibility AND add a bounded structural clause -- a verb family combined
+// with an object / allocation family -- so semantically equivalent phrasings
+// ("replace the thumbnail", "run a two-option viewer split") are caught, not
+// only the literal strings an earlier model happened to use. The structural
+// clauses require an article or an explicit multiplicity word so ordinary
+// analytical prose ("a change in the PACKAGING category", "two categories show
+// weak evidence", "a prior experiment on this channel") stays valid.
+const EXECUTION_ACTION_VERB = "replace|replacing|swap(?:ping)?|swap out|re-?upload(?:ing)?|reupload(?:ing)?|upload(?:ing)?|rewrite|rewriting|overwrite|overwriting|edit(?:ing)?|redesign(?:ing)?|regenerate|regenerating|remake|remaking|change|changing|update|updating|revise|revising|remove|removing|delete|deleting|deploy(?:ing)?|schedule|scheduling|ship|reship";
+const EXECUTION_ASSET_OBJECT = "thumbnail|title|description|hook|opening|script|video|metadata|tag|tags|chapter|chapters|end ?screen|end ?screens|caption|captions|call to action|cta|publish state";
+const EXECUTION_LEAKED = new RegExp(
+  "\\b(?:publish|unpublish|re-?upload|schedule (?:the|a) (?:publish|video)|change the title|edit the (?:description|thumbnail|tags|script)|boost|promote this video|send (?:a )?notification|spend (?:on )?ads?|push (?:it |this )?live|go live|roll ?out this)\\b" +
+  "|\\b(?:" + EXECUTION_ACTION_VERB + ")\\s+(?:the|a|an|this|that|its|our|your|new|current)\\s+(?:\\w+\\s+){0,2}?(?:" + EXECUTION_ASSET_OBJECT + ")\\b",
+  "i",
+);
+const EXPERIMENT_SPLIT_VERB = "split|splitting|allocat\\w+|divid\\w+|randomi[sz]\\w+|bucket\\w+|assign\\w*|rotate|rotating";
+const EXPERIMENT_COMPARE_VERB = "compar\\w+|test\\w*|trial\\w*|pit\\w+|a\\/b";
+const EXPERIMENT_MULTIPLICITY = "two|three|four|2|3|4|multiple|several|separate|different|competing|rival|alternate|alternating|parallel";
+const EXPERIMENT_ARM_NOUN = "option|options|version|versions|variant|variants|arm|arms|cohort|cohorts|group|groups|audience|audiences|segment|segments|bucket|buckets|cell|cells|thumbnail|thumbnails|title|titles|opening|openings|hook|hooks|treatment|treatments";
+const EXPERIMENT_DESIGN_LEAKED = new RegExp([
+  "\\bvariants?\\b", "\\btreatment group\\b", "\\bcontrol group\\b", "\\ba\\/b test\\b",
+  "\\btraffic split\\b", "\\bsample size\\b", "\\bstatistical significance\\b",
+  "\\bholdout\\b", "\\bcanary rollout\\b", "\\brollout sequence\\b",
+  "\\b(?:" + EXPERIMENT_SPLIT_VERB + ")\\s+(?:the |our |up )?(?:viewers?|audiences?|traffic|users?|impressions?|sessions?|subscribers?)\\b",
+  "\\b(?:" + EXPERIMENT_COMPARE_VERB + ")\\b[^.]{0,64}\\b(?:" + EXPERIMENT_MULTIPLICITY + ")\\s+(?:\\w+\\s+){0,3}?(?:" + EXPERIMENT_ARM_NOUN + ")\\b",
+  "\\b(?:two|three|four|2|3|4)[ -]?(?:option|way|arm|version|group|variant)s?\\b",
+  "\\b(?:viewer|audience|traffic|subscriber)s?\\s+split\\b",
+  "\\bsplit\\s+(?:\\w+\\s+){0,3}?between\\s+(?:two|three|four|multiple|the|different|separate)\\b",
+  "\\b(?:separate|two|three|four|distinct|different|parallel)\\s+(?:viewer|audience|user|subscriber)s?\\s+(?:groups?|cohorts?|buckets?|segments?)\\b",
+].join("|"), "i");
 const NUMBER = /(?<![A-Za-z0-9_.:-])-?\d+(?:\.\d+)?%?(?![A-Za-z0-9_.:-])/g;
 const FABRICATED_QUANT = /\b(?:\d+(?:\.\d+)?x lift|expected (?:return|lift|roi)|projected (?:roi|revenue|views|lift)|\d+(?:\.\d+)?% (?:lift|increase|improvement) is expected|likely to (?:increase|improve) by \d)/i;
 
@@ -192,6 +225,33 @@ export const DETERMINISTIC_VIDEO_DECISION_RULES: DecisionRule[] = [
     (result.content.decision.decisionType === "PRIORITIZE_CHANGE" || result.content.decision.decisionType === "INVESTIGATE") && result.content.decision.supportingFindingIds.length === 0
       ? [`${result.content.decision.decisionType} requires at least one cited supporting finding.`]
       : []),
+  // PRIORITIZE_CHANGE is the one taxonomy member that asserts the evidence now
+  // warrants acting. Citing *some* finding is not enough (ACTION_WITHOUT_
+  // SUPPORTED_FINDING): at least one cited supporting finding must actually
+  // belong to the category being changed, and at least one must be a
+  // SUPPORTED_INFERENCE -- a hypothesis alone cannot be laundered into an
+  // action mandate. The exploratory / uncertainty-preserving types
+  // (INVESTIGATE, GATHER_EVIDENCE, DEFER, ESCALATE_TO_HUMAN_JUDGMENT,
+  // PRESERVE_CURRENT_APPROACH) may legitimately rest on hypotheses and are not
+  // constrained here.
+  rule("SUPPORTING_FINDING_CATEGORY_MISMATCH", "error", ({ result, artifact }) => {
+    if (result.content.decision.decisionType !== "PRIORITIZE_CHANGE") return [];
+    const cited = result.content.decision.supportingFindingIds;
+    if (cited.length === 0) return []; // ACTION_WITHOUT_SUPPORTED_FINDING owns the empty case
+    const findingCategory = new Map(artifact.diagnosisResult.analysis.findings.map((finding) => [finding.id, finding.category]));
+    return cited.some((id) => findingCategory.get(id) === result.content.decision.category)
+      ? []
+      : [`PRIORITIZE_CHANGE for ${result.content.decision.category} must cite at least one supporting finding in that category, not only cross-category findings.`];
+  }),
+  rule("ACTION_RESTS_ON_HYPOTHESIS_ONLY", "error", ({ result, artifact }) => {
+    if (result.content.decision.decisionType !== "PRIORITIZE_CHANGE") return [];
+    const cited = result.content.decision.supportingFindingIds;
+    if (cited.length === 0) return []; // ACTION_WITHOUT_SUPPORTED_FINDING owns the empty case
+    const findingStatus = new Map(artifact.diagnosisResult.analysis.findings.map((finding) => [finding.id, finding.epistemicStatus]));
+    return cited.some((id) => findingStatus.get(id) === "SUPPORTED_INFERENCE")
+      ? []
+      : ["PRIORITIZE_CHANGE cannot rest solely on hypothesis-status findings; at least one cited supporting finding must be a supported inference."];
+  }),
   rule("IRREVERSIBLE_ACTION_ON_WEAK_EVIDENCE", "error", ({ result, expectedEvidence }) => {
     if (result.content.decision.reversibility !== "HARD_TO_REVERSE") return [];
     const category = expectedEvidence.categories.find((item) => item.category === result.content.decision.category);
@@ -260,6 +320,16 @@ export const DETERMINISTIC_VIDEO_DECISION_RULES: DecisionRule[] = [
   // --- Viewer Value ---------------------------------------------------------
   rule("VIEWER_VALUE_STATE_CHANGED", "error", ({ result, expectedEvidence }) =>
     result.content.viewerValueImpact.inheritedState === expectedEvidence.viewerValueState ? [] : ["Inherited Viewer Value state does not match the authoritative Diagnosis state."]),
+  // inheritedState is server-pinned (rule above). promiseIntegrityRisk is
+  // model-authored, so it must at minimum stay consistent with it: an at-risk
+  // inherited Viewer Value state cannot be paired with a claim of NONE promise-
+  // integrity risk. Tighter mappings are deliberately not asserted -- the
+  // Diagnosis artifact carries no structured promise-integrity signal beyond
+  // viewerValueAnalysis.state to derive them from.
+  rule("PROMISE_INTEGRITY_RISK_INCONSISTENT", "error", ({ result }) =>
+    result.content.viewerValueImpact.inheritedState === "AT_RISK" && result.content.viewerValueImpact.promiseIntegrityRisk === "NONE"
+      ? ["Viewer Value inherited state is AT_RISK; promiseIntegrityRisk cannot be NONE."]
+      : []),
   rule("VIEWER_VALUE_ESCALATION_REQUIRED", "error", ({ result, expectedEvidence }) => {
     if (expectedEvidence.viewerValueState !== "AT_RISK") return [];
     const safeTypes = new Set(["PRESERVE_CURRENT_APPROACH", "GATHER_EVIDENCE", "ESCALATE_TO_HUMAN_JUDGMENT"]);

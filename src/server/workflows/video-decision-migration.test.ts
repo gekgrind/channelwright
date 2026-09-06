@@ -23,6 +23,14 @@ describe("CHANNEL_VIDEO_DECISION migration", () => {
     expect(migration).toContain("transitive artifact mismatch");
   });
 
+  it("also enforces the current/non-superseded invariant on every transitive link, not only the direct run", () => {
+    expect(migration).toContain("transitive artifact superseded");
+    // the direct-run supersession test and the per-link test share the same shape:
+    // current_run_id must match and no previousRunId successor may exist.
+    expect(migration.match(/context_payload->>'previousRunId'=/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    expect(migration).toContain("w.current_run_id=v_chain_run.id");
+  });
+
   it("accepts only two caller identifiers and injects authoritative state", () => {
     expect(migration).toContain("jsonb_object_length(p_input)<>2 or not (p_input?'videoDiagnosisWorkflowId') or not (p_input?'videoDiagnosisRunId')");
     expect(migration).toContain("k not in ('videoDiagnosisWorkflowId','videoDiagnosisRunId')");

@@ -329,6 +329,23 @@ async function runChecks(db: pg.Client) {
   const badParent = await seedDiagnosis(db, ownerA, lineage, performance, performanceReference, { context: { previousRunId: randomUUID() } });
   record("Diagnosis parent/root lineage drift is rejected", (await expectFailure(db, ownerA, "select channelwright.resolve_approved_video_diagnosis_artifact($1,$2)", [badParent.workflowId, badParent.runId])).includes("UPSTREAM_DIAGNOSIS_LINEAGE_INVALID"));
 
+  // P1 repair: a Decision lineage must be rejected when ANY transitive upstream
+  // artifact -- not only the direct Diagnosis run -- has been structurally
+  // superseded (successor run + previousRunId + moved current_run_id), the same
+  // condition that artifact's own resolver enforces. Reproduce it on Performance.
+  const supLineage = await seedLineage(db, ownerA);
+  const supPerf = await seedPerformance(db, ownerA, supLineage);
+  const supPerfRef = (await asAuthenticated(db, ownerA, () => db.query<{ result: { reference: Record<string, unknown> } }>("select channelwright.resolve_approved_video_performance_artifact($1,$2) as result", [supPerf.workflowId, supPerf.runId]))).rows[0].result.reference;
+  const supDiag = await seedDiagnosis(db, ownerA, supLineage, supPerf, supPerfRef);
+  record("transitive-supersession fixture resolves clean before tampering", (await expectFailure(db, ownerA, "select channelwright.resolve_approved_video_diagnosis_artifact($1,$2)", [supDiag.workflowId, supDiag.runId])) === "");
+  const supPerfSuccessor = randomUUID();
+  await db.query(`insert into channelwright.workflow_runs(id,owner_id,workflow_id,workflow_type,definition_version,status,idempotency_key,input_hash,input_payload,context_payload,output_payload,completed_at)
+    values ($1,$2,$3,'CHANNEL_VIDEO_PERFORMANCE',1,'COMPLETED',$4,$5,'{}'::jsonb,$6::jsonb,$7::jsonb,now())`,
+    [supPerfSuccessor, ownerA, supPerf.workflowId, `sup:${supPerfSuccessor}`, "0".repeat(64), JSON.stringify({ previousRunId: supPerf.runId }), JSON.stringify({ schemaVersion: 1, workflowType: "CHANNEL_VIDEO_PERFORMANCE", superseded: true })]);
+  await db.query("update channelwright.workflows set current_run_id=$2 where id=$1", [supPerf.workflowId, supPerfSuccessor]);
+  const supMsg = await expectFailure(db, ownerA, "select channelwright.resolve_approved_video_diagnosis_artifact($1,$2)", [supDiag.workflowId, supDiag.runId]);
+  record("superseded transitive Performance is rejected", supMsg.includes("UPSTREAM_DIAGNOSIS_LINEAGE_INVALID") && supMsg.includes("superseded"));
+
   const rls = await db.query<{ enabled: boolean }>("select bool_and(c.relrowsecurity) as enabled from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='channelwright' and c.relkind='r' and c.relname in ('workflows','workflow_runs','workflow_steps','workflow_approvals','research_run_budgets','research_usage_operations')");
   record("RLS enabled on every workflow table", rls.rows[0].enabled === true);
   const isolated = await asAuthenticated(db, ownerB, () => db.query<{ count: string }>("select count(*)::text as count from channelwright.workflow_runs where id=$1", [diagnosis.runId]));
