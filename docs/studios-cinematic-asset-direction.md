@@ -1,659 +1,169 @@
 # Channelwright Studios — Cinematic Asset Direction
 
-Status: **direction pass**. No production assets are integrated by this document.
-Surface: `/studios-preview` (`src/features/studios/*`).
+**Revision 3.** Authoritative design-planning artifact for cinematic imagery on
+`/studios-preview` (`src/features/studios/*`).
+
+No assets are integrated by this document. No application code is changed.
 
 ---
 
-## 0. The correction this document has to make first
+## Status key
 
-The brief assumes `/studios-preview` is a landing page made of sections that
-can receive art-directed photography. It is not, and building against that
-assumption would produce assets that cannot be installed.
+Every claim below carries one of these. Nothing is asserted without one.
 
-What is actually there, verified by reading the source and rendering the page
-at 1440×900 and 390×844:
+| Key | Meaning |
+|---|---|
+| **CONFIRMED** | Verified against source, rendered output, or platform metadata in-session. |
+| **TESTED** | Judged by the owner against the real page in the evaluation harness. |
+| **UNTESTED** | Load-bearing and unverified. No evidence in either direction. |
+| **PROPOSED** | Design intent. Not yet built or judged. |
+| **REJECTED** | Considered and ruled out, with the reason recorded. |
 
-- **One continuous camera move.** Eight scenes (`beats.ts:SCENES`, 36.4vh of
-  travel, ~26,500px on desktop) each overlap the previous by one viewport.
-  There are no section boundaries. A single journey variable `--j` drives the
-  timeline and a separate `--cam` drives spatial position, so the Return (Beat
-  8) can travel the camera backwards while the story advances.
-- **One persistent world layer.** `StudiosWorld` is `position: fixed` behind
-  every scene. Everything in it — three depth planes, floor, deck, ceiling,
-  jambs, signage, partitions, fixtures, two thresholds, the artifact — is
-  positioned by journey coordinate `--at` and moved by `--cam` at a per-class
-  drift rate. Props are placed *in the building*, not in a section.
-- **Everything is hairline vector at very low opacity on near-black.** Far
-  plane 0.5 × wake, mid 0.4, near 0.58; department fixtures capped at 0.3;
-  the room instruments demoted to **0.18**. The `--void` is `#050607`.
-- **One accent, used as instrumentation.** `--signal: #d8ff3e` appears on the
-  artifact pip, the QA sweep, one CTA and the verdict marks. Nowhere else.
+---
 
-The three most recent studios commits are all *demotions* — signage reach cut,
-fixtures parked above the copy band and dropped to a third of their old
-contrast, instruments moved out of bordered panels into a 0.18 full-bleed
-wash. The page reached its current clarity by taking contrast **away**.
+## 0. What changed in revision 3, and why
 
-**The consequence for asset direction is not negotiable:** a photoreal image
-placed at normal exposure would instantly become the brightest, most detailed
-object in every frame it appears in, and would undo three passes of tuning in
-one move. It is not enough to author a normal image and dim it in CSS — a
-bright image at `opacity: .2` goes grey and muddy and reads as a washed-out
-photo behind a website. The asset has to be **shot dark**: black holding
-black, one directional key, a handful of lit edges and specular hits, so that
-at 18–25% composite it still reads as black metal and lit glass.
+Revisions 1 and 2 were written before any asset had been seen composited. Local
+testing has now been done and it contradicts the central thesis of revision 1.
+Nothing is silently overwritten; the superseded conclusions are named here.
 
-That single constraint is the spine of the bible in §2, and it is the thing
-the proof-of-concept set in §5 exists to test.
+### Superseded: "author pre-demoted, composite at ~0.22"
+
+Revision 1's spine was that a photographic plate must be dimmed to roughly 22%
+to survive the page's contrast budget. **REJECTED by testing.** At 0.22 the
+vintage-CRT character — curved glass, knobs, mismatched eras — falls below
+threshold and the plate collapses into an undifferentiated mass. The owner's
+diagnosis is correct and mine was wrong: uniform opacity scales highlights and
+mid-tones by the same factor, so the speculars that *describe* an object vanish
+at the same rate as its bulk.
+
+The corrected rule is in §3.2. Working range is **0.45–0.50**, and the copy is
+protected by *local* masking rather than by global dimming.
+
+### Superseded: "photography and hairline vector may not be able to share a frame"
+
+Revision 1 treated this as the main risk and the reason for a cautious spike.
+**REJECTED by testing.** It is not a risk, it is the best thing in the system:
+blueprint linework reading *across* photographic equipment is what makes the
+objects feel like a physical studio underneath its own architectural plans.
+Promoted from risk to core principle (§2).
+
+### Superseded: "the audience footer is rejected on doctrine"
+
+Recorded in revision 2 already; restated here because this document is now the
+single reference. The audience is **owner-directed and in scope**. See §8.
+
+### Superseded: "matched state is the key technique the plan rests on"
+
+Still the technique for some beats, but revision 1 made the whole strategy
+depend on it. **Corrected.** Per owner instruction the strategy must not depend
+on matched AI generations, and §3.4 gives a transformation mechanism for the
+CRT beats that needs no second image at all.
+
+### Corrected factual errors
+
+- **Five renders, not four. 500 credits, not 400.** CONFIRMED against the
+  account balance (19,500 of 20,000 remaining) and a project listing of exactly
+  five creations.
+- **The harness's iframe cannot work as shipped.** CONFIRMED: `next.config.ts`
+  sets `frame-ancestors 'none'` and `X-Frame-Options: DENY` on `/(.*)`, in dev
+  as well as production. Verified against the running dev server. The console
+  snippet is the working path; the harness needs that or a temporary local
+  header change. Recorded as a known defect in `tools/`.
+- **Matched state is UNTESTED**, not passed and not failed. §11.
 
 ---
 
 ## 0a. Owner-directed concepts
 
-Concepts listed here are owner-directed signature moments. They are not
-subject to unilateral removal by a later pass. Where one appears to conflict
-with `docs/PRODUCT_DOCTRINE.md`, the correct move is to state the tension and
-propose a reconciliation — not to design the concept away.
+Not subject to unilateral removal by a later pass. Where one appears to
+conflict with `docs/PRODUCT_DOCTRINE.md`, state the tension and propose a
+reconciliation — do not design the concept away.
 
-- **The screening-room audience footer** (Beats 10 and 11). Owner-directed,
-  **P0**. The audience represents *why Channelwright exists*, not the
-  completion of its measurement lifecycle. Reconciliation argued in §3a; the
-  one binding constraint on execution is stated in the Beat 11 entry.
-
----
-
-## 1. Current experience assessment
-
-### What is working (do not touch)
-
-| | |
-|---|---|
-| **The continuous world** | The strongest idea on the page. Crossing from 01 to 02 swaps the copy while the building keeps sliding. It reads as one place, not eight sections. |
-| **The artifact as protagonist** | One sentence, mounted once, added to and never reset. Rejected titles stay struck through. This is the transformation story and it already works. |
-| **Beat 2, the threshold** | The lintel resolving out of the dark and scaling past the camera is genuinely cinematic and is the best moment in the run. |
-| **Beat 9, the unlit door** | Department 06 drawn in the same hand as the entrance and deliberately left dark, labelled `DESIGNED, NOT BUILT`. An honest architectural statement instead of a fake dashboard. This is the page's most distinctive idea and it is a *restraint*. |
-| **Negative-space discipline** | `.cw-layer--copy::before` builds a hard reading wash on the left 20–36% of the frame. Headlines are always legible. |
-| **Reduced-motion parity** | `StaticNarrative` renders the same copy source. No second truth. |
-| **Per-room composition** | Headline position varies by department (01 top-left, 04 centred, 08 top-left). The run does not feel templated. |
-
-### What is weak, and what imagery can honestly fix
-
-1. **Materiality.** Everything is 1–1.6px stroke. Nothing has surface, weight,
-   grain, or wear. The page reads as an *architectural drawing of* a studio,
-   never as a studio. This is exactly the gap physical assets close.
-2. **The threshold pays off into more of the same.** The camera goes through a
-   lit doorway and finds identical linework on the other side. The most
-   cinematic move in the run has no payoff. **This is the single highest-value
-   place to put a physical asset in the entire experience.**
-3. **The rooms are differentiated only by tint.** `Fixture` draws 8/4/6/6/10
-   identical bordered cells with different background tints. Department 01's
-   "research wall" and Department 05's "control room" are the same object in
-   different colours. Weak, and the CRT motif maps onto it exactly.
-4. **Dead frames at the transitions.** Verified at `--j` ≈ 0.66: the outgoing
-   room's copy has cleared and the incoming room's has not arrived, leaving
-   ~60% of a 1440px frame carrying nothing but drifting hairlines. There are
-   several of these. They are the natural home for an environmental plate.
-5. **Mobile has a large empty mid-band.** At 390×844 the back wall, partitions
-   and fixtures are all dropped. Between the headline and the artifact there
-   is roughly 380px of nothing. Mobile needs *fewer, larger, closer* assets,
-   not scaled-down desktop ones.
-
-**What imagery must not do:** out-contrast the headline; fill the reading
-wash; add a second accent colour; put detail in the copy band; or make the
-page look decorated. If an asset makes the page prettier and less legible, it
-is rejected.
+- **The audience footer.** ESSENTIAL. The audience represents viewers, human
+  attention, and the destination of the work. It does **not** represent a
+  closed measurement loop. Reconciliation in §8.4.
+- **The unlit Department 06 door.** Preserved unchanged. It and the audience
+  are complementary, not exclusive.
 
 ---
 
-## 2. Channelwright Cinematic Asset Bible
+## 1. What the page actually is — CONFIRMED
 
-Binding for every Magnific generation for this surface.
+Read from source and rendered at 1440×900 and 390×844.
 
-### 2.1 Exposure (the rule that overrides all others)
+- **One continuous camera move.** Eight scenes (`beats.ts`), 36.4 viewport-
+  heights of travel, ~26,500px on desktop, each overlapping its predecessor by
+  one viewport. There are no sections.
+- **Two coordinate spaces.** `--j` is the monotonic timeline; `--cam` is camera
+  position and may run backwards, which is what Beat 8's return needs. Spatial
+  rules read `--cam`; timeline rules read `--j`. **Any plate that is a place
+  must ride `--cam`. Any plate that is a state must ride `--j`.**
+- **One persistent world layer.** `.cw-world` is `position: fixed`, z-index 0,
+  behind every scene, `overflow: hidden`. Props sit at journey coordinate
+  `--at` and drift at a per-class rate standing in for distance.
+- **Everything is hairline vector on near-black.** `--void: #050607`. Far plane
+  0.5, mid 0.4, near 0.58 of their wake value; department fixtures capped at
+  0.3; room instruments at 0.18.
+- **One accent.** `--signal: #d8ff3e`, used as instrumentation only.
+- **The copy layer paints its own wash.** `.cw-layer--copy::before` lays a hard
+  gradient over the left 20–36% of the frame, ramped on the room's own
+  progress. Typography protection already exists; assets must respect it rather
+  than duplicate it.
 
-Assets are authored **pre-demoted**. Target a histogram where roughly 80–85%
-of pixels sit below 12% luminance, the lit edges peak around 55–70%, and
-nothing clips to white. One directional key, no fill, no rim light on the
-opposite side. Background boundaries dissolve into unresolved black — the
-viewer must never be able to locate the back wall of the room.
+### Journey ranges — CONFIRMED, computed from `beats.ts`
 
-Test: at `opacity: .22` over `#050607`, the asset must still read as *black
-metal with lit edges*, not as a grey rectangle.
+| Scene | `--j` range | Key landmark |
+|---|---|---|
+| `open` | 0.000 – 0.130 | threshold at **0.114** |
+| `intelligence` | 0.130 – 0.249 | Dept 01 at **0.181** |
+| `strategy` | 0.249 – 0.350 | Dept 02 at **0.299** |
+| `writers` | 0.350 – 0.463 | Dept 03 at **0.407** |
+| `production` | 0.463 – 0.576 | Dept 04 at **0.517** |
+| `control` | 0.576 – 0.689 | Dept 05 at **0.625** |
+| `return` | 0.689 – 0.887 | retrieve 0.705–0.760, release 0.796–0.857 |
+| `finale` | 0.887 – 1.000 | seam at **1.021**, deliberately past the end |
 
-### 2.1a Compositing is a separate problem from exposure
+---
 
-Owner review of the CRT base plate **at full exposure** found the vintage-CRT
-language present and correct: varied CRT sizes, curved glass, visible knobs and
-dials, irregular stacking, mixed television eras, an asymmetric wall, and
-substantial left-side negative space. The earlier worry that it reads as a
-generic broadcast equipment rack was **an artefact of the compositing
-treatment, not of the asset.** Too much CRT detail was being destroyed on the
-way onto the page.
+## 2. The core design principle — CONFIRMED by testing
 
-So §2.1's exposure rule stands — author dark — but the recipe that was paired
-with it does not. `opacity: .22` applied uniformly is the wrong instrument: it
-scales highlights and mid-tones by the same factor, so the specular hits that
-*describe* a curved screen and a knurled knob fall below perceptual threshold
-at exactly the same rate as the bulk of the object. What survives is a mass,
-which is precisely "equipment rack".
+> **Physical filmmaking objects appear as reality breaking through the
+> Channelwright blueprint.**
 
-The correction is to **crush rather than dim**: keep the plate closer to full
-strength and use contrast to push mid-tones toward black while leaving lit
-edges intact.
+Not sections with photographs in them. The rhythm is
 
-Three recipes to test, in order (all over `#050607`):
-
-```css
-/* A — crushed, recommended starting point */
-opacity: .45; mix-blend-mode: screen;
-filter: contrast(1.35) brightness(.85) saturate(.6);
-
-/* B — harder crush, for a plate that still muddies the copy band */
-opacity: .55; mix-blend-mode: screen;
-filter: contrast(1.6) brightness(.7) saturate(.55);
-
-/* C — purely additive; preserves highlights best, lifts blacks least */
-opacity: .5; mix-blend-mode: plus-lighter;
-filter: contrast(1.25) brightness(.75) saturate(.6);
+```
+SCHEMATIC  →  PHYSICAL REVEAL  →  SCHEMATIC
 ```
 
-The governing test is unchanged and is *not* "is it dark enough" — it is
-**"can I still tell one television from another, and is the headline still the
-brightest thing in the frame."** Both must be true at once. If they cannot be,
-the crop is wrong before the exposure is.
+never
 
-A consequence worth stating: a *subject* plate (the CRT wall, the cinema
-camera) and a *texture* plate (haze, a dissolving hall) want opposite
-treatments. Texture can be dimmed. Subject must be crushed. The bible's
-exposure clause applies to both; this recipe applies only to subjects.
+```
+SECTION → IMAGE → SECTION → IMAGE
+```
 
----
+Three consequences that govern every decision downstream:
 
-### 2.2 Environment
-
-Near-black cinematic soundstage. Deep atmospheric haze, used for depth
-separation rather than for beams. The room is always larger than the frame,
-and the frame never contains its boundary.
-
-### 2.3 Lighting
-
-Objects emerge from black. Controlled directional studio key, usually from
-one side and slightly behind, so the subject is described by its **edges**
-rather than by its faces. Practical illumination — monitor glass, a tally
-lamp, a status LED — is the only light permitted inside the subject. No
-volumetric god-rays, no lens flare, no bloom beyond a restrained specular
-falloff.
-
-### 2.4 Palette
-
-- **Ground:** `#050607` void, `#0a0c10` deep, `#12151b` deck, `#1b1f27` riser.
-- **Light:** a single paper tone `#f2efe6` at four intensities. Never warm
-  white, never blue-white.
-- **Materials:** graphite, gunmetal, desaturated silver, aged glass, muted
-  warm analogue plastic, dusty phosphor.
-- **Accent:** `#d8ff3e` acid-lime, **at most one instance per asset**, at the
-  scale of a tally light or a single lit switch. It is instrumentation. It is
-  never an edge-glow, never a light source for the scene, never a colour cast.
-  An asset with acid light spilling across a surface is rejected on sight.
-
-### 2.5 Materiality
-
-Working equipment, not museum pieces or product shots. Scuffed anodising,
-worn paint at the handles, dust in the vents, cable strain relief, camera
-tape, gaffer residue, fingerprints on glass, mismatched vintages in the same
-rack. Every object should look like it has been moved by someone this month.
-
-### 2.6 Photography
-
-Photorealistic. 35–50mm lens language; 24–28mm only for the full
-environmental plates. Natural optical depth of field — subject sharp, depth
-falling off honestly. Fine film grain. High dynamic range **without**
-commercial product-photography gloss. No tilt-shift, no anamorphic streaks,
-no heavy vignette (the page paints its own).
-
-### 2.7 Composition — authored for a website, not for a portfolio
-
-- **Reading side stays empty.** The page washes the left 20–36% of the frame
-  for copy. Every 21:9 and 16:9 asset must keep its left 40% in near-total
-  black with no readable detail.
-- **Subject enters from an edge and is cropped by the frame.** Nothing is
-  centred, nothing is complete. The studio continues past the viewport.
-- **Horizon and equipment datum around 62–72% frame height,** to sit against
-  the existing floor datum and the conveyance line at 91%.
-- **Asymmetric.** If the composition would work mirrored, it is not composed.
-- **No text of any kind in the asset.** No labels, no logos, no signage, no
-  UI, no numerals. The page owns all typography. Screen content is abstract
-  luminance only.
-
-### 2.8 Forbidden
-
-Cyberpunk; purple or blue neon; futuristic AI lab; glowing circuitry;
-holograms; SaaS gradients; floating glass dashboards; robots or humanoid AI;
-stock crews smiling at camera; pristine product photography; movie posters;
-lens flare; blockbuster action grading; retro-kitsch nostalgia collage; visible
-AI surrealism (impossible cable runs, melted connectors, nonsense lettering).
+1. **The blueprint stays on top.** Linework reads across the photograph. The
+   plate goes *into* `.cw-world`, below the depth planes — not over them and
+   not into a scene. A plate that occludes the linework has failed, however
+   good it looks.
+2. **Objects are discovered, not presented.** Cropped by the viewport, entering
+   from an edge, unresolved at the far end. Nothing is centred or complete.
+3. **Absence is half the system.** §6.
 
 ---
 
-## 3. Asset Integration Map
+## 3. The asset bible — revised
 
-Journey positions are `--j` fractions from `beats.ts`. "Frame" positions are
-verified from rendered captures at 1440×900.
+### 3.1 Exposure — CONFIRMED, unchanged
 
----
+Author dark. One directional key, no fill, no opposite-side rim. Subjects are
+described by their **edges**. Background dissolves; the frame never contains
+the room's boundary. Fine grain, no gloss, no flare, no bloom.
 
-### Beat 1 — Cold open (`open`, --j 0 → 0.06)
-
-- **Narrative:** one idea, in the visitor's own words.
-- **Current visual:** near-total black; the artifact plate and one acid pip
-  are the only lit things. Verified: at `--j` 0 the frame is essentially empty.
-- **Proposed motif:** **NONE.**
-- **Why:** the emptiness *is* the beat. This is the quietest frame in the run
-  and it earns everything that follows. Adding equipment here is the single
-  most tempting and most damaging change available.
-- **Priority: SKIP.**
-
----
-
-### Beat 2 — The threshold (`open`, --j 0.06 → 0.126)
-
-- **Narrative:** the turn. The building opens and the camera goes through it.
-- **Current visual:** lit rectangular aperture with the facility name on the
-  lintel, scaling past the camera; jambs part; ceiling lifts. Behind the
-  doorway: identical hairline linework.
-- **Proposed motif:** **Soundstage interior plate, seen through the aperture.**
-  A deep, hazed stage: a cinema camera on a dolly cropped by the right edge, a
-  lighting stand entering top-left, cable runs on the deck, everything falling
-  into black by mid-frame. Masked to the inside of `.cw-threshold` and scaled
-  with the same `--close` ramp the aperture already uses.
-- **Why:** the highest-value moment in the run currently has no payoff. This
-  is the one place where "the physical world exists behind the digital
-  interface" can be *stated* rather than implied. The whole thesis lives here.
-- **Composition:** centre-frame vertical corridor of darkness (the aperture is
-  narrow); subject mass right of centre; left third black.
-- **Negative space:** the lintel type sits at the top of the aperture — the top
-  18% of the plate must be unlit. `OPERATING FLOOR · AUTHORISED` sits below it.
-- **Interaction:** plate opacity rides `--reveal`; scale rides `--close`; it
-  is clipped by the existing frame so it cannot leak into the hall.
-- **Scroll:** resolves out of black at `--reveal`, rushes past at the crossing,
-  gone by the approach corridor. Never seen again.
-- **Asset type:** Environmental. **Desktop:** as described. **Mobile:** same
-  plate, tighter crop (the mobile threshold is `min(26vw, 14vh)` — the plate
-  must survive being 100px wide, so the composition needs one readable silhouette,
-  not a scene).
-- **Performance: LOW** — one masked `<img>` with opacity + scale already driven
-  by existing custom properties. No new mechanism.
-- **Priority: P0.**
-
----
-
-### Beat 3 — Department 01, Intelligence Room (`intelligence`, --j 0.126 → 0.27)
-
-- **Narrative:** evidence before strategy. Three angles rejected.
-- **Current visual:** `OpportunityPlot` canvas at 0.18 opacity full-bleed;
-  `Fixture[research]` — 16 tinted cells — parked at 19% frame height.
-- **Proposed motif:** **CRT / broadcast monitor wall, matched-state pair.**
-  Replaces the research fixture's cell grid as the back-wall equipment for
-  this room. State A: an irregular bank of ~18 mismatched CRTs and broadcast
-  monitors, dormant, dark glass, one or two carrying dead static. State B:
-  same bank, same camera, a minority of screens carrying abstract luminance —
-  waveform, scatter, frame grid — the rest still dark.
-- **Why:** this is the room that *looks at many things and rejects most of
-  them*. A wall where a few screens resolve and most stay dark is that claim,
-  made physically. It also fixes the "every room is the same cell grid"
-  problem at the room where it matters most.
-- **Composition:** 21:9. Bank occupies the right 55–60% and is cropped by the
-  right edge and the bottom. Left 40% falls away into unresolved black.
-- **Negative space:** the room's headline is a 3-line display at ~180–280px
-  from the top-left. That entire quadrant must be black.
-- **Interaction:** the two states cross-fade on `--l1`, the department's own
-  light ramp, which already exists. The blueprint fixture cells stay, at
-  reduced opacity, sitting *in front of* the plate — vector grid over
-  photographic glass is the physical/digital seam the brief is asking for.
-- **Scroll:** enters on `--fixtures-on`, crossfades A→B across the room,
-  exits with `--l2` rising.
-- **Asset type:** Matched-state pair. **Desktop:** as described.
-  **Mobile:** fixtures are `display: none` under 720px — ship a separate
-  tight 4:5 crop of 5–6 monitors as the room's only physical element.
-- **Performance: LOW–MEDIUM** — two WebP/AVIF plates, one opacity crossfade.
-  No JS. Mobile loads one crop only.
-- **Priority: P0.**
-
----
-
-### Beat 4 — Department 02, Strategy Room (`strategy`, --j 0.27 → 0.395)
-
-- **Narrative:** the idea acquires an audience and a hypothesis.
-- **Current visual:** `VersionGate` canvas; `Fixture[decision]`, 8 brass-tinted
-  cells.
-- **Proposed motif:** **Physical decision wall — pinned cards, contact sheet,
-  grease-pencil marks on glass.** Shallow, close, cropped hard by the right
-  edge. Not storyboards yet: these are *positions*, not shots.
-- **Why:** the artifact acquires its audience line and its dormant question in
-  this room, and the Return comes back here. A room the visitor must be able
-  to *recognise* four beats later needs a physical identity, not a tint.
-  This is what makes Beat 8 land.
-- **Composition:** 16:9, subject right 50%, very shallow depth of field.
-- **Negative space:** left 45% black; headline sits top-left.
-- **Interaction:** blueprint partition mullions read *across* the pinned cards.
-- **Scroll:** enters on `--l1` falling, holds, exits.
-- **Asset type:** Environmental (single state). **Mobile:** SKIP — mobile
-  recognises the Return by the wall sign, which already comes back with `--rev`.
-- **Performance: LOW.**
-- **Priority: P1** — but its value is entirely as **setup for Beat 8**, and it
-  should not be produced unless Beat 8 gets its matched state (below).
-
----
-
-### Beat 5 — Department 03, Writers' Room (`writers`, --j 0.395 → 0.52)
-
-- **Narrative:** something checked it before you did. One section sent back.
-- **Current visual:** `ScriptSequencer` canvas; `Fixture[writers]`, 12 cells.
-- **Proposed motif:** **NONE.**
-- **Why:** rhythm. Beats 3 and 4 both carry equipment; Beat 6 needs to land
-  hard. This room's argument is *procedural* — a QA pass catching a section —
-  and it is already carried by the artifact's own section strip and the
-  sequencer. A storyboard wall here would be the cliché, not the story.
-- **Priority: SKIP** (revisit only if the run feels visually thin after P0).
-
----
-
-### Beat 6 — Department 04, Production Floor (`production`, --j 0.52 → 0.65)
-
-- **Narrative:** finished is not the same as cleared. Held at the gate.
-- **Current visual:** `RenderLine` canvas; the artifact is physically **held**
-  while a QA band sweeps down it — the best interaction in the run.
-- **Proposed motif:** **Cinema camera, large, cropped, in silhouette,
-  entering from the left edge, matte box and rods only partly lit.**
-- **Why:** this is the room where the work becomes a *thing*. It is also the
-  only beat where the artifact stops moving, so the frame can carry mass
-  without competing. A camera body is the single most legible "this is a
-  studio" object available, and here it earns its place.
-- **Composition:** 21:9. Subject on the **left**, cropped by the left edge,
-  occupying ~35% width — this is the one room whose headline is **centred**
-  (verified at `--j` 0.5), so the reading wash is not on the left here and the
-  left edge is available. Right 60% falls to black behind the held artifact.
-- **Negative space:** centre column, from 20% to 40% frame height, must be
-  black for the two-line centred headline.
-- **Interaction:** the acid QA sweep band passes *in front of* the camera body.
-  Physical object, digital check, one crossing.
-- **Scroll:** rises as the gate closes, holds through the sweep, exits as the
-  artifact clears.
-- **Asset type:** Isolated object on black (compositable). **Mobile:** yes —
-  a tighter 4:5 crop of the matte box and lens only, bottom-left.
-- **Performance: LOW.**
-- **Priority: P1.**
-
----
-
-### Beat 7 — Department 05, Control Room (`control`, --j 0.65 → 0.78)
-
-- **Narrative:** publishing is a decision. Someone makes it. 1 of 5 chosen.
-- **Current visual:** `ReleaseCompositor`; `Fixture[control]`, 10 cells.
-- **Proposed motif:** **Deferred.** If the CRT plate proves out, the correct
-  move here is a *second state* of the same monitor bank — a preview/programme
-  arrangement with exactly one screen carrying the acid tally — reusing the
-  Beat 3 visual DNA rather than introducing new equipment.
-- **Why:** the argument is "one of these, chosen by a person". A tally light on
-  exactly one monitor says that in one frame. But it must be the *same wall*,
-  seen later, or the building stops being one building.
-- **Asset type:** Matched-state (third state of the Beat 3 bank).
-- **Performance: LOW.**
-- **Priority: P2** — depends entirely on PoC-1/PoC-2 succeeding.
-
----
-
-### Beat 8 — The Return (`return`, --j 0.78 → 0.9)
-
-- **Narrative:** a pipeline forgets; this one comes back. The camera travels
-  backwards to Department 02.
-- **Current visual:** the world traverses ~half the building in reverse; no
-  instrument, deliberately. Copy arrives *after* the traverse.
-- **Proposed motif:** **The Beat 4 decision wall, returned — same composition,
-  colder key, one card now carrying the acid mark.**
-- **Why:** the beat's entire claim is *this is the same room, later*. A matched
-  pair does that in a way no copy can. Without a physical Beat 4, this is
-  impossible; with it, this is the strongest narrative use of a matched state
-  in the whole run.
-- **Negative space:** headline top-left, verdict directly beneath it.
-- **Interaction:** the ambient wash already partly restores `--l1` during
-  `--rev`. The plate crossfades on the same variable.
-- **Asset type:** Matched-state (second state of the Beat 4 wall).
-- **Performance: LOW.**
-- **Priority: P1**, paired with Beat 4. Ship both or neither.
-
----
-
-### Beat 9 — The Next Decision (`finale`, --j 0.9 → 1.0)
-
-- **Narrative:** the room that is not built. `06 — ANALYTICS COMMAND`,
-  `DESIGNED, NOT BUILT`.
-- **Current visual:** unlit doorway drawn in the same hand as the entrance;
-  the artifact set down at its foot; one CTA.
-- **Proposed motif:** **NONE inside the aperture.** The door stays unlit and
-  stays empty.
-- **Why:** the emptiness is the argument. Putting anything behind this door
-  would show a room the product does not have.
-- **Exception worth testing later:** a *barely perceptible* dust-and-haze plate
-  inside the aperture — enough to say "empty room" rather than "flat panel",
-  with no object in it at all. P2, and only if it survives being almost invisible.
-- **Priority: SKIP** for the aperture (P2 for the haze-only variant). The door
-  itself is **preserved unchanged** and is load-bearing for Beat 11 — see below.
-
----
-
-### Beat 10 — The way out (NEW · after the capability register)
-
-- **Narrative:** the visitor leaves the building. Not through Department 06 —
-  *away from it*.
-- **Current visual:** none. The page currently ends inside the architecture:
-  `ArchiveHall` deliberately reuses the same ceiling, planes, jambs, haze and
-  floor as the departments, because the register is "one more room in the
-  building". That premise is kept.
-- **Proposed motif:** **Architectural dissolve, drawn not photographed.** Across
-  a short scroll span the hall shell comes apart in a fixed order: the overhead
-  truss first, then the jambs, then the floor grid, then the wash. The
-  conveyance line — the artifact's route — is **last**, and it *ends* rather
-  than fades, because the route through the system genuinely terminates when
-  the work is published.
-- **Why this beat exists at all:** it is the entire doctrinal load-bearing
-  member of the new ending (see §3a). Without an explicit exit, an audience
-  appearing after Department 06 could be misread as being *through* it.
-  With one, the audience is unambiguously outside the department architecture.
-- **Composition:** no new subject. Everything already on screen, leaving.
-- **Direction of travel:** whatever hall elements remain drift **opposite** to
-  the direction they drifted all film. The visitor has turned around. This is
-  the cheapest possible statement that the axis has changed, and it is the one
-  the eye reads fastest.
-- **Interaction:** its own progress via `registerScene`, exactly as the journey
-  wrapper does. `--cam` is journey-scoped and does not reach here. No new
-  mechanism.
-- **Scroll:** ~1.5–2 viewport-heights. Short. This is a transition, not a beat
-  to dwell in.
-- **Asset type:** NONE — this is CSS on existing elements.
-- **Desktop / Mobile:** identical logic; mobile has fewer elements to dissolve
-  because the far plane, partitions and fixtures are already dropped.
-- **Performance: LOW.**
-- **Priority: P0** — required by Beat 11, and worthless without it.
-
----
-
-### Beat 11 — The auditorium (NEW · the page's last frame)
-
-- **Narrative:** the work exists for people. They are still there, beyond the
-  system, and the creator is accountable to them.
-  *"They're waiting. What are you going to make for them?"*
-- **Current visual:** the existing `Footer` — one line, one CTA, one note.
-  This beat **absorbs** that footer rather than being added after it, so the
-  page does not end with two consecutive calls to action.
-- **Proposed motif:** **A dark auditorium, seen from the screen.** Rows of
-  seated people in a near-black room. The visitor is standing where the screen
-  is — so the audience is facing the visitor's position, and **the only light
-  in the frame comes from behind the camera**, falling on faces and seat backs.
-- **Why the light inverts, and why it matters:** for the entire film the light
-  has come from *ahead* — the hall, the doorway, the fixtures, the seam. Here
-  it comes from *behind*. That single inversion says "you are outside the
-  system and being looked at" without a word of copy, and it costs nothing but
-  a lighting instruction in the prompt.
-- **Why it does not contradict the register (the reconciliation):** the screen
-  the audience is waiting in front of is **dark**. Nothing has played. Nobody
-  in the frame has watched anything, nobody is reacting, and there is not a
-  number anywhere in the composition. Department 06 is an unlit door; the
-  auditorium is an unlit screen. The two images make the *same* statement in
-  two registers — machine and human — and reinforce rather than fight each
-  other. The audience is the **reason**; the darkness is the **honesty**.
-- **The hard constraint, carried forward from the earlier objection:** the
-  audience may never be shown *reacting to work*. No applause, no laughter, no
-  lit screen, no reaction shots, no delight, no metrics, no overlay. **Waiting,
-  not responding.** An asset that shows a reaction is rejected regardless of
-  how good it looks — that, and only that, is what would claim a closed
-  measurement loop.
-- **Composition:** 21:9 desktop. Audience occupying the lower 60% and running
-  off both edges — the room is larger than the frame. Upper 35% is unresolved
-  black for the line and the action. Nearest row cropped by the bottom edge, so
-  the visitor is *among* them rather than looking at a picture of them.
-- **Negative space:** the final line and CTA sit upper-left over black. No face
-  may fall inside that quadrant in any state.
-- **Interaction — the turn:** **three matched plates, staggered.** State A:
-  everyone oriented toward the screen or elsewhere in the room. State A′: two
-  or three of the nearest heads have turned. State B: roughly six to eight of
-  forty are facing the visitor. Staggered crossfades read as a wave moving
-  through the crowd; a single A→B dissolve would ghost bodies through bodies.
-- **Restraint is the whole craft here.** Only a minority ever turn. Faces stay
-  largely in shadow, unsmiling, not staring, no eye contact held by more than
-  one or two figures. The difference between "they're waiting" and a horror
-  beat is entirely a question of how many and how hard.
-- **Scroll:** the turn completes at the **true document bottom**, not merely at
-  the end of the section's own box — the owner's stated interaction is tied to
-  reaching the absolute bottom of the page, so progress is measured against
-  document end. The final CTA arrives on `Scene`'s existing `revealAt` /
-  `data-revealed` mechanism so it is not a tab stop before the turn resolves —
-  the same reasoning `NextDecision` already documents.
-- **Asset type:** Matched-state, three plates. **Desktop:** as described.
-  **Mobile:** a separate tighter crop — 8 to 12 people, nearer, so heads are
-  readable at 390px — and **two** states rather than three.
-- **Performance: LOW–MEDIUM.** Three plates plus two crossfades, no JS per
-  frame. Mobile loads two. These are the heaviest images in the plan
-  (faces and skin do not compress like black metal): budget ~150–220KB each in
-  AVIF rather than the 40–90KB the equipment plates should cost, and lazy-load
-  them — they are below several viewports of content.
-- **Priority: P0 — signature moment.**
-
----
-
-## 3a. Why the ending does not contradict the lifecycle doctrine
-
-Recorded because this was got wrong once and should not be re-litigated from
-scratch.
-
-The earlier draft of this document rejected the audience footer on the grounds
-that an audience at the end of the run implies the measurement loop has closed.
-That objection was too strong, and reading `docs/PRODUCT_DOCTRINE.md` closely
-inverts it:
-
-- **Principle 4, "Viewer value is mandatory"**, is a binding product
-  constraint: Channelwright must optimise for meaningful viewer value, not
-  AI-generated volume. It is currently **the only doctrine principle the page
-  never depicts.** The building *names* an audience — Department 02's line is
-  "Don't chase views. Build an audience." — and then never shows one. The
-  auditorium closes that gap; it does not open a new one.
-- **What the register actually forbids** is claiming a measured result.
-  `measurement` is DESIGNED and its boundary states Channelwright ingests no
-  analytics today. That forbids numbers, dashboards, reactions and outcomes.
-  It does not forbid people.
-- **The department architecture is the system; the audience is not in it.**
-  Departments 01–06 are Channelwright's own capabilities, and each is claimed
-  against the register. An auditorium is not a department, carries no status,
-  and makes no capability claim. Beat 10 exists precisely to make that
-  structural fact visible in the architecture rather than asserted in a caption.
-- **The two dark objects rhyme.** An unlit door and an unlit screen say the
-  same thing from opposite sides: the result has not landed yet. Placing them
-  in sequence strengthens the register's claim rather than undermining it.
-
-So the ordering is: the film ends → the record is stated inside the building →
-the building comes apart → the people are still there. Nothing in that sequence
-asserts that Department 06 was built, and Beat 10 is the member that guarantees
-it. If Beat 10 were ever cut for length, Beat 11 would have to be cut with it.
-
-**One structural rhyme worth protecting:** the run ends by walking *out* of the
-studio to meet the audience, and the only action offered there is
-`Enter the studio`. The visitor is put in the creator's position without a word
-of explanation. Do not let a later copy pass paraphrase that CTA away.
-
----
-
-## 4. Visual rhythm map
-
-The page must breathe. Verified against the current run, the sequence below
-alternates weight and leaves the two most important frames — the opening and
-the ending — as the quietest in the film.
-
-| Beat | Weight | Carried by |
-|---|---|---|
-| 1 — Idea | **SILENT** | one sentence, one pip, black |
-| 2 — Threshold | **HERO** | soundstage plate through the aperture |
-| 3 — Intelligence | **HEAVY** | CRT wall, matched state A→B |
-| 4 — Strategy | MEDIUM | decision wall, shallow, close |
-| 5 — Writers | **QUIET** | linework and the artifact only |
-| 6 — Production | **HERO** | cinema camera silhouette + the gate hold |
-| 7 — Control | MEDIUM | CRT bank returning, one tally lit |
-| 8 — Return | MEDIUM (recognition, not spectacle) | decision wall, second state |
-| 9 — Next Decision | **SILENT** | the unlit door |
-| — Capability register | **QUIET** | the record, inside the building |
-| 10 — The way out | **QUIET** | the architecture dissolving; no new subject |
-| 11 — The auditorium | **HERO** | audience plates, staggered turn, final action |
-
-Three hero moments now, spaced roughly 40%, 30% and 25% apart, and the run
-still opens and closes on restraint: Beat 1 is one sentence in the dark, Beat 9
-is an unlit door, and the register and the exit are two consecutive quiet beats
-that let the last frame land. Beat 11 is the only place in the film where a
-human face appears, which is most of why it carries.
-
-The risk to watch is the tail: Beats 9, 10 and 11 add roughly 4.5
-viewport-heights (~4,000px desktop, about 13% more page). If the exit is
-allowed to sprawl, the film ends twice. Keep Beat 10 short.
-
----
-
-## 5. Proof-of-concept selection
-
-Three generations, two compositions. Chosen to *test the system*, not to be
-easy.
-
-**PoC-1 + PoC-2 — CRT/broadcast monitor wall, matched state pair (Beat 3).**
-Tests four things at once, all of which the entire production phase depends on:
-(a) does pre-demoted photography survive compositing at ~0.22 over `#050607`
-behind hairline vector, or does it turn to grey mud; (b) does the CRT motif
-read as intelligent and premium rather than as retro-kitsch; (c) can Magnific
-hold a *matched composition* across two prompts well enough for a crossfade —
-if it cannot, the cheapest and most valuable technique in the plan is dead and
-we need to know now; (d) does one acid tally survive as instrumentation rather
-than becoming decoration.
-
-**PoC-3 — Soundstage interior through the threshold (Beat 2).**
-Tests the thesis itself at the highest-value moment: is there a payoff behind
-the door that makes the crossing land, and does a photographic interior read
-as *behind* the vector building rather than pasted on top of it. This is the
-asset that decides whether the direction is worth a production phase.
-
-Deliberately **not** generated in this pass: the storyboard wall (P1, and its
-value is conditional on Beat 4/8 being taken as a pair), the director's chair
-and clapperboard family (cliché risk, low narrative value), the production
-floor wide (would compete with PoC-3 for the same job), and anything for the
-finale (the argument there is emptiness).
-
----
-
-## 6. Magnific prompts and settings (reproducible visual DNA)
-
-All four generations: **Seedream 5 Pro** (`seedream-5-pro`), **2k**, no brand
-kit, no style LoRA. Chosen over Recraft V4.1 because the matched-state test in
-§5 requires image-reference support, and over Nano Banana Pro because this is
-photographic exploration rather than brand-fidelity finishing.
-
-Every prompt ends with the same three clauses, which are the enforceable part
-of the bible and should be appended verbatim to every future generation:
+Closing clauses to append verbatim to every generation:
 
 ```
 Very dark exposure: roughly 85 percent of the image below 12 percent
@@ -663,181 +173,553 @@ Not cyberpunk. No neon, no blue or purple light, no lens flare, no bloom,
 no god rays.
 ```
 
-### PoC-1 — CRT wall, state A (dormant) · 21:9 · 3024×1296 · 2 variants · seed 318661 (v1)
+(Drop `no people` for the audience assets only.)
+
+### 3.2 Compositing — REVISED. This is the big correction.
+
+**Uniform opacity is the wrong instrument.** Revision 1's 0.22 is REJECTED.
+
+Two integration patterns emerged from testing, and they are genuinely
+different. Choosing the wrong one is the main way this goes wrong.
+
+#### Pattern A — WIDE PLATE, MASKED (environmental objects)
+
+The plate spans the frame; a left-side mask carves out copy territory.
+
+Harness values that worked for the CRT wall — TESTED:
 
 ```
-Photorealistic cinematic still, extremely low key, near-black. A dark
-broadcast studio wall of about eighteen mismatched vintage CRT televisions and
-professional broadcast monitors — different sizes, different eras — stacked in
-an irregular rack of scuffed black steel shelving. Every screen is DORMANT:
-dark grey switched-off glass with faint reflections only; two screens carry
-dead grey analogue static at very low brightness. The monitor bank occupies
-the right 55% of the frame and is cropped by both the right edge and the
-bottom edge. The left 40% of the frame is unresolved black with no readable
-detail — the room dissolves into darkness and the back wall is never visible.
-A single hard directional key light rakes across the monitor bezels from the
-upper right and slightly behind, describing the equipment by its edges only.
-No fill light, no rim light on the left side. Materials: worn anodised
-aluminium, aged beige and graphite plastic, dusty glass, coiled BNC cables
-with strain relief, camera tape residue, fingerprints on the screens. Heavy
-atmospheric haze for depth separation. Strictly desaturated palette: graphite,
-gunmetal, silver, aged glass, muted warm analogue plastic. 35mm lens, natural
-shallow depth of field falling off into darkness, fine film grain, high
-dynamic range without any commercial gloss. [+ the three closing clauses]
+opacity .45–.50 · saturation ~.80 · width ~110 · x ~10 · y 0
+scale ~1.05 · fade ~45 · blend screen
 ```
 
-### PoC-2 — CRT wall, state B (partially active) · 21:9 · image reference = PoC-1 v1
+#### Pattern B — NARROW PLATE, PLACED (environmental reveals)
 
-The matched-state test. The reference is passed as `type: image` so the model
-holds the composition rather than reinterpreting the subject.
+The plate is small, sits to one side, and needs **no mask at all** — its own
+edges do the work. Cheaper, safer, and it cannot creep into the copy band.
 
-```
-Match the reference image exactly: identical camera position, identical lens,
-identical framing, identical monitor bank layout, identical shelving,
-identical lighting direction. The ONLY change is that six of the screens have
-now switched on, carrying dim abstract luminance — a single-trace waveform, a
-sparse scatter of points, a plain frame grid, soft grey analogue static — all
-extremely dim, unreadable, no text and no interface. The remaining monitors
-stay dark and switched off. One single small acid-lime chartreuse tally lamp
-is lit on exactly one monitor bezel, the size of a fingernail, reading as an
-indicator light only — it casts no coloured light on any surface. Everything
-else is unchanged. Extremely low key, near-black. [exposure clause, but
-"roughly 80 percent below 12 percent luminance, screen glow peaking around 55
-percent"] Strictly desaturated palette apart from that one tally: graphite,
-gunmetal, silver, aged glass, muted warm analogue plastic, dusty phosphor
-grey. Fine film grain, high dynamic range without commercial gloss.
-[+ the remaining two closing clauses]
-```
-
-### PoC-3 — Soundstage through the threshold · 3:4 portrait · 2 variants
-
-Portrait because `.cw-threshold` is `width: min(22vw, 25vh)` by `height: 34vh`
-— roughly 3:4 — and scales ×4.3 through the crossing.
+Harness values that worked for the soundstage — TESTED:
 
 ```
-Photorealistic cinematic still, extremely low key, near-black. Vertical
-portrait view deep into a working film soundstage. A professional cinema
-camera on a low dolly stands at mid-depth, right of centre, cropped by the
-right edge of the frame — only its matte box, lens barrel and support rods
-catch the light. A tall lighting stand and a barn-doored studio lamp enter
-from the upper left edge, unlit and in silhouette. Thick coiled power cables
-and sandbags on a scuffed dark deck in the foreground. The stage recedes into
-total unresolved blackness; the back wall is never visible and the room
-clearly continues past the frame. The top 20 percent of the frame is
-completely unlit black empty air. Single hard directional key light from the
-far right, low and raking, describing objects by their edges only; no fill.
-Materials: matte black anodised metal, worn paint at the handles, dust in the
-vents, gaffer tape residue, brushed aluminium, rubber cable jackets. Heavy
-atmospheric haze giving deep tonal separation between foreground, midground
-and darkness. Strictly desaturated palette: graphite, gunmetal, desaturated
-silver, near-black charcoal. 35mm lens, natural depth of field, fine film
-grain, high dynamic range without commercial gloss. [+ the three closing
-clauses, with "no visible light beams" appended]
+opacity .50 · saturation ~.80 · width 40 · x 15 · y 0
+scale 1.15 · fade 0 · blend screen
 ```
 
-**Settings not maximised on purpose:** 2k rather than 4k (these are composited
-at 18–25% behind linework; 4k buys nothing and costs page weight), `count` 2
-for the two exploratory compositions and 1 for the matched state (the matched
-state is a pass/fail test, not a selection), and no upscaling pass.
+**Prefer Pattern B wherever the narrative allows it.** `fade 0` means no mask
+is being asked to protect the headline, which removes an entire class of
+failure. Pattern A is for when the subject genuinely has to fill the frame.
+
+Both are harness values, not production CSS. Production should reach the same
+*look* through local exposure control — masking, clipping, per-region
+treatment, responsive tuning — rather than one global number.
+
+**The governing test, both patterns:** *can I still tell one object from
+another, **and** is the headline still the brightest thing in the frame?* Both
+must hold at once. If they cannot, the crop is wrong before the exposure is.
+
+#### Subject vs texture
+
+A **subject** plate (CRT wall, cinema camera) must be *crushed* — near half
+strength, contrast raised, mid-tones pushed to black, lit edges intact. A
+**texture** plate (haze, a dissolving hall) may simply be *dimmed*. Do not
+apply the subject recipe to texture or the reverse.
+
+### 3.3 Palette
+
+Ground `#050607` / `#0a0c10` / `#12151b` / `#1b1f27`. Light: one paper tone
+`#f2efe6`. Materials: graphite, gunmetal, desaturated silver, aged glass, muted
+warm analogue plastic, dusty phosphor. Accent `#d8ff3e`, at the scale of a
+tally lamp, at most one per asset, never a light source, never a colour cast.
+
+One deliberate exception is under consideration for the finale only — see §8.5.
+
+### 3.4 Transformation without matched generation — PROPOSED
+
+Per owner instruction the strategy must not depend on matched AI generations.
+For the CRT beats it does not have to.
+
+**Screen activation can be pure CSS.** The dormant plate already contains the
+screens. Their positions are fixed and knowable. Activation is a small set of
+absolutely-positioned quads — soft radial gradients in dusty phosphor grey,
+clipped to each screen's footprint, `mix-blend-mode: screen` — faded in on
+`--l1`. One of them carries the acid tally.
+
+This is strictly better than a second AI image:
+
+- zero geometry-drift risk, because the geometry never changes;
+- zero additional credits and zero additional bytes;
+- the acid is the exact brand token rather than whatever the model produced;
+- each screen can be timed independently, so screens can wake in sequence
+  rather than all at once — which is the beat we actually wanted.
+
+It also retires the matched-state dependency for **Beats 3 and 7 entirely.**
+What it cannot do is turn a head, so §8 still has to solve the audience.
+
+### 3.5 Forbidden
+
+Cyberpunk; purple or blue neon; futuristic AI lab; glowing circuitry;
+holograms; SaaS gradients; floating glass dashboards; robots; stock crews
+smiling at camera; pristine product photography; movie posters; lens flare;
+blockbuster grading; retro kitsch; visible AI surrealism. Also: **film-school
+moodboard decoration.** Every object answers §5's three questions or it is cut.
 
 ---
 
-## 7. Generated proof-of-concept assets
+## 4. Cinematic vocabulary — the five roles
 
-Five renders, 500 credits of 20,000 (verified against the account balance).
-All in the Magnific Personal project.
-
-| Working name | Intended location | Ratio | Native |
+| Role | What it is | Where it lives | Pattern |
 |---|---|---|---|
-| Working name | Intended location | Seed | Native |
+| **ENVIRONMENTAL OBJECT** | A physical artifact embedded in a department | inside `.cw-world`, below the planes | A |
+| **ENVIRONMENTAL REVEAL** | A glimpse of a physical studio behind the schematic | at thresholds and transitions | B |
+| **TRANSFORMATION STATE** | An object responding to journey progress | CSS over an existing plate (§3.4) | — |
+| **HUMAN / AUDIENCE PAYOFF** | People, reserved for the finale | outside the department architecture | own |
+| **NO ASSET** | Deliberate quiet | — | — |
+
+Human presence appears **once**, at the end. Scattering people through the
+operating floor would spend the finale's only card early.
+
+---
+
+## 5. The three questions
+
+Before any asset is proposed or generated:
+
+1. **Why does this physical object appear *here*?**
+2. **What does it communicate about this department or moment?**
+3. **What changes because the visitor encountered it?**
+
+If the answer to any is "it looks cinematic," the asset is cut.
+
+---
+
+## 6. Rhythm map — REVISED
+
+If everything is cinematic, nothing is. Presence and absence alternate, and the
+two most important frames in the film are the two quietest.
+
+| Beat | `--j` | Weight | Carried by |
 |---|---|---|---|
-| `crt-wall-state-a-v1` | Dept 01 back wall, dormant | 318661 | 3024×1296 |
-| `crt-wall-state-a-v2` | alternate composition | 617339 | 3024×1296 |
-| `crt-wall-state-b` | Dept 01 back wall, active (matched to v1) | 931176 | 3024×1296 |
-| `soundstage-threshold-v1` | Beat 2, inside `.cw-threshold` | — | portrait |
-| `soundstage-threshold-v2` | alternate composition | — | portrait |
+| 1 — Idea | 0.00–0.06 | **SILENT** | one sentence, one pip, black |
+| 2 — Threshold | 0.06–0.13 | **PHYSICAL REVEAL** | soundstage through the aperture |
+| 3 — Intelligence | 0.13–0.25 | **PHYSICAL OBJECT** | CRT wall + CSS activation |
+| 4 — Strategy | 0.25–0.35 | QUIET | linework, artifact, verdict |
+| 5 — Writers | 0.35–0.46 | **QUIET** | linework and the artifact only |
+| 6 — Production | 0.46–0.58 | **PHYSICAL OBJECT** | cinema camera at the gate hold |
+| 7 — Control | 0.58–0.69 | LIGHT TOUCH | CRT bank returning, one tally |
+| 8 — Return | 0.69–0.89 | QUIET (recognition) | the camera move is the beat |
+| 9 — Next Decision | 0.89–1.00 | **SILENT** | the unlit door |
+| — Register | after | **QUIET** | the record, inside the building |
+| 10 — The way out | after | **QUIET** | the architecture dissolving |
+| 11 — Auditorium | last | **HUMAN PAYOFF** | the only faces in the film |
 
-Three distinct seeds, three distinct server-side asset IDs, and two distinct
-batch families for the CRT set — recorded here because a download anomaly (§8a)
-later made that provenance the deciding evidence.
+Four imagery moments in a nine-beat film, never two heavy beats adjacent, and
+the longest quiet stretch (Beats 7–10) immediately precedes the payoff.
 
-Proposed repo paths when and if a production phase is approved (note: the
-repository currently has **no `public/` directory** — one would be created):
-
-```
-public/studios/crt-wall-a.avif        public/studios/crt-wall-a@mobile.avif
-public/studios/crt-wall-b.avif        public/studios/crt-wall-b@mobile.avif
-public/studios/threshold-stage.avif   public/studios/threshold-stage@mobile.avif
-```
-
----
-
-## 8. Page-integration evaluation — BLOCKED, and why
-
-**This section could not be completed in this session, and nothing in it is
-being reported as done.**
-
-The generations succeeded. The images cannot be retrieved into this
-environment: Magnific serves results from `pikaso.cdnpk.net`, which this
-session's egress policy denies (`connect_rejected`, HTTP 403 at the proxy).
-Verified through three separate paths — `curl`, a Playwright request context,
-and the `png16` delivery profile, which returns a URL on the same blocked
-host. The MCP channel returns metadata and URLs only, never pixels. So the
-assets could not be downloaded, could not be viewed, could not be composited
-over the page, and **have not been evaluated by anyone yet**.
-
-What was done instead, so the evaluation is a short task rather than a
-restart: `tools/studios-asset-preview.html` — a standalone harness that loads
-the live `/studios-preview` in an iframe and floats a candidate plate over it
-as a fixed layer, which is exactly how a plate in `.cw-world` would behave.
-It exposes opacity, blend mode, saturation, contrast, brightness, scale,
-position, width and edge falloff, draws the page's own reading-wash band as a
-guide, and emits the CSS for whatever composite you settle on. It imports
-nothing from `src/` and no application code references it.
-
-**The evaluation to run, in order:**
-
-1. Open each plate over Department 01 (`--j` ≈ 0.16–0.24) and find a composite
-   that keeps the CRT character — see §2.1a for why `opacity: .22` alone is now
-   known to be the wrong recipe, and for the three settings to try instead.
-   **Pass condition:** curved glass, knobs, mismatched bezels and era
-   differences are still legible. **Fail condition:** the bank flattens into an
-   undifferentiated equipment rack.
-2. Check the headline at that composite. If any part of the plate is readable
-   inside the left 36% of the frame, the composition is wrong regardless of
-   how good the image is.
-3. **Matched state — currently UNTESTED, see §8a.** Toggle state A against
-   state B at the same placement. **Pass condition:** the bank does not shift —
-   screens change, geometry does not. **Fail condition:** any camera or layout
-   drift. This check has not yet been performed on genuinely distinct files.
-4. Check the acid tally in state B. It must read as an indicator. If it casts
-   colour on surrounding surfaces, reject and regenerate.
-5. Put the portrait plate behind the threshold at `--j` ≈ 0.10–0.12 and scroll
-   the crossing. **Pass condition:** the crossing gains a payoff.
-   **Fail condition:** it reads as a photograph hung in a doorway.
-6. Repeat 1 and 5 at 390×844.
-
-Judgements to be sceptical of when reviewing: an image that looks impressive
-on its own is not evidence — the only question is whether it survives being
-demoted to 22% behind hairline vector without turning to mud, and whether the
-headline is still the brightest thing in the frame afterwards.
+**Changed from revision 2:** Beat 4 drops from MEDIUM to QUIET and its decision
+wall moves to OPTIONAL. Beats 4, 5, 8 are now three of the four quiet beats,
+which is what buys Beat 11 its impact.
 
 ---
 
-## 8a. Matched state: UNTESTED, and the duplicate-file investigation
+## 7. Beat-by-beat cinematic asset map — REVISED
 
-**Status of the matched-state technique: UNTESTED.** Not passed, not failed.
-Nothing downstream may assume either result.
+---
+
+### BEAT 1 — The idea · `--j` 0.000–0.060
+
+**Purpose** One idea, in the visitor's own words.
+**Role** NO ASSET.
+**Subject** None.
+**Why** The emptiness is the beat. It is the darkest frame in the film and it
+earns everything after it. This is the most tempting and most damaging place to
+add something.
+**Composition / Interaction / Blueprint / Typography** unchanged.
+**Desktop / Mobile** unchanged.
+**Reuse / New** neither.
+**Priority: NO ASSET.**
+
+---
+
+### BEAT 2 — The threshold · `--j` 0.060–0.130, aperture at **0.114**
+
+**Purpose** The turn. The building opens and the camera crosses into it.
+**Role** ENVIRONMENTAL REVEAL — Pattern B.
+**Subject** The soundstage: cinema camera on a dolly cropped right, lighting
+stand entering upper left, cable and sandbags on the deck, everything falling
+into black by mid-frame.
+**Why** CONFIRMED gap: the camera currently crosses a lit doorway and finds
+identical linework behind it. The best moment in the run has no payoff. This is
+where "a physical studio exists behind the schematic" is *stated*.
+**Composition** 3:4 portrait — `.cw-threshold` is `min(22vw, 25vh)` by `34vh`.
+Top 20% unlit for the lintel. Clipped to the aperture so it cannot leak.
+**Interaction** Opacity on `--reveal`, scale on `--close`, both existing. The
+plate is a *place*, so it rides `--cam`.
+**Blueprint** The aperture frame and its lintel type sit over the plate; the
+truss passes above it. Photography strictly inside the doorway.
+**Typography** `CHANNELWRIGHT STUDIOS` on the lintel — top 20% must stay unlit.
+**Desktop** As described. **Mobile** Same plate, tighter crop: the mobile
+aperture is `min(26vw, 14vh)`, so the composition must survive at ~100px wide —
+one readable silhouette, not a scene.
+**Reuse** YES — `soundstage-threshold-v1` or `v2`, already generated. TESTED at
+Pattern B values.
+**New asset** No.
+**Priority: ESSENTIAL.**
+
+---
+
+### BEAT 3 — Department 01, Intelligence · `--j` 0.130–0.249, dept at **0.181**
+
+**Purpose** Evidence before strategy. Three angles rejected.
+**Role** ENVIRONMENTAL OBJECT (Pattern A) + TRANSFORMATION STATE (§3.4 CSS).
+**Subject** The vintage CRT / broadcast monitor wall.
+**Why** Two jobs at once. CONFIRMED weakness: `Fixture` draws the same bordered
+cell grid five times with only a tint to tell the rooms apart, so Department 01
+is not visually a research wall. And this is the room that *looks at many
+things and rejects most of them* — a wall where a few screens resolve and most
+stay dark is that claim made physically.
+**Composition** 21:9. Bank right 55–60%, cropped right and bottom. Left 40%
+unresolved black.
+**Interaction** Plate opacity on `--fixtures-on`; screens wake in sequence on
+`--l1` via CSS quads, not a second image. One carries the acid tally.
+**Blueprint** The existing fixture cell grid stays, reduced, **in front of** the
+plate — vector grid over photographic glass is the seam this whole direction is
+about.
+**Typography** Three-line display at ~180–280px from top-left. That quadrant
+stays black; `fade ~45` protects it.
+**Desktop** Pattern A. **Mobile** Fixtures are `display:none` under 720px — a
+separate tight 4:5 crop of 5–6 televisions, or nothing.
+**Reuse** YES — `crt-wall-state-a-v1`. TESTED and passed at full exposure.
+**New asset** No — §3.4 removes the need for a State B.
+**Priority: ESSENTIAL.**
+
+---
+
+### BEAT 4 — Department 02, Strategy · `--j` 0.249–0.350, dept at **0.299**
+
+**Purpose** The idea acquires an audience and a dormant hypothesis.
+**Role** NO ASSET for now (was PROPOSED environmental object in revision 1).
+**Why the downgrade** Rhythm. Beats 2 and 3 both carry imagery; Beat 6 needs to
+land. A decision wall here would make four consecutive image beats. Its only
+real value was as setup for Beat 8's recognition, and Beat 8 is now carried by
+the camera move — which is already the strongest thing in that beat.
+**Reuse / New** neither.
+**Priority: OPTIONAL** — revisit only if Beat 8 tests as under-supported.
+
+---
+
+### BEAT 5 — Department 03, Writers' · `--j` 0.350–0.463, dept at **0.407**
+
+**Purpose** Something checked it before you did. One section sent back.
+**Role** NO ASSET.
+**Why** The claim is procedural and already carried by the artifact's own
+section strip and the sequencer. A storyboard wall here is the cliché, not the
+story, and it would break the quiet stretch the film needs.
+**Priority: NO ASSET.**
+
+---
+
+### BEAT 6 — Department 04, Production · `--j` 0.463–0.576, dept at **0.517**
+
+**Purpose** Finished is not the same as cleared. Held at the gate.
+**Role** ENVIRONMENTAL OBJECT — Pattern B preferred.
+**Subject** A cinema camera, large, cropped, mostly silhouette, entering from
+the **left** edge; matte box and rods catching the key.
+**Why** The room where the work becomes a *thing*, and the only beat where the
+artifact stops moving — so the frame can carry mass without competing. CONFIRMED
+from the render: this room's headline is **centred**, so the left edge is free
+here and nowhere else.
+**Composition** Subject left, ~35% width, cropped by the left edge. Centre
+column 20–40% frame height must stay black for the two-line headline.
+**Interaction** Rises as the gate closes, holds through the QA sweep, exits as
+the artifact clears. The acid sweep band passes **in front of** the camera body
+— physical object, digital check, one crossing.
+**Blueprint** Conveyance line and gate leaves over the plate.
+**Typography** Centred headline; centre column protected by placement, not mask.
+**Desktop** Pattern B mirrored to the left. **Mobile** Tight 4:5 crop of matte
+box and lens, bottom-left.
+**Reuse** PARTIAL — the soundstage plate contains a cinema camera and could
+stand in for a spike. Shipping the same plate in Beats 2 and 6 is REJECTED: at
+two points in one film the visitor will notice.
+**New asset** YES, eventually — SUPPORTING, not minimum-validation.
+**Priority: SUPPORTING.**
+
+---
+
+### BEAT 7 — Department 05, Control · `--j` 0.576–0.689, dept at **0.625**
+
+**Purpose** Publishing is a decision. Someone makes it. 1 of 5 chosen.
+**Role** TRANSFORMATION STATE — no new asset.
+**Subject** The Beat 3 CRT bank, seen later, with exactly **one** screen
+carrying the acid tally.
+**Why** The argument is "one of these, chosen by a person." A tally on exactly
+one monitor says it in one frame. It must be the *same wall* or the building
+stops being one building.
+**Interaction** Same plate, different CSS activation set. Reaches Pattern A at
+lower opacity than Beat 3 — the room has already been established.
+**Reuse** YES — same plate as Beat 3, no second download.
+**New asset** No.
+**Priority: SUPPORTING.**
+
+---
+
+### BEAT 8 — The Return · `--j` 0.689–0.887; retrieve 0.705–0.760, release 0.796–0.857
+
+**Purpose** A pipeline forgets; this one comes back. The camera travels
+backwards to Department 02 while the story advances.
+**Role** NO ASSET.
+**Why** CONFIRMED from source: the beat *is* the camera move, and the code
+comments record that the room deliberately has no instrument because nothing is
+being done to the artifact here. Adding imagery would compete with the one
+mechanic the beat exists to demonstrate. It is also the last long quiet before
+the ending.
+**Note** If Beat 3's plate is visible during the reverse traverse it must ride
+`--cam`, not `--j`, or the return will rewind the story as well as the camera.
+**Priority: NO ASSET.**
+
+---
+
+### BEAT 9 — The Next Decision · `--j` 0.887–1.000; seam at **1.021**
+
+**Purpose** The room that is not built. `06 — ANALYTICS COMMAND`,
+`DESIGNED, NOT BUILT`.
+**Role** NO ASSET inside the aperture. Preserved exactly as it is.
+**Why** The emptiness is the argument, and it is what lets Beat 11 read as
+*outside* the system rather than *through* the door.
+**Exception** A barely perceptible dust-and-haze plate inside the aperture —
+"empty room" rather than "flat panel", no object in it. OPTIONAL, and only if it
+survives being almost invisible.
+**Priority: NO ASSET** (OPTIONAL for the haze variant).
+
+---
+
+### BEAT 10 — The way out · after the capability register
+
+**Purpose** The visitor leaves the building. Not through Department 06 — away
+from it.
+**Role** NO ASSET. CSS on existing elements.
+**Subject** None. Everything already on screen, leaving.
+**Why** The doctrinal load-bearing member. Without an explicit exit, an
+audience appearing after Department 06 could be misread as being through it.
+**Composition** The hall shell comes apart in a fixed order: truss, jambs,
+floor grid, wash. The conveyance line is **last** and *ends* rather than fades —
+the artifact's route terminates when the work is published.
+**Interaction** What remains drifts **opposite** to the direction it held all
+film. The visitor has turned around. Its own progress via `registerScene`;
+`--cam` is journey-scoped and does not reach here.
+**Desktop / Mobile** Same logic; mobile has fewer elements to dissolve.
+**Priority: ESSENTIAL** — required by Beat 11, worthless without it. If cut for
+length, Beat 11 must be cut with it.
+
+---
+
+### BEAT 11 — The auditorium · the page's last frame
+
+**Purpose** The site has shown the machinery that makes media. The end reveals
+the humans on the other side of it. *"They're waiting. What are you going to
+make for them?"*
+**Role** HUMAN / AUDIENCE PAYOFF.
+**Subject** A dark auditorium. Three approaches in §8 — not yet chosen.
+**Why** CONFIRMED gap: doctrine Principle 4 ("Viewer value is mandatory") is
+binding and is the only principle the page never depicts. Department 02's own
+line is *"Don't chase views. Build an audience"* — the building names an
+audience and never shows one.
+**Composition** Audience low in frame, running off both edges. Upper 35%
+unresolved black for the line and the action.
+**Interaction** The turn / reveal, resolving at the **true document bottom**.
+Final CTA on `Scene`'s existing `revealAt` so it is not a tab stop early.
+**Blueprint** Minimal or none — the architecture has dissolved by now. This is
+the one frame where the schematic does *not* overlay the photograph, and that
+absence is how the visitor knows they are outside.
+**Typography** Upper-left over black. No face in that quadrant in any state.
+**Desktop** 21:9. **Mobile** Separate tighter crop, 8–12 people, nearer.
+**Reuse** No. **New asset** YES — the only ESSENTIAL new generation.
+**Priority: ESSENTIAL.**
+
+---
+
+### Capability register / archive
+
+**Role** NO ASSET. This is the record; it should look like a record.
+**Priority: NO ASSET.**
+
+---
+
+## 8. The audience footer — three Channelwright-native approaches
+
+PROPOSED. Not generated. Not chosen.
+
+Shared constraints for all three:
+
+- The audience is **waiting, never reacting.** No applause, no laughter, no lit
+  screen, no reaction, no metrics. That, and only that, is what would falsely
+  claim a closed measurement loop.
+- Faces mostly in shadow, unsmiling, non-specific, no held eye contact from
+  more than one or two figures. Restraint is the difference between "they're
+  waiting" and a horror beat.
+- No text, no numbers, no interface anywhere in frame.
+
+### 8.1 Approach A — "The Screening"
+
+Camera among the rows, slightly low, looking across seat backs toward a dark
+screen. Light comes from ahead, so the audience is seen as rim-lit silhouettes.
+As the visitor descends, heads turn; as they turn, the lenses catch the screen
+light and become the only colour in the film.
+
+- **Turn mechanism:** matched plates, A → A′ → B, staggered so the turn moves
+  through the crowd as a wave rather than a mass dissolve.
+- **Closest to** the owner's described interaction. The glasses reveal is a
+  genuine payoff.
+- **Risk: HIGH.** Depends entirely on matched-state generation, which is
+  UNTESTED, on the hardest possible subject.
+
+### 8.2 Approach B — "Rows in depth"
+
+The crowd is decomposed into three or four **separate row-band plates** with
+transparent backgrounds, each its own layer, parallaxed against each other on
+scroll. Only one band crossfades between states at a time.
+
+- **Turn mechanism:** per-band matched pairs — much smaller, and a band that
+  fails can be regenerated alone without redoing the crowd.
+- **Also buys** real parallax depth for almost nothing.
+- **Risk: MEDIUM.** De-risks matched state by decomposing it, but alpha cutouts
+  of hair are where background removal is weakest, and it is 6–8 plates rather
+  than 2–3, which fights the performance budget on the heaviest images in the
+  plan.
+
+### 8.3 Approach C — "They were always there" — RECOMMENDED
+
+**One plate. No matched state at all.** The audience is already oriented toward
+the visitor, but in near-total darkness — effectively invisible on arrival.
+Scrolling does not turn heads; it **raises the light.** A cool glow ramps up
+from behind the camera and the audience resolves out of black, the lenses
+catching last.
+
+- **Turn mechanism:** none needed. The reveal is an opacity and a light ramp on
+  a single image.
+- **Why it is the strongest Channelwright reading:** emergence from darkness is
+  the page's entire existing grammar — the hall wakes by depth, the threshold
+  resolves out of black, Department 06 stays unlit. This is that grammar
+  applied to people, and it says something the turn does not: *they were always
+  there; you just could not see them yet.*
+- **Risk: LOW.** One asset, no untested dependency, cheapest, most performant,
+  and it degrades gracefully on mobile and reduced motion.
+- **Cost:** it delivers "the audience is revealed" rather than "the audience
+  turns." That is a genuine narrative difference and it is the owner's call.
+- **Hybrid worth considering:** C for the mass of the crowd, plus a single
+  matched pair for the **front row only** — four or five near heads that
+  actually turn. Most of the emotional payoff of A, with matched-state exposure
+  reduced to one small plate pair that can be abandoned without losing the beat.
+
+### 8.4 Why none of these claims a closed measurement loop
+
+- The screen the audience waits in front of is **dark**. Nothing has played;
+  nobody in frame has watched anything.
+- Department 06 is an unlit door; the auditorium is an unlit screen. Two dark
+  objects making the same statement from opposite sides — machine register and
+  human register. They reinforce the capability register rather than fight it.
+- The audience is not a department. No index, no status, no capability claim.
+  Beat 10 makes that structural fact visible rather than asserted.
+- **Structural rhyme to protect:** the film ends by walking *out* of the studio
+  to meet the audience, and the only action offered there is `Enter the studio`.
+  The visitor is placed in the creator's position without a word of explanation.
+  Do not let a later copy pass paraphrase that CTA away.
+
+### 8.5 The 3D glasses — a deliberate palette exception, needing sign-off
+
+Red/cyan glasses introduce two colours into a strictly desaturated film. Two
+ways to hold that:
+
+1. **Accept it as the single exception.** The lenses are the only colour in the
+   film besides acid, and they appear only in the final frame. Defensible and
+   powerful, but it is a real break in a system that has been disciplined for
+   nine beats.
+2. **Tune the lenses to tokens the site already owns** — `--warn: #ff6846` and
+   `--pass: #91e6c1`. Warm and cool, red-ish and cyan-ish, unmistakably the
+   glasses, and *already in the palette*. **Recommended.** It gets the
+   cinematic reference without inventing a colour system on the last frame.
+
+Either way the lenses are small, dark, and catch light rather than emit it.
+
+---
+
+## 9. Minimum next Magnific generation set
+
+The discipline here is that most of the plan needs **no new credits**:
+
+- Beat 2 reuses `soundstage-threshold-v1/v2` — TESTED.
+- Beat 3 reuses `crt-wall-state-a-v1` — TESTED.
+- Beats 3 and 7's transformation is CSS (§3.4) — no asset.
+- Beats 1, 4, 5, 8, 9, 10 and the register take no asset at all.
+- Beat 6 needs a new plate eventually, but it is SUPPORTING.
+
+That leaves exactly one gap that new credits must close.
+
+### The minimum set: 2 renders (one call, `count` 2), 200 credits
+
+**Subject** A dark auditorium seen from the screen. Rows of seated people,
+cropped by both edges and the bottom so the room is larger than the frame.
+Distinctive cinematic viewing language — glasses whose lenses catch light —
+tuned warm/cool rather than saturated red/cyan. Faces mostly shadowed,
+unsmiling, waiting. Nobody reacting. The screen is not visible and is not lit.
+
+**Intended beat** 11, the page's last frame.
+**Asset role** HUMAN / AUDIENCE PAYOFF.
+**Aspect ratio** 21:9 desktop. (Mobile crop deferred until the language passes.)
+**Composition** Audience occupying the lower 60%, nearest row cropped by the
+bottom edge so the visitor is *among* them. Upper 35% unresolved black.
+**Lighting** The inversion: the only light comes from behind the camera and
+falls on faces, shoulders and seat backs. No light source visible in frame.
+**Negative space** Upper-left quadrant absolutely clear — the final line and CTA
+live there. No face may enter it in any state.
+**Channelwright requirements** §3.1 exposure clauses minus `no people`;
+desaturated except the lens tints; no text, no numbers, no screen content;
+no reaction of any kind.
+**Matched-state consistency required?** **No — deliberately.** Two variants of
+one prompt, to choose the better composition. Under Approach C the footer needs
+only one plate, so this set does not depend on the untested technique.
+**Why it deserves credits** It is the only ESSENTIAL asset with no existing
+substitute, and it validates the last unvalidated role in the vocabulary. Two
+of the five roles are TESTED; two need no asset; this is the fifth.
+
+### Deliberately deferred
+
+- **A matched CRT State B** — §3.4 removes the need, and §11 is unresolved.
+- **A dedicated Beat 6 camera** — SUPPORTING; the spike can stand in.
+- **Mobile crops** — until the desktop language passes.
+- **Storyboards, director's chair, clapperboard, film reels, studio lights,
+  teleprompter** — REJECTED for now. None survives §5's three questions:
+  they decorate, they do not advance. Revisit only if a specific beat is found
+  to be under-carried.
+
+---
+
+## 10. Test results log
+
+| Item | Status | Evidence |
+|---|---|---|
+| CRT base composition | **TESTED — PASS** | Owner review at full exposure: varied sizes, curved glass, knobs, mixed eras, irregular stacking, asymmetric wall, left negative space |
+| CRT at `opacity .22` | **TESTED — FAIL** | CRT character buried; reads as an equipment rack |
+| CRT at Pattern A values | **TESTED — PASS** | Televisions recognisable, headline still dominant |
+| Soundstage at Pattern B values | **TESTED — PASS** | Camera unmistakable, equipment subordinate, blueprint continued across it, clean left copy territory |
+| Blueprint over photography | **TESTED — PASS** | Promoted to core principle §2 |
+| Matched-state technique | **UNTESTED** | §11 |
+| CSS screen activation (§3.4) | **PROPOSED** | Zero-credit spike would settle it |
+| Audience language | **PROPOSED** | §9 |
+| Harness iframe | **CONFIRMED BROKEN** | `frame-ancestors 'none'` + `X-Frame-Options: DENY` verified against the dev server |
+
+---
+
+## 11. Matched state — UNTESTED, and the duplicate-file investigation
+
+**Status: UNTESTED.** Not passed, not failed. Nothing downstream may assume
+either result.
 
 ### What happened
 
-Owner comparison of the three downloaded CRT files found all three
-**pixel-identical**, at **2048×877** — dormant variant 1, dormant variant 2,
-and the file believed to be the active state.
+Three downloaded CRT files were found **pixel-identical**, at **2048×877** —
+dormant variant 1, dormant variant 2, and the supposed active state.
 
-### What the platform metadata says
-
-Queried directly. The three CRT creations are distinct server-side objects:
+### What the platform metadata says — CONFIRMED
 
 | | asset ID | batch family | seed | reported size | created |
 |---|---|---|---|---|---|
@@ -845,165 +727,125 @@ Queried directly. The three CRT creations are distinct server-side objects:
 | A-v2 | 5366566268 | `a2ae2fb5…` | 617339 | 3024×1296 | 10:21:24Z |
 | B | 5366581567 | `a2ae30c9…` | 931176 | 3024×1296 | 10:24:25Z |
 
-A project listing returns exactly five creations, no more and no fewer, each
-with its correct prompt stored — the active-state prompt is recorded against B,
-so the request was not silently dropped.
+A project listing returns exactly five creations, each with its correct prompt
+stored — the active-state prompt is recorded against B, so the request was not
+silently dropped.
 
-### What follows from that
+### Cause — as far as it can be established
 
-1. **Distinct URLs were issued.** Three different asset paths with three
-   different signed hashes. The duplication was not caused by handing over the
-   same link three times.
+1. **Distinct URLs were issued.** Three asset paths, three signed hashes. The
+   duplication was not caused by supplying the same link three times.
 2. **The sizes do not match.** Every render is 3024×1296; every downloaded file
-   is 2048×877 — the same aspect, downscaled to 2048 wide. So the files in hand
-   did **not** come from the full-resolution asset URLs. Whatever path produced
-   them resized, and that same path is the prime suspect for the duplication.
+   is 2048×877 — the same aspect, downscaled to 2048 wide. The files in hand did
+   **not** come from the full-resolution asset URLs, and whatever path resized
+   them is the prime suspect.
 3. **A-v1 ≡ A-v2 is the anomaly that matters.** Different seeds, no reference
-   image, separate asset IDs. There is no plausible generation-side story for
-   two different seeds producing identical pixels. A reference pass-through
-   could explain B ≡ A-v1, but nothing explains A-v1 ≡ A-v2 except a
-   retrieval-, cache- or save-side collapse.
-4. **Therefore the weight of evidence points at the download path, not at
-   generation.** Stated as INFERRED, not verified: this session cannot fetch
-   the bytes (the CDN is denied by egress policy), so nobody has yet confirmed
-   whether the three server-side assets actually differ.
+   image, separate assets. There is no plausible generation-side story for two
+   different seeds producing identical pixels. A reference pass-through could
+   explain B ≡ A-v1; nothing explains A-v1 ≡ A-v2 except a retrieval, cache or
+   save collapse.
+4. **INFERRED, not verified:** the fault is most likely in the download path,
+   not in generation. This session cannot fetch the bytes — the CDN is denied by
+   the environment's egress policy — so nobody has confirmed whether the three
+   server-side assets actually differ.
 
-### The three checks that settle it, none of which cost credits
+### Three free checks that settle it
 
-- **Control.** Compare the two soundstage files to each other. Same batch
-  shape, different prompt. Both identical → the fault is systemic in the
-  download path. Different → the path works, and something specific happened
-  to the CRT three.
-- **Clean re-fetch.** Download the three full-resolution asset URLs one at a
-  time in a fresh private window, renaming each before starting the next, then
-  hash them. Confirms or eliminates cache collision. Correct files must be
-  **3024×1296**; anything 2048 wide is the wrong asset.
+- **Control.** Compare the two soundstage files to each other. Both identical →
+  the fault is systemic in the download path. Different → the path works and
+  something specific hit the CRT three. *Highest information, 30 seconds.*
+- **Clean re-fetch.** Download the three full-resolution URLs one at a time in a
+  fresh private window, renaming each before the next, then hash. Correct files
+  are **3024×1296**; anything 2048 wide is the wrong asset.
 - **Independent path.** Fetch the three 1024-wide preview variants and hash
-  those. Distinct paths, distinct signatures, different resize pipeline.
+  those — different signatures, different resize pipeline.
 
-If all three server-side assets prove identical, the failure is Magnific's and
-the matched-state approach still has not been tested. If they differ, the
-technique can finally be evaluated on the files already paid for.
-
-Either way: **do not regenerate the base CRT composition.** It has been
-reviewed at full exposure and it is right.
+**Regardless of outcome: do not regenerate the base CRT composition.** It has
+been reviewed at full exposure and it is right.
 
 ---
 
-## 9. Performance notes
+## 12. Performance doctrine — unchanged
 
-The plan deliberately requires **no WebGL, no image sequences, and no new
-runtime mechanism**. Every proposed moment is one or two static images
-composited with custom properties the page already computes.
+No WebGL, no video backgrounds, no image sequences, no new runtime mechanism.
+Every moment is one or two static plates riding custom properties the page
+already computes.
 
-| Moment | Technique | Cost |
+| Beat | Technique | Cost |
 |---|---|---|
-| Beat 2 threshold | one plate, clipped to `.cw-threshold`, opacity on `--reveal`, scale on `--close` | LOW |
-| Beat 3 CRT wall | two plates, opacity crossfade on `--l1` | LOW |
-| Beat 4 / 8 decision wall | two plates, crossfade on `--rev` | LOW |
-| Beat 6 cinema camera | one plate, opacity on the scene's own `--p` | LOW |
-| Beat 7 CRT tally | third state of the Beat 3 bank, crossfade | LOW |
+| 2 | one plate clipped to `.cw-threshold`, existing `--reveal` / `--close` | LOW |
+| 3 | one plate + CSS activation quads on `--l1` | LOW |
+| 6 | one plate, opacity on the scene's `--p` | LOW |
+| 7 | same plate as Beat 3, different activation set | LOW |
+| 10 | CSS only | LOW |
+| 11 | one plate (Approach C) + a light ramp | LOW–MEDIUM |
 
-Budget, if the full P0+P1 set ships: **six desktop plates and four mobile
-crops.** AVIF at quality ~55 (these are near-black, they compress
-extraordinarily well — expect 40–90KB each at 1920px wide, materially less
-than a typical hero JPEG). Serve through `<picture>` with AVIF/WebP and a
-`(max-width: 720px)` source; desktop plates must never be downloaded on
-mobile. Estimated added weight on desktop: **under 500KB total**, lazily
-loaded except the threshold plate, which is needed within the first two
-viewports and should be preloaded.
+**Budget:** four desktop plates and two or three mobile crops. AVIF ~55 —
+near-black images compress extraordinarily well; expect 40–90KB for the
+equipment plates. **The audience plate is the exception:** faces and skin do not
+compress like black metal — budget 150–220KB and lazy-load it, since it sits
+several viewports below the fold. Estimated desktop total well under 500KB.
 
-Runtime cost of the crossfades is one additional composited layer per active
-plate. The page already composites the ambient wash, three depth planes, the
-floor, the deck, the jambs, the haze and the vignette; adding one or two
-static images with `will-change: opacity` is well inside the existing budget.
-It should still be measured: check paint time on a mid-tier Android before and
-after, and if a plate costs more than ~1ms, cut its resolution rather than
-its opacity.
+**Mobile is composed, not scaled.** At most two plates: the threshold and one
+CRT crop, plus the audience crop at the end. The far plane, partitions and
+fixtures are already dropped under 720px; mobile reproduces the *story*, not the
+geometry.
 
-**Mobile posture:** the page already drops the far plane, partitions and
-fixtures under 720px. Mobile should carry **at most two plates** — the
-threshold and one CRT crop — and reproduce the *story*, not the geometry.
+Measure before shipping: paint time on a mid-tier Android before and after. If a
+plate costs more than ~1ms, cut its resolution, not its opacity.
 
 ---
 
-## 10. Next-phase recommendation
+## 13. Recommended next phase
 
-### **B — REFINE.**
+### **B — build temporary integration spikes with the existing CRT + soundstage
+assets, before any new generation.**
 
-Unchanged by the audience-footer reinstatement, and in fact reinforced by it:
-Beat 11 depends on matched-state plates holding across **three** compositions
-containing **human figures**, which is materially harder than holding a static
-monitor bank. The CRT pair in §5 is the cheap proxy test for the most expensive
-moment in the plan. If matched state fails there, it will certainly fail on a
-crowd, and Beat 11 needs a different production route — a short real-footage
-loop or a commissioned photograph — before any credits go into it.
+Evidence, not assumption:
 
-**Two results are now in, and they move the recommendation in opposite
-directions.**
+- Both plates are **TESTED and passed** in the harness. The next real unknown is
+  not whether the images are good, it is whether they survive **in the real
+  scroll** — at transitions, under the blueprint, while the camera moves, at
+  `--cam` versus `--j`, and on a phone. The harness is static; the page is not.
+- The **§3.4 CSS activation spike costs zero credits** and would retire the
+  matched-state dependency for Beats 3 and 7 outright. That is the single
+  highest-value experiment available and it needs no images at all.
+- Spiking first makes the audience generation better: the spike will produce
+  real production values for opacity, masking and placement, and those should
+  inform the audience prompt rather than being discovered after it.
+- The §11 checks are free and should run in parallel.
 
-*Better than expected:* the CRT base composition passes on review at full
-exposure — the vintage-television language is there. The base plate is not the
-problem and must not be regenerated. What failed was the compositing recipe,
-corrected in §2.1a: crush the mid-tones, do not uniformly dim.
+Then **A — the two-render audience set** (§9), once the spikes pass and the
+download question is resolved.
 
-*Worse than expected:* the matched-state technique is **UNTESTED**, not
-merely unevaluated. Three CRT files that should differ are pixel-identical, and
-§8a shows the platform believes it rendered three distinct assets with three
-distinct seeds. Until the checks in §8a run, the single load-bearing technical
-assumption behind Beats 3, 7, 8 and 11 has no evidence either way.
+**Not C:** the plan is not the blocker; the visual language is validated.
+**Not D:** two of five roles are TESTED and passed, and the imagery demonstrably
+adds something the schematic alone cannot — physical materiality, and a face at
+the end of a film about machinery.
 
-So the sequencing is now: resolve §8a first (free), then the compositing pass
-in §2.1a (free), and only then decide whether any further generation is
-required. Nothing in the asset plan should be scaled up while the technique it
-rests on is unverified.
+---
 
-Not A, and the reason is not caution about the direction. The direction is
-sound and §3 is specific enough to execute against. It is that **the single
-question the proof-of-concept set was built to answer has not been answered**:
-nobody has yet seen these plates composited over the page, because the image
-host is blocked from this environment. Recommending full production off
-unviewed assets would be exactly the kind of confident, unevidenced call that
-wastes a production phase.
+## 14. Open risks and unanswered questions
 
-The refine step is small and bounded:
-
-1. Download the four renders from the Magnific Personal project.
-2. Run the six checks in §8 with `tools/studios-asset-preview.html`.
-3. Run the §8a checks before anything else — they are free and they decide
-   whether there is a matched pair to test at all.
-4. If checks 1–4 pass: build **one throwaway integration spike** — Department
-   01 only, both CRT states, behind the existing fixture grid — and look at it
-   in the real scroll. That is the honest test of whether photography and
-   hairline vector can share a frame. Nothing else gets built until that spike
-   is judged.
-5. If the plate still cannot hold CRT character after §2.1a's recipes, that is
-   when a regeneration round is justified — and not before.
-6. Only once check 3 (matched state) has passed: generate the auditorium set.
-   It is the most expensive and least reversible asset family in the plan, and
-   it should never be the thing that discovers the technique does not work.
-
-**Confidence, stated plainly:** high that the *placement* map is right, since
-it was derived from the rendered page rather than assumed. Genuinely uncertain
-whether photorealistic material can coexist with this particular linework at
-this contrast budget — that is a real risk, not a formality, and it is what
-step 3 exists to settle. If the spike shows the plates fighting the interface,
-the correct answer is **C**, and the page is already good without them.
-
-### Explicitly recorded as rejected
-
-- **~~The screening-room audience footer.~~ REINSTATED as a P0 signature
-  moment.** The first draft of this document rejected it on the reasoning that
-  an audience at the end implies a closed measurement loop. That was wrong. The
-  objection only holds for an audience shown *reacting to work*, and doctrine
-  Principle 4 makes viewer value binding — it is the one principle the page
-  never depicted. Staged as Beats 10 and 11, with the reconciliation argued in
-  §3a. The surviving constraint is narrow and absolute: no reaction, no lit
-  screen, no numbers.
-- **Filling the Department 06 doorway.** The aperture stays empty. The
-  emptiness is the argument, and it is what lets Beat 11 read as *outside* the
-  system rather than *through* the door.
-- **A storyboard wall in the Writers' Room.** Cliché with no narrative gain;
-  the room's claim is procedural and is already carried.
-- **Director's chair, clapperboard, film reels, boom mics.** Filmmaking props
-  that decorate rather than advance. They fail the §3 test.
+1. **Matched state is unresolved (§11).** Mitigated for Beats 3 and 7 by §3.4,
+   and avoidable in Beat 11 under Approach C — but the question is still open,
+   and Approach A depends on it entirely.
+2. **`--cam` versus `--j` for plates.** UNTESTED. A plate that is a *place* must
+   ride `--cam` or the Return will rewind it wrongly. This is a real trap that
+   the spike must exercise deliberately, not discover in production.
+3. **The blueprint-over-photography effect at low contrast.** TESTED on a static
+   frame; UNTESTED while the linework is *moving* at three different parallax
+   rates over it. Moiré between the hairline grid and CRT scanlines is a
+   plausible artefact nobody has looked for.
+4. **Mobile.** Entirely UNTESTED with imagery. The mid-band is empty at 390px
+   and needs its own compositions.
+5. **The 3D glasses palette exception (§8.5)** needs an owner decision before
+   the audience prompt is written.
+6. **Approach A vs C for the finale (§8)** is a narrative decision — "the
+   audience turns" versus "the audience is revealed" — and it changes the asset
+   count, the risk profile and the emotional register. Owner's call.
+7. **The harness iframe defect** is unfixed in the repo; the console snippet is
+   the working path.
+8. **Beat 6's plate** would be the fourth distinct image in the film. Worth
+   asking whether the film needs four, or whether three is the right number and
+   Beat 6 should be carried by the gate hold alone.
