@@ -49,6 +49,20 @@ the proof-of-concept set in §5 exists to test.
 
 ---
 
+## 0a. Owner-directed concepts
+
+Concepts listed here are owner-directed signature moments. They are not
+subject to unilateral removal by a later pass. Where one appears to conflict
+with `docs/PRODUCT_DOCTRINE.md`, the correct move is to state the tension and
+propose a reconciliation — not to design the concept away.
+
+- **The screening-room audience footer** (Beats 10 and 11). Owner-directed,
+  **P0**. The audience represents *why Channelwright exists*, not the
+  completion of its measurement lifecycle. Reconciliation argued in §3a; the
+  one binding constraint on execution is stated in the Beat 11 entry.
+
+---
+
 ## 1. Current experience assessment
 
 ### What is working (do not touch)
@@ -368,24 +382,155 @@ verified from rendered captures at 1440×900.
   `DESIGNED, NOT BUILT`.
 - **Current visual:** unlit doorway drawn in the same hand as the entrance;
   the artifact set down at its foot; one CTA.
-- **Proposed motif:** **NONE, with one possible exception.**
-- **Why:** the door being empty is the argument. Putting anything behind it —
-  including a dark screening room — would show a room the product does not
-  have. The screening-room/audience footer concept in the brief **must not be
-  built here**: an audience implies the loop closes, and the register says it
-  does not. It is a lovely idea attached to a claim Channelwright cannot make.
-  Recorded and rejected on doctrine grounds, not on craft grounds.
+- **Proposed motif:** **NONE inside the aperture.** The door stays unlit and
+  stays empty.
+- **Why:** the emptiness is the argument. Putting anything behind this door
+  would show a room the product does not have.
 - **Exception worth testing later:** a *barely perceptible* dust-and-haze plate
   inside the aperture — enough to say "empty room" rather than "flat panel",
   with no object in it at all. P2, and only if it survives being almost invisible.
-- **Priority: SKIP** (P2 for the haze-only variant).
+- **Priority: SKIP** for the aperture (P2 for the haze-only variant). The door
+  itself is **preserved unchanged** and is load-bearing for Beat 11 — see below.
 
 ---
 
-### Archive / Capability register / Footer
+### Beat 10 — The way out (NEW · after the capability register)
 
-- **Proposed motif:** NONE. This is the record. It should look like a record.
-- **Priority: SKIP.**
+- **Narrative:** the visitor leaves the building. Not through Department 06 —
+  *away from it*.
+- **Current visual:** none. The page currently ends inside the architecture:
+  `ArchiveHall` deliberately reuses the same ceiling, planes, jambs, haze and
+  floor as the departments, because the register is "one more room in the
+  building". That premise is kept.
+- **Proposed motif:** **Architectural dissolve, drawn not photographed.** Across
+  a short scroll span the hall shell comes apart in a fixed order: the overhead
+  truss first, then the jambs, then the floor grid, then the wash. The
+  conveyance line — the artifact's route — is **last**, and it *ends* rather
+  than fades, because the route through the system genuinely terminates when
+  the work is published.
+- **Why this beat exists at all:** it is the entire doctrinal load-bearing
+  member of the new ending (see §3a). Without an explicit exit, an audience
+  appearing after Department 06 could be misread as being *through* it.
+  With one, the audience is unambiguously outside the department architecture.
+- **Composition:** no new subject. Everything already on screen, leaving.
+- **Direction of travel:** whatever hall elements remain drift **opposite** to
+  the direction they drifted all film. The visitor has turned around. This is
+  the cheapest possible statement that the axis has changed, and it is the one
+  the eye reads fastest.
+- **Interaction:** its own progress via `registerScene`, exactly as the journey
+  wrapper does. `--cam` is journey-scoped and does not reach here. No new
+  mechanism.
+- **Scroll:** ~1.5–2 viewport-heights. Short. This is a transition, not a beat
+  to dwell in.
+- **Asset type:** NONE — this is CSS on existing elements.
+- **Desktop / Mobile:** identical logic; mobile has fewer elements to dissolve
+  because the far plane, partitions and fixtures are already dropped.
+- **Performance: LOW.**
+- **Priority: P0** — required by Beat 11, and worthless without it.
+
+---
+
+### Beat 11 — The auditorium (NEW · the page's last frame)
+
+- **Narrative:** the work exists for people. They are still there, beyond the
+  system, and the creator is accountable to them.
+  *"They're waiting. What are you going to make for them?"*
+- **Current visual:** the existing `Footer` — one line, one CTA, one note.
+  This beat **absorbs** that footer rather than being added after it, so the
+  page does not end with two consecutive calls to action.
+- **Proposed motif:** **A dark auditorium, seen from the screen.** Rows of
+  seated people in a near-black room. The visitor is standing where the screen
+  is — so the audience is facing the visitor's position, and **the only light
+  in the frame comes from behind the camera**, falling on faces and seat backs.
+- **Why the light inverts, and why it matters:** for the entire film the light
+  has come from *ahead* — the hall, the doorway, the fixtures, the seam. Here
+  it comes from *behind*. That single inversion says "you are outside the
+  system and being looked at" without a word of copy, and it costs nothing but
+  a lighting instruction in the prompt.
+- **Why it does not contradict the register (the reconciliation):** the screen
+  the audience is waiting in front of is **dark**. Nothing has played. Nobody
+  in the frame has watched anything, nobody is reacting, and there is not a
+  number anywhere in the composition. Department 06 is an unlit door; the
+  auditorium is an unlit screen. The two images make the *same* statement in
+  two registers — machine and human — and reinforce rather than fight each
+  other. The audience is the **reason**; the darkness is the **honesty**.
+- **The hard constraint, carried forward from the earlier objection:** the
+  audience may never be shown *reacting to work*. No applause, no laughter, no
+  lit screen, no reaction shots, no delight, no metrics, no overlay. **Waiting,
+  not responding.** An asset that shows a reaction is rejected regardless of
+  how good it looks — that, and only that, is what would claim a closed
+  measurement loop.
+- **Composition:** 21:9 desktop. Audience occupying the lower 60% and running
+  off both edges — the room is larger than the frame. Upper 35% is unresolved
+  black for the line and the action. Nearest row cropped by the bottom edge, so
+  the visitor is *among* them rather than looking at a picture of them.
+- **Negative space:** the final line and CTA sit upper-left over black. No face
+  may fall inside that quadrant in any state.
+- **Interaction — the turn:** **three matched plates, staggered.** State A:
+  everyone oriented toward the screen or elsewhere in the room. State A′: two
+  or three of the nearest heads have turned. State B: roughly six to eight of
+  forty are facing the visitor. Staggered crossfades read as a wave moving
+  through the crowd; a single A→B dissolve would ghost bodies through bodies.
+- **Restraint is the whole craft here.** Only a minority ever turn. Faces stay
+  largely in shadow, unsmiling, not staring, no eye contact held by more than
+  one or two figures. The difference between "they're waiting" and a horror
+  beat is entirely a question of how many and how hard.
+- **Scroll:** the turn completes at the **true document bottom**, not merely at
+  the end of the section's own box — the owner's stated interaction is tied to
+  reaching the absolute bottom of the page, so progress is measured against
+  document end. The final CTA arrives on `Scene`'s existing `revealAt` /
+  `data-revealed` mechanism so it is not a tab stop before the turn resolves —
+  the same reasoning `NextDecision` already documents.
+- **Asset type:** Matched-state, three plates. **Desktop:** as described.
+  **Mobile:** a separate tighter crop — 8 to 12 people, nearer, so heads are
+  readable at 390px — and **two** states rather than three.
+- **Performance: LOW–MEDIUM.** Three plates plus two crossfades, no JS per
+  frame. Mobile loads two. These are the heaviest images in the plan
+  (faces and skin do not compress like black metal): budget ~150–220KB each in
+  AVIF rather than the 40–90KB the equipment plates should cost, and lazy-load
+  them — they are below several viewports of content.
+- **Priority: P0 — signature moment.**
+
+---
+
+## 3a. Why the ending does not contradict the lifecycle doctrine
+
+Recorded because this was got wrong once and should not be re-litigated from
+scratch.
+
+The earlier draft of this document rejected the audience footer on the grounds
+that an audience at the end of the run implies the measurement loop has closed.
+That objection was too strong, and reading `docs/PRODUCT_DOCTRINE.md` closely
+inverts it:
+
+- **Principle 4, "Viewer value is mandatory"**, is a binding product
+  constraint: Channelwright must optimise for meaningful viewer value, not
+  AI-generated volume. It is currently **the only doctrine principle the page
+  never depicts.** The building *names* an audience — Department 02's line is
+  "Don't chase views. Build an audience." — and then never shows one. The
+  auditorium closes that gap; it does not open a new one.
+- **What the register actually forbids** is claiming a measured result.
+  `measurement` is DESIGNED and its boundary states Channelwright ingests no
+  analytics today. That forbids numbers, dashboards, reactions and outcomes.
+  It does not forbid people.
+- **The department architecture is the system; the audience is not in it.**
+  Departments 01–06 are Channelwright's own capabilities, and each is claimed
+  against the register. An auditorium is not a department, carries no status,
+  and makes no capability claim. Beat 10 exists precisely to make that
+  structural fact visible in the architecture rather than asserted in a caption.
+- **The two dark objects rhyme.** An unlit door and an unlit screen say the
+  same thing from opposite sides: the result has not landed yet. Placing them
+  in sequence strengthens the register's claim rather than undermining it.
+
+So the ordering is: the film ends → the record is stated inside the building →
+the building comes apart → the people are still there. Nothing in that sequence
+asserts that Department 06 was built, and Beat 10 is the member that guarantees
+it. If Beat 10 were ever cut for length, Beat 11 would have to be cut with it.
+
+**One structural rhyme worth protecting:** the run ends by walking *out* of the
+studio to meet the audience, and the only action offered there is
+`Enter the studio`. The visitor is put in the creator's position without a word
+of explanation. Do not let a later copy pass paraphrase that CTA away.
 
 ---
 
@@ -406,9 +551,19 @@ the ending — as the quietest in the film.
 | 7 — Control | MEDIUM | CRT bank returning, one tally lit |
 | 8 — Return | MEDIUM (recognition, not spectacle) | decision wall, second state |
 | 9 — Next Decision | **SILENT** | the unlit door |
+| — Capability register | **QUIET** | the record, inside the building |
+| 10 — The way out | **QUIET** | the architecture dissolving; no new subject |
+| 11 — The auditorium | **HERO** | audience plates, staggered turn, final action |
 
-Two hero moments, both earned, ~40% of the run apart. Two silences, at the
-two ends. Nothing dense for more than two consecutive beats.
+Three hero moments now, spaced roughly 40%, 30% and 25% apart, and the run
+still opens and closes on restraint: Beat 1 is one sentence in the dark, Beat 9
+is an unlit door, and the register and the exit are two consecutive quiet beats
+that let the last frame land. Beat 11 is the only place in the film where a
+human face appears, which is most of why it carries.
+
+The risk to watch is the tail: Beats 9, 10 and 11 add roughly 4.5
+viewport-heights (~4,000px desktop, about 13% more page). If the exit is
+allowed to sprawl, the film ends twice. Keep Beat 10 short.
 
 ---
 
@@ -540,7 +695,8 @@ state is a pass/fail test, not a selection), and no upscaling pass.
 
 ## 7. Generated proof-of-concept assets
 
-Four renders, 400 credits of 20,000. All in the Magnific Personal project.
+Five renders, 500 credits of 20,000 (verified against the account balance).
+All in the Magnific Personal project.
 
 | Working name | Intended location | Ratio | Native |
 |---|---|---|---|
@@ -653,6 +809,14 @@ threshold and one CRT crop — and reproduce the *story*, not the geometry.
 
 ### **B — REFINE.**
 
+Unchanged by the audience-footer reinstatement, and in fact reinforced by it:
+Beat 11 depends on matched-state plates holding across **three** compositions
+containing **human figures**, which is materially harder than holding a static
+monitor bank. The CRT pair in §5 is now the cheap proxy test for the most
+expensive moment in the plan. If matched state fails there, it will certainly
+fail on a crowd, and Beat 11 needs a different production route — a short
+real-footage loop or a commissioned photograph — before any credits go into it.
+
 Not A, and the reason is not caution about the direction. The direction is
 sound and §3 is specific enough to execute against. It is that **the single
 question the proof-of-concept set was built to answer has not been answered**:
@@ -672,6 +836,9 @@ The refine step is small and bounded:
    is judged.
 4. If checks 1–4 fail on exposure, one more generation round with a crushed
    black point before any spike.
+5. Only once check 3 (matched state) has passed: generate the auditorium set.
+   It is the most expensive and least reversible asset family in the plan, and
+   it should never be the thing that discovers the technique does not work.
 
 **Confidence, stated plainly:** high that the *placement* map is right, since
 it was derived from the rendered page rather than assumed. Genuinely uncertain
@@ -682,11 +849,17 @@ the correct answer is **C**, and the page is already good without them.
 
 ### Explicitly recorded as rejected
 
-- **The screening-room audience footer.** Rejected on doctrine, not craft. An
-  audience at the end of the run implies the loop closes; `measurement` is
-  DESIGNED and the register states Channelwright ingests no analytics today.
-  The unlit Department 06 door is the honest ending and it is better.
-- **Filling the finale.** Same reason. The emptiness is the argument.
+- **~~The screening-room audience footer.~~ REINSTATED as a P0 signature
+  moment.** The first draft of this document rejected it on the reasoning that
+  an audience at the end implies a closed measurement loop. That was wrong. The
+  objection only holds for an audience shown *reacting to work*, and doctrine
+  Principle 4 makes viewer value binding — it is the one principle the page
+  never depicted. Staged as Beats 10 and 11, with the reconciliation argued in
+  §3a. The surviving constraint is narrow and absolute: no reaction, no lit
+  screen, no numbers.
+- **Filling the Department 06 doorway.** The aperture stays empty. The
+  emptiness is the argument, and it is what lets Beat 11 read as *outside* the
+  system rather than *through* the door.
 - **A storyboard wall in the Writers' Room.** Cliché with no narrative gain;
   the room's claim is procedural and is already carried.
 - **Director's chair, clapperboard, film reels, boom mics.** Filmmaking props
