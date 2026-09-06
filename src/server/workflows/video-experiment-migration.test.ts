@@ -30,6 +30,12 @@ describe("CHANNEL_VIDEO_EXPERIMENT migration", () => {
     expect(migration).toContain("w.current_run_id=v_chain_run.id");
   });
 
+  it("authoritatively reconciles parent/root lineage, not only whether previousRunId names some run", () => {
+    expect(migration).toContain("budget parent disagrees with lineage parent");
+    expect(migration).toContain("resolved root is not a real run of this workflow");
+    expect(migration).toContain("select true, parent_run_id, root_run_id into v_budget_found, v_budget_parent, v_root");
+  });
+
   it("accepts only two caller identifiers and injects authoritative state", () => {
     expect(migration).toContain("jsonb_object_length(p_input)<>2 or not (p_input?'videoDecisionWorkflowId') or not (p_input?'videoDecisionRunId')");
     expect(migration).toContain("k not in ('videoDecisionWorkflowId','videoDecisionRunId')");

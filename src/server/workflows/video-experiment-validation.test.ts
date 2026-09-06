@@ -17,6 +17,38 @@ const constraints = deriveVideoExperimentConstraints(artifact);
 const validate = (result: ChannelVideoExperimentResult) => deterministicVideoExperimentValidation(result, artifact);
 const codes = (result: ChannelVideoExperimentResult) => validate(result).map((item) => item.code);
 
+/** A deterministically-clean SEQUENTIAL_COMPARISON manipulation experiment, for adversarial mutation. */
+function manipulationResult(overrides: Partial<ChannelVideoExperimentResult["content"]["experiment"]> = {}): ChannelVideoExperimentResult {
+  const base = videoExperimentContentFixture();
+  return channelVideoExperimentResultFixture({
+    content: {
+      ...base,
+      experiment: {
+        ...base.experiment,
+        experimentType: "SEQUENTIAL_COMPARISON",
+        disposition: "RUN_COMPARISON",
+        measurementOnly: false,
+        controlCondition: { kind: "HISTORICAL_BASELINE", description: "The recent run of videos with the current opening.", comparability: "Same pillar, similar length and topic difficulty, adjacent publish period." },
+        unitOfAssignment: "VIDEO",
+        treatmentCondition: { description: "The next run of videos opens with the reworked promise framing.", whatChanges: "The opening promise framing.", whatStaysConstant: ["Topic selection", "video length band", "thumbnail style"] },
+        heldConstant: ["Topic difficulty", "video length band", "publish cadence"],
+        knownConfounders: [{ confounder: "Seasonal audience shifts between the baseline and treatment periods.", mitigation: "Compare like calendar weeks and note any platform-wide anomalies.", residualRisk: "MEDIUM" }],
+        primaryMetric: { metric: "AVERAGE_PERCENTAGE_VIEWED", unit: "PERCENT", direction: "INCREASE", rationale: "Early percentage viewed is the closest signal to whether the reworked opening holds attention." },
+        guardrailMetrics: [{ metric: "SURVEY_SATISFACTION", unit: "SCORE", protects: "Whether viewers feel the reworked opening was honest.", degradationSignal: "Qualitative feedback turns negative about the opening feeling padded or misleading." }],
+        viewerValueGuardrails: ["The reworked opening must not pad or stall to inflate retention, and must not over-promise a payoff the video does not deliver."],
+        rollbackPlan: { trigger: "The satisfaction guardrail degrades or the retention gain is driven by padding.", action: "Return to the original opening framing on subsequent videos.", reversibility: "EASILY_REVERSIBLE" },
+        stoppingConditions: [
+          "The satisfaction guardrail degrades during the treatment period.",
+          "Retention rises but qualitative feedback indicates the opening feels padded or misleading.",
+        ],
+        ...overrides,
+      },
+      alternatives: [{ id: "alt:probe", experimentType: "OBSERVATIONAL_PROBE", statement: "Measure the current curve before reworking anything.", targetVariable: "Existing retention shape.", notSelectedBecause: "SLOWER_LEARNING", notSelectedReason: "A before/after answers the opening question directly." }],
+      portfolioEligible: true,
+    },
+  });
+}
+
 describe("CHANNEL_VIDEO_EXPERIMENT fixture sanity", () => {
   it("builds on a deterministically-clean approved INVESTIGATE Decision", () => {
     expect(deterministicVideoDecisionValidation(artifact.decisionResult, approvedVideoDiagnosisArtifactForExperimentFixture)).toEqual([]);
@@ -258,12 +290,12 @@ describe("Viewer Value hard constraint", () => {
     expect(codes(result)).toEqual(expect.arrayContaining(["VIEWER_VALUE_STATE_CHANGED"]));
   });
 
-  it("rejects an acquisition primary metric with no satisfaction guardrail metric", () => {
-    const result = clone(channelVideoExperimentResultFixture());
+  it("rejects an acquisition primary metric with no independent viewer-benefit guardrail metric", () => {
+    const result = manipulationResult();
     result.content.experiment.primaryMetric = { metric: "IMPRESSION_CLICK_THROUGH_RATE", unit: "PERCENT", direction: "INCREASE", rationale: "CTR is the acquisition lever under test." };
     result.content.experiment.guardrailMetrics = [{ metric: "IMPRESSIONS", unit: "COUNT", protects: "Reach.", degradationSignal: "Impressions collapse." }];
     result.content.experiment.viewerValueGuardrails = ["Keep the reach healthy across the window."];
-    expect(codes(result)).toEqual(expect.arrayContaining(["NO_SATISFACTION_GUARDRAIL_METRIC", "METRIC_GAMING_UNGUARDED"]));
+    expect(codes(result)).toEqual(expect.arrayContaining(["NO_INDEPENDENT_VIEWER_BENEFIT_GUARDRAIL", "METRIC_GAMING_UNGUARDED"]));
   });
 
   it("rejects a forward-only sequential comparison when Viewer Value is AT_RISK", () => {
@@ -372,6 +404,103 @@ describe("alternatives and model authority", () => {
     expect(qa.findings.length).toBe(50);
     expect(qa.passed).toBe(false);
     expect(qa.recommendation).toBe("revise");
+  });
+});
+
+describe("adversarial matrix — independent-verification regressions", () => {
+  it("sanity: the manipulation base result is deterministically clean", () => {
+    expect(validate(manipulationResult())).toEqual([]);
+  });
+
+  // --- Viewer Value harms are metric-family independent, not acquisition-only ---
+  it("flags retention gamed through promise mismatch", () => {
+    const result = manipulationResult();
+    result.content.experiment.primaryMetric = { metric: "AVERAGE_PERCENTAGE_VIEWED", unit: "PERCENT", direction: "INCREASE", rationale: "Retention is the target." };
+    result.content.experiment.viewerValueGuardrails = ["Keep retention healthy across the treatment period."];
+    expect(codes(result)).toContain("METRIC_GAMING_UNGUARDED");
+  });
+  it("flags watch time gamed through padding", () => {
+    const result = manipulationResult();
+    result.content.experiment.primaryMetric = { metric: "WATCH_TIME_HOURS", unit: "HOURS", direction: "INCREASE", rationale: "Watch time is the target." };
+    result.content.experiment.guardrailMetrics = [{ metric: "VIEWS", unit: "COUNT", protects: "Reach.", degradationSignal: "Views fall." }];
+    result.content.experiment.viewerValueGuardrails = ["Watch time should climb over the window."];
+    expect(codes(result)).toEqual(expect.arrayContaining(["NO_INDEPENDENT_VIEWER_BENEFIT_GUARDRAIL", "METRIC_GAMING_UNGUARDED"]));
+  });
+  it("flags engagement gamed through outrage bait", () => {
+    const result = manipulationResult();
+    result.content.experiment.primaryMetric = { metric: "COMMENTS_RATE", unit: "RATIO", direction: "INCREASE", rationale: "Comment rate is the target." };
+    result.content.experiment.viewerValueGuardrails = ["Comment volume should rise without spam."];
+    expect(codes(result)).toContain("METRIC_GAMING_UNGUARDED");
+  });
+  it("flags conversion gamed at the expense of trust", () => {
+    const result = manipulationResult();
+    result.content.experiment.primaryMetric = { metric: "SUBSCRIBERS_GAINED", unit: "COUNT", direction: "INCREASE", rationale: "Subscriber conversion is the target." };
+    result.content.experiment.viewerValueGuardrails = ["Subscriber conversion should improve."];
+    expect(codes(result)).toContain("METRIC_GAMING_UNGUARDED");
+  });
+
+  // --- The approved Decision cannot be semantically rewritten ---
+  it("flags an experiment whose stated purpose is to preserve the existing opening", () => {
+    const result = manipulationResult();
+    result.content.experiment.decisionLinkage.hypothesisUnderTest = "Preserve the existing opening and confirm the current approach is fine.";
+    expect(codes(result)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+  });
+  it("flags a tampered verbatim decision statement in the linkage", () => {
+    const result = manipulationResult();
+    result.content.experiment.decisionLinkage.testsDecisionStatement = "Keep the current opening exactly as it is.";
+    expect(codes(result)).toContain("EXPERIMENT_DECISION_LINKAGE_MISMATCH");
+  });
+
+  // --- Fabricated quantities, spelled out or hyphenated ---
+  it("flags a hyphenated fabricated duration", () => {
+    const result = manipulationResult();
+    result.content.experiment.observationWindow.description = "A 48-hour review window after each treatment upload.";
+    expect(codes(result)).toContain("FABRICATED_QUANTITY_IN_DESIGN");
+  });
+  it("flags a spelled-out fabricated baseline", () => {
+    const result = manipulationResult();
+    result.content.experiment.primaryMetric.rationale = "Baseline retention is thirty percent and we want it higher.";
+    expect(codes(result)).toContain("FABRICATED_QUANTITY_IN_DESIGN");
+  });
+  it("flags a spelled-out fabricated sample size", () => {
+    const result = manipulationResult();
+    result.content.experiment.exposureRequirement.description = "Read the result once a sample of forty viewers has been reached.";
+    expect(codes(result)).toEqual(expect.arrayContaining(["FABRICATED_SAMPLE_SIZE"]));
+  });
+
+  // --- Ordinary label digits must NOT fail closed ---
+  it("accepts bare label digits such as 'thumbnail variant 2' and 'Episode 7'", () => {
+    const result = manipulationResult();
+    result.content.experiment.knownUnknowns = ["Whether thumbnail variant 2 behaves differently on Episode 7 than on the pillar's other videos."];
+    result.content.experiment.heldConstant = ["Topic difficulty", "thumbnail variant 2 styling", "publish cadence"];
+    expect(codes(result)).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
+    expect(validate(result)).toEqual([]);
+  });
+
+  // --- Internal semantic contradictions ---
+  it("flags a confounder that is also held constant", () => {
+    const result = manipulationResult();
+    result.content.experiment.heldConstant = ["Seasonal audience shifts", "video length band"];
+    result.content.experiment.knownConfounders = [{ confounder: "Seasonal audience shifts", mitigation: "Compare like weeks.", residualRisk: "MEDIUM" }];
+    expect(codes(result)).toContain("CONFOUNDER_HELD_CONSTANT_CONTRADICTION");
+  });
+  it("flags a design that continues after a guardrail degrades", () => {
+    const result = manipulationResult();
+    result.content.experiment.stoppingConditions = [
+      "The observation window ends.",
+      "If the satisfaction guardrail degrades, continue the treatment regardless and keep collecting data.",
+    ];
+    expect(codes(result)).toContain("GUARDRAIL_PRECEDENCE_CONTRADICTED_IN_PROSE");
+  });
+  it("flags a rollback plan that continues the treatment instead of reverting it", () => {
+    const result = manipulationResult();
+    result.content.experiment.rollbackPlan = { trigger: "Guardrail breach.", action: "Keep the reworked opening in place and continue the treatment while we investigate.", reversibility: "EASILY_REVERSIBLE" };
+    expect(codes(result)).toContain("ROLLBACK_DOES_NOT_REVERT");
+  });
+  it("flags an invalidation condition that can never trigger", () => {
+    const result = manipulationResult();
+    result.content.experiment.invalidationConditions = ["There is no condition that could invalidate this experiment; it is always interpretable."];
+    expect(codes(result)).toContain("INVALIDATION_CONDITION_INCOHERENT");
   });
 });
 

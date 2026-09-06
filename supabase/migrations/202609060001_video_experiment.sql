@@ -72,6 +72,7 @@ returns jsonb language plpgsql security definer set search_path=channelwright,ex
 declare
   v_run channelwright.workflow_runs%rowtype; v_workflow channelwright.workflows%rowtype; v_approval channelwright.workflow_approvals%rowtype;
   v_finalizer jsonb; v_final_qa jsonb; v_provenance jsonb; v_parent uuid; v_root uuid; v_artifact_hash text; v_provenance_hash text;
+  v_budget_found boolean; v_budget_parent uuid;
   v_scope_artifacts jsonb; v_full_artifacts jsonb; v_facts jsonb; v_link jsonb; v_chain_run channelwright.workflow_runs%rowtype;
   v_role text:=coalesce(auth.jwt()->>'role','');
 begin
@@ -97,8 +98,17 @@ begin
   v_artifact_hash:=encode(digest(v_run.output_payload::text,'sha256'),'hex'); v_provenance_hash:=encode(digest(v_provenance::text,'sha256'),'hex');
   if v_run.artifact_hash is null or v_run.provenance_hash is null or v_run.artifact_hash<>v_artifact_hash or v_run.provenance_hash<>v_provenance_hash then raise exception 'UPSTREAM_DECISION_INTEGRITY_MISMATCH: canonical hash mismatch'; end if;
   begin v_parent:=nullif(v_run.context_payload->>'previousRunId','')::uuid; exception when invalid_text_representation then raise exception 'UPSTREAM_DECISION_LINEAGE_INVALID: malformed parent'; end;
-  select root_run_id into v_root from channelwright.research_run_budgets where workflow_run_id=v_run.id and owner_id=v_run.owner_id; v_root:=coalesce(v_root,v_parent,v_run.id);
+  select true, parent_run_id, root_run_id into v_budget_found, v_budget_parent, v_root from channelwright.research_run_budgets where workflow_run_id=v_run.id and owner_id=v_run.owner_id;
+  v_root:=coalesce(v_root,v_parent,v_run.id);
   if v_parent is not null and not exists(select 1 from channelwright.workflow_runs where id=v_parent and workflow_id=v_run.workflow_id and owner_id=v_run.owner_id and workflow_type=v_run.workflow_type) then raise exception 'UPSTREAM_DECISION_LINEAGE_INVALID: parent/root drift'; end if;
+  -- Authoritative parent/root lineage: when the Decision run carries an accounting
+  -- budget, its recorded parent must agree with context_payload's previousRunId,
+  -- and the resolved root must itself be a real owner-scoped run of this workflow.
+  -- (The sibling resolvers share only the weaker check above; this hardening is
+  -- Experiment-local and additive -- it never loosens the happy path, which has no
+  -- budget row for the upstream Decision run.)
+  if coalesce(v_budget_found,false) and v_budget_parent is distinct from v_parent then raise exception 'UPSTREAM_DECISION_LINEAGE_INVALID: budget parent disagrees with lineage parent'; end if;
+  if v_root is not null and not exists(select 1 from channelwright.workflow_runs where id=v_root and owner_id=v_run.owner_id and workflow_type=v_run.workflow_type) then raise exception 'UPSTREAM_DECISION_LINEAGE_INVALID: resolved root is not a real run of this workflow'; end if;
 
   v_scope_artifacts:=v_run.output_payload->'decisionScope'->'artifacts';
   if v_scope_artifacts is null or jsonb_array_length(v_scope_artifacts)<>9 then raise exception 'UPSTREAM_DECISION_LINEAGE_INVALID: decision scope must carry exactly nine upstream artifacts'; end if;

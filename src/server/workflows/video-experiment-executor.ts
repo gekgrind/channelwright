@@ -56,7 +56,12 @@ function stampServerDerivedFields(content: VideoExperimentContent, constraints: 
     evidenceStrength: constraints.evidenceStrength,
     category: constraints.decisionCategory,
     controlCondition: { ...content.experiment.controlCondition, kind: EXPERIMENT_TYPE_CONTROL_KIND[experimentType] },
-    decisionLinkage: { ...content.experiment.decisionLinkage, decisionId: constraints.decisionId, decisionType: constraints.decisionType },
+    decisionLinkage: {
+      ...content.experiment.decisionLinkage,
+      decisionId: constraints.decisionId,
+      decisionType: constraints.decisionType,
+      testsDecisionStatement: constraints.decisionStatement,
+    },
   };
   return {
     ...content,
