@@ -113,7 +113,7 @@ experiment records are immutable (DB triggers widened).
 - Fixtures + tests: `video-experiment-fixtures.test-helper.ts` (builds an
   experiment-eligible INVESTIGATE Decision on OPENING_PROMISE),
   `video-experiment-validation.test.ts` (52), `approved-decision-resolver.test.ts`
-  (8), `video-experiment-executor.test.ts` (16), `video-experiment-migration.test.ts` (11).
+  (8), `video-experiment-executor.test.ts` (13), `video-experiment-migration.test.ts` (11) — 84 focused.
 
 ### Domain additions (`src/domain/production-workflows.ts`)
 
@@ -141,6 +141,8 @@ branch; the definition + registry + finalizer-map entry; and type exports.
 
 - `npx tsc --noEmit` — PASS, exit 0
 - `npx eslint .` — PASS, exit 0
+- Focused Experiment suites — 84/84 PASS (52 validation + 8 resolver + 13
+  executor + 11 migration).
 - `npx vitest run` — PASS, exit 0, **106 files / 1342 tests** in the green run.
   Two Studio workspace test files (`video-brief-workspace.test.tsx`,
   `video-script-workspace.test.tsx`) intermittently hit a vitest worker-startup
