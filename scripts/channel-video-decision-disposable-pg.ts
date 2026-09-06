@@ -195,7 +195,7 @@ async function seedLineage(db: pg.Client, ownerId: string) {
     releaseArtifactHash: release.artifactHash,
     upstreamVideoPackaging: packagingRef,
   };
-  return { release, releaseRef, releaseOutput };
+  return { research, strategy, content, brief, script, packaging, release, releaseRef, releaseOutput };
 }
 
 async function seedPerformance(db: pg.Client, ownerId: string, lineage: Awaited<ReturnType<typeof seedLineage>>, options: Parameters<typeof seedApprovedRun>[6] & { releaseReference?: unknown; releaseResult?: unknown; measuredSnapshot?: unknown; inputSnapshot?: unknown } = {}) {
@@ -227,7 +227,11 @@ async function seedPerformance(db: pg.Client, ownerId: string, lineage: Awaited<
   });
 }
 
-async function seedDiagnosis(db: pg.Client, ownerId: string, performance: Seeded, performanceReference: Record<string, unknown>, options: Parameters<typeof seedApprovedRun>[6] & { upstreamReference?: unknown; decisionDeferred?: boolean } = {}) {
+async function seedDiagnosis(db: pg.Client, ownerId: string, lineage: Awaited<ReturnType<typeof seedLineage>>, performance: Seeded, performanceReference: Record<string, unknown>, options: Parameters<typeof seedApprovedRun>[6] & { upstreamReference?: unknown; decisionDeferred?: boolean } = {}) {
+  // The compact eight-artifact Diagnosis scope must reference the real seeded
+  // upstream runs: the Decision resolver re-hashes every one of the nine
+  // transitive artifacts against a live COMPLETED run rather than trusting the
+  // projection (202609050001_video_decision.sql).
   const output = {
     schemaVersion: 1,
     workflowType: "CHANNEL_VIDEO_DIAGNOSIS",
@@ -235,13 +239,13 @@ async function seedDiagnosis(db: pg.Client, ownerId: string, performance: Seeded
     upstreamVideoPerformance: options.upstreamReference ?? performanceReference,
     diagnosisScope: {
       artifacts: [
-        { workflowType: "CHANNEL_RESEARCH", runId: randomUUID(), artifactHash: "1".repeat(64), schemaVersion: 1 },
-        { workflowType: "CHANNEL_STRATEGY", runId: randomUUID(), artifactHash: "2".repeat(64), schemaVersion: 1 },
-        { workflowType: "CHANNEL_CONTENT_INTELLIGENCE", runId: randomUUID(), artifactHash: "3".repeat(64), schemaVersion: 1 },
-        { workflowType: "CHANNEL_VIDEO_BRIEF", runId: randomUUID(), artifactHash: "4".repeat(64), schemaVersion: 1 },
-        { workflowType: "CHANNEL_VIDEO_SCRIPT", runId: randomUUID(), artifactHash: "5".repeat(64), schemaVersion: 1 },
-        { workflowType: "CHANNEL_VIDEO_PACKAGING", runId: randomUUID(), artifactHash: "6".repeat(64), schemaVersion: 1 },
-        { workflowType: "CHANNEL_VIDEO_RELEASE", runId: randomUUID(), artifactHash: "7".repeat(64), schemaVersion: 1 },
+        { workflowType: "CHANNEL_RESEARCH", runId: lineage.research.runId, artifactHash: lineage.research.artifactHash, schemaVersion: 1 },
+        { workflowType: "CHANNEL_STRATEGY", runId: lineage.strategy.runId, artifactHash: lineage.strategy.artifactHash, schemaVersion: 1 },
+        { workflowType: "CHANNEL_CONTENT_INTELLIGENCE", runId: lineage.content.runId, artifactHash: lineage.content.artifactHash, schemaVersion: 1 },
+        { workflowType: "CHANNEL_VIDEO_BRIEF", runId: lineage.brief.runId, artifactHash: lineage.brief.artifactHash, schemaVersion: 1 },
+        { workflowType: "CHANNEL_VIDEO_SCRIPT", runId: lineage.script.runId, artifactHash: lineage.script.artifactHash, schemaVersion: 1 },
+        { workflowType: "CHANNEL_VIDEO_PACKAGING", runId: lineage.packaging.runId, artifactHash: lineage.packaging.artifactHash, schemaVersion: 1 },
+        { workflowType: "CHANNEL_VIDEO_RELEASE", runId: lineage.release.runId, artifactHash: lineage.release.artifactHash, schemaVersion: 1 },
         { workflowType: "CHANNEL_VIDEO_PERFORMANCE", runId: performance.runId, artifactHash: performance.artifactHash, schemaVersion: 1 },
       ],
       entries: [],
@@ -293,7 +297,7 @@ async function runChecks(db: pg.Client) {
   const performanceResolved = await asAuthenticated(db, ownerA, () => db.query<{ result: { reference: Record<string, unknown> } }>("select channelwright.resolve_approved_video_performance_artifact($1,$2) as result", [performance.workflowId, performance.runId]));
   const performanceReference = performanceResolved.rows[0].result.reference;
 
-  const diagnosis = await seedDiagnosis(db, ownerA, performance, performanceReference);
+  const diagnosis = await seedDiagnosis(db, ownerA, lineage, performance, performanceReference);
   const resolved = await asAuthenticated(db, ownerA, () => db.query<{
     result: {
       reference: Record<string, unknown>;
@@ -306,23 +310,23 @@ async function runChecks(db: pg.Client) {
   record("compact decision scope projects diagnosis-outcome and confidence facts", approved.decisionScope.facts.some((fact) => (fact as { key: string }).key === "fact:diagnosis-outcome") && approved.decisionScope.facts.some((fact) => (fact as { key: string }).key === "fact:diagnosis-overall-confidence"));
 
   record("cross-owner approved Diagnosis resolution is NOT_FOUND", (await expectFailure(db, ownerB, "select channelwright.resolve_approved_video_diagnosis_artifact($1,$2)", [diagnosis.workflowId, diagnosis.runId])).includes("NOT_FOUND"));
-  const unapproved = await seedDiagnosis(db, ownerA, performance, performanceReference, { approve: false });
+  const unapproved = await seedDiagnosis(db, ownerA, lineage, performance, performanceReference, { approve: false });
   record("unapproved Diagnosis is rejected", (await expectFailure(db, ownerA, "select channelwright.resolve_approved_video_diagnosis_artifact($1,$2)", [unapproved.workflowId, unapproved.runId])).includes("UPSTREAM_DIAGNOSIS_NOT_APPROVED"));
-  const rejectedQa = await seedDiagnosis(db, ownerA, performance, performanceReference, { qaPassed: false });
+  const rejectedQa = await seedDiagnosis(db, ownerA, lineage, performance, performanceReference, { qaPassed: false });
   record("rejected Diagnosis final QA is rejected", (await expectFailure(db, ownerA, "select channelwright.resolve_approved_video_diagnosis_artifact($1,$2)", [rejectedQa.workflowId, rejectedQa.runId])).includes("UPSTREAM_DIAGNOSIS_QA_INVALID"));
-  const wrongFinalizer = await seedDiagnosis(db, ownerA, performance, performanceReference, { finalizerOutput: { schemaVersion: 1, wrong: true } });
+  const wrongFinalizer = await seedDiagnosis(db, ownerA, lineage, performance, performanceReference, { finalizerOutput: { schemaVersion: 1, wrong: true } });
   record("Diagnosis finalizer disagreement is rejected", (await expectFailure(db, ownerA, "select channelwright.resolve_approved_video_diagnosis_artifact($1,$2)", [wrongFinalizer.workflowId, wrongFinalizer.runId])).includes("UPSTREAM_DIAGNOSIS_INTEGRITY_MISMATCH"));
-  const corruptArtifact = await seedDiagnosis(db, ownerA, performance, performanceReference, { corruptHash: true });
+  const corruptArtifact = await seedDiagnosis(db, ownerA, lineage, performance, performanceReference, { corruptHash: true });
   record("altered Diagnosis artifact hash is rejected", (await expectFailure(db, ownerA, "select channelwright.resolve_approved_video_diagnosis_artifact($1,$2)", [corruptArtifact.workflowId, corruptArtifact.runId])).includes("UPSTREAM_DIAGNOSIS_INTEGRITY_MISMATCH"));
-  const corruptProvenance = await seedDiagnosis(db, ownerA, performance, performanceReference, { corruptProvenance: true });
+  const corruptProvenance = await seedDiagnosis(db, ownerA, lineage, performance, performanceReference, { corruptProvenance: true });
   record("altered Diagnosis provenance hash is rejected", (await expectFailure(db, ownerA, "select channelwright.resolve_approved_video_diagnosis_artifact($1,$2)", [corruptProvenance.workflowId, corruptProvenance.runId])).includes("UPSTREAM_DIAGNOSIS_INTEGRITY_MISMATCH"));
-  const driftedPerformance = await seedDiagnosis(db, ownerA, performance, performanceReference, { upstreamReference: { ...performanceReference, performanceArtifactHash: "9".repeat(64) } });
+  const driftedPerformance = await seedDiagnosis(db, ownerA, lineage, performance, performanceReference, { upstreamReference: { ...performanceReference, performanceArtifactHash: "9".repeat(64) } });
   record("nested Performance reference drift is rejected", (await expectFailure(db, ownerA, "select channelwright.resolve_approved_video_diagnosis_artifact($1,$2)", [driftedPerformance.workflowId, driftedPerformance.runId])).includes("UPSTREAM_DIAGNOSIS_INTEGRITY_MISMATCH"));
-  const undeferred = await seedDiagnosis(db, ownerA, performance, performanceReference, { decisionDeferred: false });
+  const undeferred = await seedDiagnosis(db, ownerA, lineage, performance, performanceReference, { decisionDeferred: false });
   record("decisionDeferred seam tampering is rejected", (await expectFailure(db, ownerA, "select channelwright.resolve_approved_video_diagnosis_artifact($1,$2)", [undeferred.workflowId, undeferred.runId])).includes("Diagnosis did not defer its decision"));
-  const superseded = await seedDiagnosis(db, ownerA, performance, performanceReference, { current: false });
+  const superseded = await seedDiagnosis(db, ownerA, lineage, performance, performanceReference, { current: false });
   record("superseded Diagnosis is rejected", (await expectFailure(db, ownerA, "select channelwright.resolve_approved_video_diagnosis_artifact($1,$2)", [superseded.workflowId, superseded.runId])).includes("UPSTREAM_DIAGNOSIS_SUPERSEDED"));
-  const badParent = await seedDiagnosis(db, ownerA, performance, performanceReference, { context: { previousRunId: randomUUID() } });
+  const badParent = await seedDiagnosis(db, ownerA, lineage, performance, performanceReference, { context: { previousRunId: randomUUID() } });
   record("Diagnosis parent/root lineage drift is rejected", (await expectFailure(db, ownerA, "select channelwright.resolve_approved_video_diagnosis_artifact($1,$2)", [badParent.workflowId, badParent.runId])).includes("UPSTREAM_DIAGNOSIS_LINEAGE_INVALID"));
 
   const rls = await db.query<{ enabled: boolean }>("select bool_and(c.relrowsecurity) as enabled from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='channelwright' and c.relkind='r' and c.relname in ('workflows','workflow_runs','workflow_steps','workflow_approvals','research_run_budgets','research_usage_operations')");
