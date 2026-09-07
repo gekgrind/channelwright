@@ -36,15 +36,22 @@ const CAUSAL_CERTAINTY = /\b(?:causes?|caused|proves?|proven cause|resulted in|l
 // --- Fabricated-quantity detection ----------------------------------------
 // The design contract is qualitative: any asserted magnitude, duration, sample
 // size, or measurement is fabricated. But a bare number used as a LABEL
-// ("variant 2", "arm 3", "episode 7", "phase 1") is fine, so the detector
+// ("variant 2", "arm 3", "episode 7", "phase 1") or as a structural COUNT that
+// modifies an ordinary structural noun ("3-part hook", "2-part opening",
+// "5-section outline") is not a fabricated measurement, so the detector
 // distinguishes "a number next to a measurement noun / magnitude phrase" from
-// "a number after a label noun".
+// "a number after a label noun" and "a number before a structural noun".
 const CARDINAL = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fourty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion";
 const QUANTITY_NOUN = "%|percent|per ?cent|percentage points?|points?|pp|x|hours?|hrs?|days?|weeks?|months?|years?|minutes?|mins?|seconds?|secs?|viewers?|views?|impressions?|sessions?|subscribers?|clicks?|comments?|likes?|shares?|samples?|participants?|responses?|data ?points?|videos?|episodes?|uploads?|dollars?|usd";
 const DIGIT_RUN = /(?<![\p{L}\p{N}_:.-])\d[\d,]*(?:\.\d+)?/gu;
 const YEAR = /^20\d\d$/;
-const LABEL_BEFORE = /\b(?:variant|arm|cell|group|cohort|option|version|bucket|condition|phase|step|stage|episode|part|round|wave|batch|segment|treatment|control|slot|tier|level|figure|table|appendix)s?\s*[#-]?\s*$/i;
+const LABEL_BEFORE = /\b(?:variant|arm|cell|group|cohort|option|version|bucket|condition|phase|step|stage|episode|part|section|chapter|act|scene|beat|round|wave|batch|segment|treatment|control|slot|tier|level|figure|table|appendix)s?\s*[#-]?\s*$/i;
 const QUANTITY_AFTER = new RegExp("^\\s*[- ]?(?:" + QUANTITY_NOUN + ")\\b", "i");
+// A digit immediately before an ordinary structural noun is a count of narrative
+// parts, not a measurement, threshold, sample size, or experiment parameter.
+// Deliberately excludes ambiguous allocation nouns (segment / group / arm) and
+// every measurement noun (those still fall through QUANTITY_AFTER and flag).
+const STRUCTURAL_NOUN_AFTER = /^\s*[- ]?(?:parts?|steps?|sections?|chapters?|acts?|scenes?|beats?|phases?|stages?|episodes?|versions?|variants?|rounds?|tiers?|panels?|slides?)\b/i;
 const SPELLED_QUANTITY = new RegExp("\\b(?:" + CARDINAL + ")(?:[- ](?:" + CARDINAL + "))?\\s+(?:" + QUANTITY_NOUN + ")\\b", "i");
 const MAGNITUDE_CONTEXT = new RegExp(
   "\\b(?:at least|at most|no (?:fewer|less|more) than|up to|over|under|around|roughly|approximately|about|nearly|circa|minimum of|maximum of|target(?:ing)? (?:of )?|a target of|baseline (?:of|is|was|sits at|of about)|currently (?:at|around|about)|sits at|stands at|hovering around|on the order of|in the range of)\\s+(?:\\$?\\d|(?:" + CARDINAL + ")\\b)",
@@ -62,11 +69,44 @@ const FABRICATED_FORECAST = /\b(?:\d+(?:\.\d+)?\s*x\s*(?:lift|increase|improveme
 // question. An experiment whose stated PURPOSE is to confirm or defend the
 // current approach is rewriting the decision. (An interpretation-plan OUTCOME of
 // "preserve" is fine and is not scanned here.)
-const PURPOSE_STATUS_QUO = /\b(?:to (?:confirm|prove|show|demonstrate|validate|establish|verify|reassure (?:us|ourselves)) (?:that )?(?:the )?(?:current|existing|status[- ]?quo|present)\b|(?:preserve|keep|retain|maintain) the (?:current|existing|present)\b|(?:the )?(?:current|existing|present) (?:approach|opening|hook|thumbnail|title|format|structure|packaging|design|version) is (?:fine|correct|best|optimal|working|effective|good enough|already (?:good|working))|no change (?:is )?(?:needed|warranted|required|necessary|justified)|leave (?:it|the \w+) (?:as[- ]?is|unchanged|in place|alone|untouched)|status quo is (?:fine|correct|best|preferable|optimal))/i;
+// A PURPOSE / treatment-intent statement that concludes in advance that the
+// approved Decision should not be acted on or tested is a semantic rewrite of the
+// Decision. This captures the "leave it alone" families -- remain/stay unchanged,
+// keep/retain the current thing, do not change, no change needed, further
+// investigation unnecessary, status quo should remain -- not only the exact
+// phrasings the round-1 detector listed.
+const STATUS_QUO_INTENT = /\b(?:to (?:confirm|prove|show|demonstrate|validate|establish|verify|reassure (?:us|ourselves)) (?:that )?(?:the )?(?:current|existing|status[- ]?quo|present)\b|(?:should|must|will|to|shall)\s+(?:instead\s+)?(?:remain|stay|be kept|be left|be retained|be preserved|be maintained)\s+(?:unchanged|as[- ]?is|in place|the same|untouched|as it is)|(?:remains?|stays?|staying|remaining)\s+(?:unchanged|as[- ]?is|the same|untouched)|(?:preserve|preserving|keep|keeping|retain|retaining|maintain|maintaining)\s+(?:the\s+)?(?:current|existing|present)\s+\w+|leave\s+(?:the\s+|our\s+)?(?:current|existing|present)?\s*\w+\s+(?:as[- ]?is|unchanged|in place|alone|untouched|the same)|(?:the )?(?:current|existing|present) (?:approach|opening|hook|thumbnail|title|format|structure|packaging|design|version) is (?:fine|correct|best|optimal|working|effective|good enough|already (?:good|working))|(?:do|does|should)\s+not\s+(?:change|modify|alter|touch|test|revise)\b|no\s+(?:further\s+)?change\s+(?:is\s+)?(?:needed|warranted|required|necessary|justified)|(?:no\s+(?:further|additional)\s+(?:investigation|testing|study|experimentation|measurement)\s+(?:is\s+)?(?:necessary|needed|warranted|required|justified)|further\s+(?:investigation|testing|study|experimentation|measurement)\s+(?:is\s+)?(?:unnecessary|unwarranted|unneeded|not (?:needed|warranted|required|justified)))|no\s+need\s+(?:to|for)\s+(?:further\s+|additional\s+|any\s+)?(?:test|testing|investigat\w*|study\w*|experiment\w*|measur\w*)|(?:test|investigat\w*|study\w*|experiment\w*)\s+(?:it\s+|this\s+|the\s+\w+\s+)?(?:any\s+)?further\s+(?:is\s+)?(?:unnecessary|unwarranted|not\s+(?:needed|warranted|worthwhile))|status quo\s+(?:is (?:fine|correct|best|preferable|optimal)|should\s+(?:remain|stand|persist|be (?:kept|retained|preserved))))/i;
+// Conditional / outcome-plan framing: a possible NULL-RESULT outcome or a control
+// condition that "preserves the current opening" is legitimate and must not be
+// read as the experiment's purpose.
+const OUTCOME_FRAME = /\b(?:if\b|should the\b|were the\b|unless\b|when the treatment\b|a?\s*null(?:[- ]result)?\b|a?\s*negative result\b|inconclusive\b|unfavou?rable\b|underperform|does not (?:improve|beat|outperform|move|change|help)|fails to\b|no (?:signal|improvement|effect|lift|gain)\b|absent (?:a|any)\b|control (?:condition|group|arm|case|cell)\b)/i;
 const GUARDRAIL_OVERRIDE = /\b(?:ignore|override|overrule|disregard|bypass|wave away|set aside|push past)\s+(?:the |any |a )?(?:guardrail|degradation|breach|threshold|red[- ]?line|stopping condition|harm signal)/i;
 const CONTINUE_NEAR_GUARDRAIL = /(?:\b(?:continue|proceed|keep going|carry on|press on|forge ahead|push (?:on|ahead)|do not (?:stop|halt|pause|revert|roll ?back)|don'?t (?:stop|halt|pause|revert))\b[^.]{0,90}?\b(?:guardrail|degrad|breach|threshold|red[- ]?line|harm signal|regression)\b)|(?:\b(?:guardrail|degrad(?:es|ing|ation)?|breach|threshold breach|red[- ]?line|harm signal)\b[^.]{0,90}?\b(?:continue|proceed|keep going|carry on|press on|forge ahead|still (?:ship|run|adopt|continue)|do not (?:stop|halt|require stopping)|regardless|anyway|nonetheless|is (?:acceptable|tolerable|fine|ok))\b)/i;
 const ROLLBACK_NOT_REVERTING = /\b(?:continue|keep|maintain|leave|retain|preserve|hold|stay with|do not (?:revert|roll ?back|undo|restore|remove|withdraw|change back))\b[^.]{0,60}?\b(?:the |our )?(?:treatment|change|new |reworked |updated |modified )?(?:opening|thumbnail|hook|title|version|variant|format|approach|design|framing|treatment|change)/i;
-const INCOHERENT_INVALIDATION = /\b(?:never (?:happens|occurs|possible|arises)|cannot (?:happen|occur|arise)|will not (?:happen|occur|arise)|is impossible|no (?:such )?(?:condition|scenario|circumstance|situation)|nothing (?:could|would|can|will)|not applicable\b|there (?:is|are) no (?:condition|scenario|way)|by definition (?:always|cannot))/i;
+// An invalidation criterion must name an event/state that can actually occur in
+// the experiment. This rejects criteria that are impossible by construction. It
+// is deliberately scoped (in the rule below) to the invalidationConditions field
+// only, so an ordinary analytical "X cannot happen because Y is held constant"
+// elsewhere in the design is untouched, and a legitimate failure condition that
+// merely involves an inability ("invalidate if the metric cannot be measured
+// reliably", "if the treatment cannot be delivered consistently") is not caught:
+// the ban is on "the criterion itself can never occur", not on the word "cannot".
+const IMPOSSIBLE_ADVERB = "(?:ever\\s+|possibly\\s+|conceivably\\s+|realistically\\s+|actually\\s+|in\\s+practice\\s+)?";
+const INCOHERENT_INVALIDATION = new RegExp(
+  "\\b(?:" +
+  "(?:can|could|will|would|shall|does|did)\\s*(?:not|never)\\s+" + IMPOSSIBLE_ADVERB + "(?:happen|occur|arise|materiali[sz]e|be\\s+" + IMPOSSIBLE_ADVERB + "(?:met|satisfied|reached|triggered|realized|realised|true))" +
+  "|never\\s+" + IMPOSSIBLE_ADVERB + "(?:happens?|occurs?|arises?|possible|be\\s+(?:met|satisfied|reached|triggered))" +
+  "|cannot\\s+" + IMPOSSIBLE_ADVERB + "(?:happen|occur|arise|materiali[sz]e|be\\s+" + IMPOSSIBLE_ADVERB + "(?:met|satisfied|reached|triggered))" +
+  "|is\\s+(?:logically\\s+|physically\\s+|simply\\s+)?impossible" +
+  "|impossible\\s+to\\s+(?:satisfy|trigger|meet|reach|occur|happen|achieve|attain)" +
+  "|no\\s+(?:such\\s+)?(?:condition|scenario|circumstance|situation)\\b" +
+  "|nothing\\s+(?:could|would|can|will)\\b" +
+  "|not\\s+applicable\\b" +
+  "|there\\s+(?:is|are)\\s+no\\s+(?:condition|scenario|circumstance|way)\\b" +
+  "|by\\s+definition\\s+(?:always|cannot|never)" +
+  ")",
+  "i",
+);
 
 // --- Viewer Value metric-family model ----------------------------------
 // Every primary metric can be gamed against viewer value. This encodes the four
@@ -109,6 +149,56 @@ const DECISION_OVERRIDE = /\b(?:the (?:decision|call) (?:should|ought to|must|ne
 const STOPPING_TRIGGER = /\b(?:guardrail|viewer value|satisfaction|retention|watch ?time|percentage viewed|harm|degrad|misleading|deceptive|trust|promise|complaint|dislike|drop-?off|abandon)/i;
 const PROMISE_HARM_TERM = /\b(?:promise|mislead|deceptiv|trust|satisfaction|retention|watch ?time|percentage viewed|complaint|dislike)/i;
 const NO_CHANGE_TREATMENT = /^\s*(nothing|none|n\/?a|no change|measurement only|observe only|no manipulation)\b/i;
+
+// --- Viewer Value: treatment-mechanism safety (Layer 1) ---------------------
+// Independent of guardrail adequacy (Layer 2, below). A treatment whose MECHANISM
+// is deliberate viewer harm is rejected even when a perfectly worded guardrail
+// names the same risk -- "harmful treatment + perfect guardrail => REJECT". This
+// encodes the canonical Viewer Value doctrine harm classes: promise withholding /
+// mismatch, artificial watch-time padding, outrage / manipulation, and
+// trust-damaging conversion. It is a bounded semantic pattern scoped (in the rule
+// below) to the canonical treatment-intent fields, and a negation guard keeps a
+// treatment described by what it AVOIDS ("without padding", "not by stalling")
+// and safe interventions ("remove low-value filler", "tighten the opening so the
+// promised value appears sooner", "improve pacing without delaying the payoff")
+// from tripping it.
+const HARMFUL_TREATMENT_MECHANISM = new RegExp(
+  [
+    // artificial watch-time padding
+    "\\bpad(?:s|ded|ding)?\\s+(?:out\\s+)?(?:the\\s+)?(?:video|runtime|run ?time|episode|content|cut|opening|segment|section|piece)",
+    "\\b(?:stretch|lengthen|drag|extend|balloon|pad)(?:es|s|ing|ed)?\\s+(?:out\\s+)?(?:the\\s+)?(?:video|runtime|run ?time|episode|length|cut|content)\\b",
+    "\\badd(?:s|ing)?\\s+(?:low[- ]value|filler|padding|unnecessary|extraneous|throwaway|time[- ]wasting|no[- ]value)\\s+(?:material|content|segments?|footage|filler|padding|sections?|clips?)",
+    "\\b(?:inflat|pad|stretch)(?:e|es|ed|ing)?\\s+(?:the\\s+)?(?:watch ?time|minutes?(?:\\s+viewed)?|view duration|retention|runtime)\\s+(?:by|through|with|via)\\b",
+    "\\b(?:increase|boost|raise|grow|drive up|inflate)\\s+(?:watch ?time|minutes?(?:\\s+viewed)?|view duration|time on video)\\s+(?:by|through|with|via)\\s+(?:padding|filler|stalling|stretching|delaying|slow[- ]walking|dragging)",
+    "\\bfiller\\s+(?:solely|only|purely|just|simply)\\s+to\\s+(?:increase|boost|inflate|pad|raise)\\b",
+    // promise withholding / mismatch
+    "\\bwithhold(?:s|ing)?\\s+(?:the\\s+|a\\s+|an\\s+)?(?:promised\\s+|expected\\s+|core\\s+|actual\\s+)?(?:answer|payoff|reveal|result|information|conclusion|outcome|value|point|takeaway)",
+    "\\bdelay(?:s|ed|ing)?\\s+(?:the\\s+)?(?:delivery\\s+of\\s+|reveal\\s+of\\s+|payoff\\s+of\\s+)?(?:the\\s+)?(?:promised\\s+|expected\\s+)?(?:answer|payoff|reveal|information|conclusion|result|takeaway)\\b",
+    "\\b(?:make|making|keep|keeping|force|forcing|have)\\s+(?:the\\s+)?viewers?\\s+wait(?:ing)?\\s+(?:longer than necessary|unnecessarily|artificially|needlessly)",
+    "\\bbury(?:ing)?\\s+(?:the\\s+)?(?:promised\\s+)?(?:answer|payoff|lede|lead|conclusion|point|takeaway)\\b",
+    "\\bhold(?:s|ing)?\\s+back\\s+(?:the\\s+)?(?:promised\\s+|expected\\s+)?(?:answer|payoff|reveal|result|conclusion|information|takeaway)\\b",
+    "\\bsav(?:e|es|ing)\\s+(?:the\\s+)?(?:promised\\s+)?(?:answer|payoff|reveal|conclusion)\\s+(?:for|until|till)\\s+(?:the\\s+)?(?:end|last|later|final)",
+    "\\bkeep(?:ing)?\\s+(?:the\\s+)?viewers?\\s+guessing\\s+(?:to|for|so)\\b",
+    "\\btease\\s+(?:the\\s+)?(?:answer|payoff|reveal)\\s+(?:endlessly|indefinitely|for retention|to keep|without)",
+    // outrage / manipulation
+    "\\b(?:outrage|rage|engagement|comment|anger)[- ]?bait\\b",
+    "\\bragebait\\b",
+    "\\b(?:provoke|provoking|stir(?:\\s+up|ring\\s+up)?|manufactur(?:e|es|ing|ed)|incit(?:e|es|ing)|inflame|inflaming|whip\\s+up|fuel(?:s|ing)?)\\s+(?:reader|viewer|audience)?\\s*(?:anger|outrage|rage|indignation|controversy|drama|conflict|division|hostility)",
+    "\\bmanufactur(?:e|es|ing|ed)\\s+controvers",
+    "\\binflammatory\\s+(?:framing|hook|title|thumbnail|angle|claim|language)",
+    "\\bbait\\s+(?:viewers|the audience|people|users)\\s+into\\s+(?:commenting|arguing|fighting|reacting)",
+    // trust-damaging conversion
+    "\\bmisleading\\s+(?:urgency|scarcity|framing|claim|hook|thumbnail)",
+    "\\bdeceptive\\s+(?:framing|urgency|scarcity|hook|thumbnail|tactic|claim|conversion)",
+    "\\b(?:fake|false|artificial|manufactured|phony)\\s+(?:urgency|scarcity|deadline|countdown|social proof)",
+    "\\bbait[- ]and[- ]switch\\b",
+    "\\btrust[- ]damaging\\b",
+  ].join("|"),
+  "gi",
+);
+// A harmful phrase within ~32 chars of one of these is a treatment described by
+// what it does NOT do (a guardrail-style statement), not a harmful mechanism.
+const TREATMENT_HARM_NEGATION = /\b(?:without|not|never|avoids?|avoiding|no|rather than|instead of|isn't|does not|do not|doesn't|don't|must not|won't|will not|so as not to|prevent(?:s|ing)?|refus(?:e|es|ing)\s+to|stops?\s+short\s+of)\s+\S*\s*$/i;
 
 function freeText(result: ChannelVideoExperimentResult): string[] {
   const { experiment, alternatives, decisionDisagreements, viewerValueSafeguards } = result.content;
@@ -206,10 +296,12 @@ export const DETERMINISTIC_VIDEO_EXPERIMENT_RULES: ExperimentRule[] = [
     const purpose = [
       experiment.title, experiment.hypothesis, experiment.decisionLinkage.hypothesisUnderTest,
       experiment.targetVariable, experiment.expectedDirection.justification,
-      ...(experiment.measurementOnly ? [] : [experiment.treatmentCondition.whatChanges]),
+      ...(experiment.measurementOnly ? [] : [experiment.treatmentCondition.whatChanges, experiment.treatmentCondition.description]),
     ];
-    return purpose.some((text) => PURPOSE_STATUS_QUO.test(text))
-      ? ["The experiment's stated purpose is to confirm or preserve the status quo; an INVESTIGATE / PRIORITIZE_CHANGE decision is testing a change, not defending the current approach."]
+    // A status-quo phrase inside conditional / null-result / control-condition
+    // framing is a legitimate OUTCOME, not the experiment's purpose.
+    return purpose.some((text) => STATUS_QUO_INTENT.test(text) && !OUTCOME_FRAME.test(text))
+      ? ["The experiment's stated purpose is to confirm, preserve, or leave unchanged the current approach; an INVESTIGATE / PRIORITIZE_CHANGE decision is testing a change, not defending the current approach or concluding further investigation is unwarranted."]
       : [];
   }),
   rule("EXPERIMENT_TYPE_NOT_PERMITTED", "error", ({ result, expectedConstraints }) =>
@@ -282,6 +374,7 @@ export const DETERMINISTIC_VIDEO_EXPERIMENT_RULES: ExperimentRule[] = [
         const before = text.slice(0, match.index);
         const after = text.slice(match.index + token.length);
         if (LABEL_BEFORE.test(before) && !QUANTITY_AFTER.test(after)) continue; // "variant 2" / "episode 7" is a label, not a measurement
+        if (STRUCTURAL_NOUN_AFTER.test(after) && !QUANTITY_AFTER.test(after)) continue; // "3-part hook" / "5-section outline" is a structural count, not a measurement
         messages.add(`Numeric quantity "${token}" appears in the design; use a label ("variant B"), never a measurement, duration, or count.`);
       }
     }
@@ -389,7 +482,7 @@ export const DETERMINISTIC_VIDEO_EXPERIMENT_RULES: ExperimentRule[] = [
   }),
   rule("INVALIDATION_CONDITION_INCOHERENT", "error", ({ result }) =>
     result.content.experiment.invalidationConditions
-      .filter((text) => INCOHERENT_INVALIDATION.test(text))
+      .filter((text) => INCOHERENT_INVALIDATION.test(text.replace(/\bcan['’]t\b/gi, "can not").replace(/\bwon['’]t\b/gi, "will not").replace(/(\w)n['’]t\b/gi, "$1 not")))
       .map((text) => `Invalidation condition "${text.trim().slice(0, 90)}" can never trigger; it is not a real safeguard.`)),
 
   // --- Viewer Value (hard constraint) ----------------------------------
@@ -404,6 +497,33 @@ export const DETERMINISTIC_VIDEO_EXPERIMENT_RULES: ExperimentRule[] = [
   }),
   rule("MISSING_VIEWER_VALUE_GUARDRAIL", "error", ({ result }) =>
     result.content.experiment.viewerValueGuardrails.length === 0 ? ["The experiment declares no Viewer Value guardrail."] : []),
+  // Layer 1 -- treatment safety. The intervention itself must not be a mechanism
+  // that deliberately harms Viewer Value (padding, promise-withholding, outrage
+  // bait, trust-damaging conversion). This is independent of Layer 2 (guardrail
+  // adequacy): a compliant, family-appropriate guardrail does NOT sanitize a
+  // harmful treatment. Scoped to the canonical treatment-intent fields; a
+  // negation guard preserves treatments described by what they avoid and safe
+  // interventions that merely mention retention / watch time / filler / pacing.
+  rule("VIEWER_VALUE_TREATMENT_HARMFUL", "error", ({ result }) => {
+    const experiment = result.content.experiment;
+    const intentFields = [
+      experiment.title, experiment.hypothesis, experiment.decisionLinkage.hypothesisUnderTest,
+      experiment.targetVariable, experiment.expectedDirection.justification,
+      experiment.treatmentCondition.description, experiment.treatmentCondition.whatChanges,
+    ];
+    const messages = new Set<string>();
+    for (const text of intentFields) {
+      HARMFUL_TREATMENT_MECHANISM.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = HARMFUL_TREATMENT_MECHANISM.exec(text)) !== null) {
+        const preceding = text.slice(Math.max(0, match.index - 32), match.index);
+        if (TREATMENT_HARM_NEGATION.test(preceding)) continue;
+        messages.add(`The treatment mechanism "${match[0].trim().slice(0, 80)}" deliberately harms Viewer Value; an independent guardrail cannot make a harmful intervention acceptable.`);
+        break;
+      }
+    }
+    return [...messages];
+  }),
   // Every primary metric -- not only acquisition-side ones -- can be gamed
   // against viewer value. A guardrail metric must independently protect viewer
   // benefit, and it must differ from the primary itself. When the primary IS a

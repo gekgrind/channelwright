@@ -1,10 +1,10 @@
 ---
 Agent: Claude Code
 Task: Implement the CHANNEL_VIDEO_EXPERIMENT workflow vertical
-Completed: 2026-09-06 (repairs applied after round-1 independent verification)
+Completed: 2026-09-07 (round-2 repairs applied after round-2 independent verification)
 Repository: `C:\DevProjects\channelwright` (worktree `C:\DevProjects\channelwright-experiment`)
 Branch: `feat/channel-video-experiment` (off `main` @ 9888d74 — the merged CHANNEL_VIDEO_DECISION)
-Status: `IMPLEMENTED + REPAIRED — ALL LOCAL GATES + DISPOSABLE-POSTGRESQL PASSED, READY FOR RE-VERIFICATION`
+Status: `IMPLEMENTED + REPAIRED (round 2) — ALL LOCAL GATES + DISPOSABLE-POSTGRESQL PASSED, READY FOR INDEPENDENT RE-VERIFICATION`
 Merged: NO (do not merge to main)
 ---
 
@@ -44,6 +44,58 @@ and three P2 findings. All release-blocking findings are repaired in `11dc555`:
 
 Catalogue: 58 → 66 rules (count still derived from `RULES.length`). A 15-case
 adversarial regression matrix (every input the verification used) is added to
+`video-experiment-validation.test.ts`. All gates re-run green (see Verification).
+
+## Round-2 independent verification: NOT READY → repaired
+
+Independent verification of `2b8654f` returned **NOT READY TO MERGE**. It
+confirmed the round-1 repairs to upstream resolution, transitive integrity,
+parent/root reconciliation, provider independence, accounting, and all
+engineering gates were sound, but found four remaining semantic-validation gaps.
+All four are repaired in the round-2 commit (source: `video-experiment-validation.ts`
+only; catalogue **66 → 67 rules**, count still derived from `RULES.length`):
+
+- **P1 — Viewer Value treatment safety failed open.** `METRIC_GAMING_UNGUARDED`
+  only checked whether the *guardrail* named the family gaming risk, so a harmful
+  *treatment* ("pad the video", "withhold the promised answer", "use outrage
+  bait") passed when paired with a compliant guardrail. Added a Layer-1 rule
+  **`VIEWER_VALUE_TREATMENT_HARMFUL`** that inspects the canonical treatment-intent
+  fields (`treatmentCondition.description` / `.whatChanges`, `title`, `hypothesis`,
+  `decisionLinkage.hypothesisUnderTest`, `targetVariable`,
+  `expectedDirection.justification`) for the four doctrine harm classes —
+  promise withholding/mismatch, artificial watch-time padding, outrage/
+  manipulation, trust-damaging conversion — with a negation guard so safe
+  interventions ("remove low-value filler", "tighten the opening so the promised
+  value appears sooner", "improve pacing without delaying the payoff") and
+  by-what-it-avoids guardrail phrasing do not trip it. Layer 2 (guardrail
+  adequacy, `NO_INDEPENDENT_VIEWER_BENEFIT_GUARDRAIL` / `METRIC_GAMING_UNGUARDED`)
+  is unchanged; a valid guardrail can no longer sanitize an invalid treatment.
+- **P1 — Decision-purpose contradiction was phrase-specific.** "The current
+  opening should remain unchanged because further investigation is unwarranted"
+  bypassed `EXPERIMENT_PURPOSE_CONTRADICTS_DECISION`. Replaced `PURPOSE_STATUS_QUO`
+  with `STATUS_QUO_INTENT` covering the families (remain/stay unchanged, keep/
+  retain/preserve current X, do not change, no change needed, further
+  investigation unnecessary/unwarranted, no need to test further, status quo
+  should remain) plus an `OUTCOME_FRAME` guard so conditional / null-result /
+  control-condition "preserve the current opening" language stays valid as an
+  *outcome*.
+- **P2 — invalidation incoherence.** "This condition can never occur" bypassed
+  `INVALIDATION_CONDITION_INCOHERENT`. Broadened `INCOHERENT_INVALIDATION`
+  (can/could/will/would/shall + not/never + happen/occur/arise/be met…;
+  impossible to satisfy/trigger/…) with contraction normalisation, still scoped
+  to the `invalidationConditions` field so a legitimate failure condition that
+  merely involves an inability ("if the metric cannot be measured reliably") is
+  not caught.
+- **P2 — structural numeric false positive.** "Use a 3-part hook" tripped
+  `FABRICATED_QUANTITY_IN_DESIGN`. Added `STRUCTURAL_NOUN_AFTER` (part/step/
+  section/chapter/act/scene/beat/phase/… — deliberately excluding ambiguous
+  allocation nouns segment/group/arm and every measurement noun): a digit
+  immediately before a structural noun is a narrative count, not a measurement.
+  Measurement-like quantities ("3 hours", "30-percent baseline", "3 days",
+  "sample of 40 viewers") still flag via `QUANTITY_AFTER` / `SPELLED_QUANTITY`.
+
+A round-2 adversarial regression matrix (the exact round-2 inputs plus
+independent paraphrases and negative controls for each rule) is added to
 `video-experiment-validation.test.ts`. All gates re-run green (see Verification).
 
 # CHANNEL_VIDEO_EXPERIMENT Vertical
@@ -176,18 +228,19 @@ branch; the definition + registry + finalizer-map entry; and type exports.
 `workflow-worker.ts` (executor + error-message codes),
 `src/app/api/workflows/route.ts` (idempotency list).
 
-## Verification (local + disposable-PG; no shared/production DB touched) — re-run after `11dc555`
+## Verification (local + disposable-PG; no shared/production DB touched) — re-run after the round-2 repair
 
-- `npx tsc --noEmit` — PASS, exit 0
-- `npx eslint .` — PASS, exit 0
-- Focused Experiment suites — 100/100 PASS (67 validation incl. the adversarial
-  matrix + 8 resolver + 13 executor + 12 migration).
-- `npx vitest run` — PASS, exit 0, **107 files / 1368 tests** in the green run.
-  One Studio workspace test file intermittently hits a vitest worker-startup
-  timeout ("Timeout waiting for worker to respond"); re-run in isolation the
-  Studio workspace files pass 23/23. Pre-existing infra flake in the jsdom test
-  pool, unrelated to this vertical (all changes here are in `src/server/`).
-- `npm run build` — PASS, exit 0.
+- `npm run typecheck` (`tsc --noEmit`) — PASS, exit 0
+- `npm run lint` (`eslint .`) — PASS, exit 0
+- Focused Experiment suites — **118/118 PASS** (85 validation incl. the round-1
+  and round-2 adversarial matrices + 8 resolver + 13 executor + 12 migration).
+- `npm test` (`vitest run`) — PASS, exit 0, **108 files / 1399 tests** in the
+  green run; the full suite completed with a real exit code (no hang, no
+  inconclusive result on this run).
+- `npx vitest run src/server/workflows` — PASS, exit 0, **60 files / 1053 tests**
+  (CHANNEL_VIDEO_EXPERIMENT / DECISION / DIAGNOSIS / PERFORMANCE, workflow
+  worker, research usage, role routing, API workflow exposure).
+- `npm run build` — PASS, exit 0 ("Compiled successfully").
 - `gate:videoexperiment:disposable-pg` — **`VIDEO_EXPERIMENT_DISPOSABLE_PG_PASSED`,
   40 passed / 0 failed**, exit 0, against a local disposable PostgreSQL 17
   cluster (`channelwright-postgres`, 127.0.0.1:55432). Full **31-migration**
@@ -208,28 +261,39 @@ merged to main.
 ## Base / HEAD
 
 - Base SHA: `9888d749ee0bcefdc2d0dfac2b9b60b9230e0806` (origin/main, "Merge CHANNEL_VIDEO_DECISION")
-- Branch: `feat/channel-video-experiment` — `c254f31` (vertical) → `de6da57` (doc) → `11dc555` (round-1 repairs)
+- Rejected round-2 SHA: `2b8654fa6737a417d286e361cb9d4abc1fb4ea37`
+- Branch: `feat/channel-video-experiment` — `c254f31` (vertical) → `de6da57` (doc)
+  → `11dc555` (round-1 repairs) → `2b8654f` (round-1 doc) → round-2 repair commit
+  (`fix(video-experiment): close remaining semantic validation gaps`)
+- 0 behind / 5 ahead of `origin/main` after the round-2 repair commit.
 
 ## Open findings
 
-- Round-1 P1/P2 findings: all repaired in `11dc555` (see the top section).
-- P3 (round-1, now accurate): the handoff previously overstated Decision-statement
-  pinning, fabricated-quantity coverage and Viewer Value safety; those claims are
-  corrected here and the repairs make them true.
-- Non-blocking: the metric-family / status-quo / contradiction detectors are
-  regex-based. They now cover every adversarial input the verification used plus
-  the doctrine's four named failure modes, but a determined paraphrase could
-  still evade a specific pattern; the structured server-stamped fields
-  (`testsDecisionStatement`, `disposition`, `measurementOnly`, `evidenceStrength`,
-  `experimentReady`, `portfolioEligible`, control kind) are the hard guarantees.
+- Round-1 P1/P2 findings: repaired in `11dc555`; round-2 verification confirmed
+  those areas (upstream resolution, transitive integrity, parent/root
+  reconciliation, provider independence, accounting, all engineering gates) sound.
+- Round-2 P1/P2 findings: all four repaired in the round-2 repair commit
+  (`VIEWER_VALUE_TREATMENT_HARMFUL` new; `STATUS_QUO_INTENT` + `OUTCOME_FRAME`;
+  broadened `INCOHERENT_INVALIDATION`; `STRUCTURAL_NOUN_AFTER`) — see the
+  round-2 section at the top.
+- Non-blocking: the treatment-harm / status-quo / invalidation / quantity
+  detectors are bounded deterministic semantic patterns scoped to the canonical
+  treatment / purpose / invalidation fields. They now cover every round-1 and
+  round-2 adversarial input plus independent paraphrases and the doctrine's four
+  named harm classes, but a determined paraphrase could still evade a specific
+  pattern; the structured server-stamped fields (`testsDecisionStatement`,
+  `disposition`, `measurementOnly`, `evidenceStrength`, `experimentReady`,
+  `portfolioEligible`, control kind) remain the hard guarantees. Do not read the
+  claims "Viewer Value safe" / "Decision semantics pinned" / "quantity handling
+  complete" more broadly than source + tests support.
 - Follow-up: refresh Graphify (`graphify update .`) — the checked-in graph
   predates even the DECISION merge.
 
 ## Next action
 
-Re-verification of the vertical on `feat/channel-video-experiment` @ `11dc555`
-(re-run the round-1 adversarial matrix against the repaired
-`video-experiment-validation.ts` and `resolve_approved_video_decision_artifact`
-SQL; re-run the disposable-PG gate), then a merge decision. To re-run the
-disposable-PG gate: `docker start channelwright-postgres`, then
+Independent re-verification of the vertical on `feat/channel-video-experiment` at
+the round-2 repair commit (re-run the round-1 + round-2 adversarial matrices
+against `video-experiment-validation.ts`; re-run the disposable-PG gate), then a
+merge decision. To re-run the disposable-PG gate: `docker start
+channelwright-postgres`, then
 `CHANNELWRIGHT_DISPOSABLE_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/postgres npm run gate:videoexperiment:disposable-pg`.

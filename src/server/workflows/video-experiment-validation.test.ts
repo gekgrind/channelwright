@@ -504,6 +504,149 @@ describe("adversarial matrix — independent-verification regressions", () => {
   });
 });
 
+describe("adversarial matrix — round-2 independent-verification regressions", () => {
+  it("sanity: the manipulation base result is deterministically clean", () => {
+    expect(validate(manipulationResult())).toEqual([]);
+  });
+
+  // --- P1: Viewer Value treatment-mechanism safety is independent of the guardrail ---
+  const compliantGuard = [
+    "The reworked opening must not pad, stall, or add filler to inflate retention, must not withhold or delay the promised payoff, and must not use outrage bait or deceptive framing.",
+  ];
+  it("rejects a watch-time-padding treatment even with a compliant viewer-value guardrail", () => {
+    const result = manipulationResult({
+      treatmentCondition: { description: "Pad the video to increase watch time.", whatChanges: "Pad the video with extra recap so minutes viewed rises.", whatStaysConstant: ["Topic selection"] },
+      viewerValueGuardrails: compliantGuard,
+    });
+    expect(codes(result)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+  });
+  it("rejects a promise-withholding retention treatment even with a compliant loyalty guardrail", () => {
+    const result = manipulationResult({
+      treatmentCondition: { description: "Withhold the promised answer to keep viewers watching.", whatChanges: "The opening withholds the promised answer until the final third.", whatStaysConstant: ["Topic selection"] },
+      viewerValueGuardrails: compliantGuard,
+    });
+    expect(codes(result)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+  });
+  it("rejects an outrage-bait engagement treatment even with a compliant engagement guardrail", () => {
+    const result = manipulationResult({
+      primaryMetric: { metric: "COMMENTS_RATE", unit: "RATIO", direction: "INCREASE", rationale: "Comment rate is the target." },
+      treatmentCondition: { description: "Use outrage bait in the hook to increase comments.", whatChanges: "The hook uses outrage bait to provoke anger.", whatStaysConstant: ["Topic selection"] },
+      viewerValueGuardrails: ["The hook must not use outrage bait, rage-bait, or manufacture controversy to inflate comment volume."],
+    });
+    expect(codes(result)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+  });
+  it("rejects a trust-damaging conversion treatment even with a compliant guardrail", () => {
+    const result = manipulationResult({
+      primaryMetric: { metric: "SUBSCRIBERS_GAINED", unit: "COUNT", direction: "INCREASE", rationale: "Subscriber conversion is the target." },
+      treatmentCondition: { description: "Add fake urgency and a deceptive framing to the end-card to boost subscribes.", whatChanges: "The end-card now uses fake urgency.", whatStaysConstant: ["Topic selection"] },
+      viewerValueGuardrails: ["The conversion prompt must not use fake urgency, deceptive framing, or any trust-damaging tactic."],
+    });
+    expect(codes(result)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+  });
+  it("rejects independent paraphrases of the harm classes not copied from other tests", () => {
+    const stretch = manipulationResult({ treatmentCondition: { description: "Stretch the runtime with filler to increase minutes viewed.", whatChanges: "Runtime is stretched with filler.", whatStaysConstant: ["Topic selection"] } });
+    expect(codes(stretch)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    const delay = manipulationResult({ treatmentCondition: { description: "Delay the answer viewers came for to improve retention.", whatChanges: "The answer is delayed to the final third.", whatStaysConstant: ["Topic selection"] } });
+    expect(codes(delay)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    const manufacture = manipulationResult({ hypothesis: "If we manufacture controversy unrelated to the topic, comment rate rises.", treatmentCondition: { description: "The hook manufactures controversy and whips up anger.", whatChanges: "The hook whips up anger.", whatStaysConstant: ["Topic selection"] } });
+    expect(codes(manufacture)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+  });
+  it("does not flag safe interventions that merely mention retention / filler / pacing / the payoff", () => {
+    const controls = [
+      { description: "Tighten the opening so the promised value appears sooner.", whatChanges: "The opening is tightened so the promised value appears sooner.", whatStaysConstant: ["Topic selection"] },
+      { description: "Remove low-value filler while measuring retention.", whatChanges: "Low-value filler is removed from the first minute.", whatStaysConstant: ["Topic selection"] },
+      { description: "Clarify the title while monitoring viewer satisfaction.", whatChanges: "The title is clarified for accuracy.", whatStaysConstant: ["Topic selection"] },
+      { description: "Improve pacing without delaying the promised payoff.", whatChanges: "Pacing is improved and the promised payoff is not delayed.", whatStaysConstant: ["Topic selection"] },
+    ];
+    for (const treatmentCondition of controls) {
+      expect(validate(manipulationResult({ treatmentCondition }))).toEqual([]);
+    }
+  });
+
+  // --- P1: Decision-purpose contradiction is semantic, not phrase-specific ---
+  it("rejects 'should remain unchanged because further investigation is unwarranted' as a purpose", () => {
+    const result = manipulationResult();
+    result.content.experiment.decisionLinkage.hypothesisUnderTest = "The current opening should remain unchanged because further investigation is unwarranted.";
+    expect(codes(result)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+  });
+  it("rejects purpose paraphrases: keep current instead of testing, leave existing unchanged, no further testing", () => {
+    const a = manipulationResult(); a.content.experiment.hypothesis = "Keep the current opening instead of testing the approved change.";
+    expect(codes(a)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    const b = manipulationResult(); b.content.experiment.title = "Leave the existing opening unchanged.";
+    expect(codes(b)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    const c = manipulationResult(); c.content.experiment.hypothesis = "Keep the existing opening because no further testing is necessary.";
+    expect(codes(c)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+  });
+  it("does not flag null-result / conditional / control-condition preserve language as a purpose", () => {
+    const a = manipulationResult(); a.content.experiment.expectedDirection.justification = "If the treatment underperforms, preserve the current opening.";
+    expect(codes(a)).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    const b = manipulationResult(); b.content.experiment.expectedDirection.justification = "A null result would support retaining the current opening.";
+    expect(codes(b)).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    const c = manipulationResult(); c.content.experiment.treatmentCondition.description = "The control condition preserves the current opening; the treatment reworks the promise framing.";
+    expect(codes(c)).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    expect(validate(a)).toEqual([]);
+  });
+
+  // --- P2: invalidation incoherence ---
+  it("rejects 'this condition can never occur' and equivalents as an invalidation criterion", () => {
+    for (const text of ["This condition can never occur.", "This invalidation condition cannot happen.", "The criterion is impossible to satisfy."]) {
+      const result = manipulationResult({ invalidationConditions: [text] });
+      expect(codes(result)).toContain("INVALIDATION_CONDITION_INCOHERENT");
+    }
+  });
+  it("does not flag a legitimate failure condition that merely involves an inability", () => {
+    for (const text of [
+      "Invalidate if the observed metric cannot be measured reliably.",
+      "Invalidate if tracking fails.",
+      "Invalidate if the treatment cannot be delivered consistently.",
+    ]) {
+      const result = manipulationResult({ invalidationConditions: [text] });
+      expect(codes(result)).not.toContain("INVALIDATION_CONDITION_INCOHERENT");
+    }
+  });
+
+  // --- P2: structural numeric label vs measurement ---
+  it("accepts structural counts such as '3-part hook' / '5-section outline'", () => {
+    const a = manipulationResult({ treatmentCondition: { description: "Use a 3-part hook in the opening.", whatChanges: "The opening uses a 3-part hook.", whatStaysConstant: ["Topic selection"] } });
+    expect(codes(a)).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
+    expect(validate(a)).toEqual([]);
+    const b = manipulationResult({ knownUnknowns: ["Whether a 2-part opening reads better than a 3-step structure or a 5-section outline."] });
+    expect(codes(b)).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
+  });
+  it("still rejects measurement-like quantities next to a measurement noun", () => {
+    const a = manipulationResult({ observationWindow: { description: "Run for 3 hours before reading the result.", rationale: "Retention data stabilises after the initial surge.", minimumBeforeReading: "Wait until the curve is stable." } });
+    expect(codes(a)).toContain("FABRICATED_QUANTITY_IN_DESIGN");
+    const b = manipulationResult({ primaryMetric: { metric: "AVERAGE_PERCENTAGE_VIEWED", unit: "PERCENT", direction: "INCREASE", rationale: "Hold the treatment to a 30-percent retention baseline as the bar." } });
+    expect(codes(b)).toContain("FABRICATED_QUANTITY_IN_DESIGN");
+    const c = manipulationResult({ observationWindow: { description: "Review after 3 days.", rationale: "Retention data stabilises after the initial surge.", minimumBeforeReading: "Wait until the curve is stable." } });
+    expect(codes(c)).toContain("FABRICATED_QUANTITY_IN_DESIGN");
+  });
+
+  // --- quality review: further independent paraphrases per semantic rule ---
+  it("rejects further Viewer-Value harm paraphrases (extend runtime, hold back payoff, save answer for the end)", () => {
+    const a = manipulationResult({ treatmentCondition: { description: "Extend the video with recap material to lift minutes viewed.", whatChanges: "Runtime extended with recap.", whatStaysConstant: ["Topic selection"] } });
+    expect(codes(a)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    const b = manipulationResult({ treatmentCondition: { description: "Hold back the payoff until the end to boost retention.", whatChanges: "The payoff is held back.", whatStaysConstant: ["Topic selection"] } });
+    expect(codes(b)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    const c = manipulationResult({ treatmentCondition: { description: "Save the answer for the end so people keep watching.", whatChanges: "The answer is saved for the end.", whatStaysConstant: ["Topic selection"] } });
+    expect(codes(c)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+  });
+  it("rejects further purpose paraphrases (no need to test further)", () => {
+    const a = manipulationResult(); a.content.experiment.hypothesis = "There is no need to test the opening further; keep the current opening.";
+    expect(codes(a)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+  });
+  it("rejects contracted impossible invalidation criteria (can't ever happen, won't ever occur)", () => {
+    for (const text of ["This criterion can't ever happen.", "This condition won't ever occur.", "It couldn't possibly be met."]) {
+      const result = manipulationResult({ invalidationConditions: [text] });
+      expect(codes(result)).toContain("INVALIDATION_CONDITION_INCOHERENT");
+    }
+  });
+  it("does not flag an analytical 'cannot' failure condition after contraction handling", () => {
+    const result = manipulationResult({ invalidationConditions: ["Invalidate if the retention export can't be produced by the platform for this video."] });
+    expect(codes(result)).not.toContain("INVALIDATION_CONDITION_INCOHERENT");
+  });
+});
+
 describe("legitimate variety passes", () => {
   it("accepts a well-formed controlled comparison", () => {
     const base = videoExperimentContentFixture();
