@@ -330,8 +330,9 @@ branch; the definition + registry + finalizer-map entry; and type exports.
   temporarily removed the gate reported `FAILED` on exactly that check, then
   passed again once restored. The gate created and dropped its own throwaway
   database and gate-created roles; both cleaned up. The `channelwright-postgres`
-  container was left running (it was started for this pass; return it to Exited
-  with `docker stop channelwright-postgres` if the prior state must be restored).
+  container was started for this pass and stopped again afterwards (returned to
+  its prior `Exited` state); `docker start channelwright-postgres` before
+  re-verification.
 
 No push (feature branch only), deploy, or migration application to any
 shared/production database. Not merged to main.
