@@ -103,12 +103,15 @@ begin
   if v_parent is not null and not exists(select 1 from channelwright.workflow_runs where id=v_parent and workflow_id=v_run.workflow_id and owner_id=v_run.owner_id and workflow_type=v_run.workflow_type) then raise exception 'UPSTREAM_DECISION_LINEAGE_INVALID: parent/root drift'; end if;
   -- Authoritative parent/root lineage: when the Decision run carries an accounting
   -- budget, its recorded parent must agree with context_payload's previousRunId,
-  -- and the resolved root must itself be a real owner-scoped run of this workflow.
+  -- and the resolved root must itself be a real owner-scoped run of THIS EXACT
+  -- Decision workflow -- not merely some same-owner CHANNEL_VIDEO_DECISION run in
+  -- a different workflow (round-3 lineage gap: workflow_id was not pinned, so a
+  -- foreign same-owner Decision run could satisfy the root predicate).
   -- (The sibling resolvers share only the weaker check above; this hardening is
   -- Experiment-local and additive -- it never loosens the happy path, which has no
-  -- budget row for the upstream Decision run.)
+  -- budget row for the upstream Decision run and resolves the root to v_run.id.)
   if coalesce(v_budget_found,false) and v_budget_parent is distinct from v_parent then raise exception 'UPSTREAM_DECISION_LINEAGE_INVALID: budget parent disagrees with lineage parent'; end if;
-  if v_root is not null and not exists(select 1 from channelwright.workflow_runs where id=v_root and owner_id=v_run.owner_id and workflow_type=v_run.workflow_type) then raise exception 'UPSTREAM_DECISION_LINEAGE_INVALID: resolved root is not a real run of this workflow'; end if;
+  if v_root is not null and not exists(select 1 from channelwright.workflow_runs where id=v_root and owner_id=v_run.owner_id and workflow_type=v_run.workflow_type and workflow_id=v_run.workflow_id) then raise exception 'UPSTREAM_DECISION_LINEAGE_INVALID: resolved root is not a real run of this workflow'; end if;
 
   v_scope_artifacts:=v_run.output_payload->'decisionScope'->'artifacts';
   if v_scope_artifacts is null or jsonb_array_length(v_scope_artifacts)<>9 then raise exception 'UPSTREAM_DECISION_LINEAGE_INVALID: decision scope must carry exactly nine upstream artifacts'; end if;

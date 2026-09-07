@@ -361,6 +361,23 @@ async function runChecks(db: pg.Client) {
   const badParent = await seedDecision(db, ownerA, lineage, performance, diagnosis, diagnosisRef, { context: { previousRunId: randomUUID() } });
   record("Decision parent/root lineage drift is rejected", (await expectFailure(db, ownerA, "select channelwright.resolve_approved_video_decision_artifact($1,$2)", [badParent.workflowId, badParent.runId])).includes("UPSTREAM_DECISION_LINEAGE_INVALID"));
 
+  // Round-3: the resolved lineage root must belong to THIS EXACT Decision
+  // workflow. A same-owner run of another CHANNEL_VIDEO_DECISION workflow must
+  // not satisfy the root predicate (workflow_id was previously unpinned).
+  const rootProbe = await seedDecision(db, ownerA, lineage, performance, diagnosis, diagnosisRef);
+  const foreignDecisionRun = await seedDecision(db, ownerA, lineage, performance, diagnosis, diagnosisRef);
+  await db.query(
+    "insert into channelwright.research_run_budgets(workflow_run_id,owner_id,workflow_id,parent_run_id,root_run_id,limits) values ($1,$2,$3,null,$4,'{}'::jsonb)",
+    [rootProbe.runId, ownerA, rootProbe.workflowId, rootProbe.runId],
+  );
+  record("valid same-workflow lineage root still resolves",
+    (await expectFailure(db, ownerA, "select channelwright.resolve_approved_video_decision_artifact($1,$2)", [rootProbe.workflowId, rootProbe.runId])) === "");
+  await db.query("update channelwright.research_run_budgets set root_run_id=$2 where workflow_run_id=$1", [rootProbe.runId, foreignDecisionRun.runId]);
+  const foreignRootMsg = await expectFailure(db, ownerA, "select channelwright.resolve_approved_video_decision_artifact($1,$2)", [rootProbe.workflowId, rootProbe.runId]);
+  record("same-owner root from a different Decision workflow is rejected",
+    foreignRootMsg.includes("UPSTREAM_DECISION_LINEAGE_INVALID") && foreignRootMsg.includes("resolved root is not a real run of this workflow"),
+    foreignRootMsg.split("\n")[0].slice(0, 160));
+
   // A structurally superseded transitive upstream (Diagnosis here) must be rejected even
   // though the Decision's frozen projection still hash-matches it.
   const supLineage = await seedLineage(db, ownerA);

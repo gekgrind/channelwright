@@ -36,6 +36,10 @@ describe("CHANNEL_VIDEO_EXPERIMENT migration", () => {
     expect(migration).toContain("select true, parent_run_id, root_run_id into v_budget_found, v_budget_parent, v_root");
   });
 
+  it("pins the resolved root to the exact Decision workflow_id, not merely a same-owner run of the same type", () => {
+    expect(migration).toContain("id=v_root and owner_id=v_run.owner_id and workflow_type=v_run.workflow_type and workflow_id=v_run.workflow_id");
+  });
+
   it("accepts only two caller identifiers and injects authoritative state", () => {
     expect(migration).toContain("jsonb_object_length(p_input)<>2 or not (p_input?'videoDecisionWorkflowId') or not (p_input?'videoDecisionRunId')");
     expect(migration).toContain("k not in ('videoDecisionWorkflowId','videoDecisionRunId')");

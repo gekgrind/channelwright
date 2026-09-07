@@ -647,6 +647,191 @@ describe("adversarial matrix — round-2 independent-verification regressions", 
   });
 });
 
+describe("adversarial matrix — round-3 independent-verification regressions", () => {
+  it("sanity: the manipulation base result is deterministically clean", () => {
+    expect(validate(manipulationResult())).toEqual([]);
+  });
+
+  // --- P1: Viewer Value treatment safety survives ordinary paraphrasing ---
+  const asTreatment = (text: string) =>
+    manipulationResult({ treatmentCondition: { description: text, whatChanges: text, whatStaysConstant: ["Topic selection"] } });
+
+  it("rejects all eight round-3 ordinary harmful paraphrases", () => {
+    for (const text of [
+      "Stuff the middle with repetitive recap sections so the audience spends longer on the video.",
+      "Make every explanation deliberately verbose to maximize minutes watched.",
+      "Postpone the useful answer until the closing moments so people stay.",
+      "Hide the key takeaway near the finish to compel continued viewing.",
+      "Frame a harmless disagreement as a scandal so angry viewers argue below.",
+      "Deliberately polarize the audience to provoke more comments.",
+      "Pretend the offer expires tonight to pressure subscriptions.",
+      "Invent a limited supply and imply viewers will miss out unless they subscribe.",
+    ]) {
+      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
+  });
+
+  it("rejects double-negation and cross-clause harm smuggling", () => {
+    for (const text of [
+      "Not only pad the video to increase watch time, keep them from leaving.",
+      "Do not avoid padding the video to inflate watch time.",
+      "Avoid filler; pad the video to increase watch time.",
+    ]) {
+      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
+  });
+
+  it("does not flag punctuation-interrupted or clause-scoped safe negation", () => {
+    for (const text of [
+      "Do not—under any circumstances—pad the video to increase watch time.",
+      "Do not pad the video to increase watch time.",
+      "Avoid padding the video; keep the promised payoff up front.",
+    ]) {
+      expect(codes(asTreatment(text))).not.toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+      expect(validate(asTreatment(text))).toEqual([]);
+    }
+  });
+
+  it("rejects fresh harmful paraphrases not copied from any other test", () => {
+    for (const text of [
+      "Bloat the intro with redundant summaries so viewers keep watching longer.",
+      "Sit on the reveal until the last minute so nobody leaves early.",
+      "Cook up a feud with another creator to farm angry comments.",
+      "Fake a countdown timer so people rush to subscribe before it hits zero.",
+      "Drag out the runtime with tangents so average view duration climbs.",
+      "Pack the first minute with throwaway recap material to lift retention.",
+      "Stage a fake controversy in the thumbnail to farm outrage.",
+      "Show a bogus limited-time deadline on the end-card to force subscribes.",
+    ]) {
+      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
+  });
+
+  it("does not flag fresh safe rewrites that only mention the harm vocabulary", () => {
+    for (const text of [
+      "Front-load the promised answer and cut the recap entirely.",
+      "Trim tangents so the runtime drops and the payoff arrives sooner.",
+      "Rewrite the hook to describe the video accurately, without any urgency.",
+    ]) {
+      expect(validate(asTreatment(text))).toEqual([]);
+    }
+  });
+
+  // --- P1: status-quo intent cannot be sanitized by superficial outcome tokens ---
+  it("rejects all five round-3 outcome-token status-quo bypasses", () => {
+    for (const text of [
+      "No more testing is needed for the current hook.",
+      "If possible, keep the current opening because no testing is needed.",
+      "Unless required, preserve the current opening permanently.",
+      "If the team agrees, no further investigation is warranted.",
+      "Control condition aside, keep the current opening.",
+    ]) {
+      const result = manipulationResult();
+      result.content.experiment.decisionLinkage.hypothesisUnderTest = text;
+      expect(codes(result)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    }
+  });
+
+  it("rejects fresh status-quo smuggling behind a bare result/outcome token", () => {
+    for (const text of [
+      "Because the outcome is obvious, keep the current opening.",
+      "Given the result speaks for itself, retain the current opening.",
+      "Assuming leadership signs off, the current hook needs no experiment.",
+      "Since the data already answers this, do not test the current opening.",
+    ]) {
+      const result = manipulationResult();
+      result.content.experiment.hypothesis = text;
+      expect(codes(result)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    }
+  });
+
+  it("still accepts genuine outcome / control-condition preserve language", () => {
+    for (const text of [
+      "If the treatment underperforms, preserve the current opening.",
+      "A null result would support retaining the current opening.",
+      "If the guardrail degrades, revert to the current opening.",
+    ]) {
+      const result = manipulationResult();
+      result.content.experiment.expectedDirection.justification = text;
+      expect(codes(result)).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    }
+    const control = manipulationResult();
+    control.content.experiment.treatmentCondition.description = "The control condition preserves the current opening; the treatment reworks the promise framing.";
+    expect(codes(control)).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+  });
+
+  // --- P2: invalidation incoherence beyond phrase-specific forms ---
+  it("rejects all five round-3 invalidation-incoherence bypasses", () => {
+    for (const text of [
+      "There is no possible scenario for this trigger.",
+      "By definition this cannot trigger.",
+      "This condition is incapable of occurring.",
+      "This safeguard has zero chance of activation.",
+      "There exists no world in which this criterion activates.",
+    ]) {
+      expect(codes(manipulationResult({ invalidationConditions: [text] }))).toContain("INVALIDATION_CONDITION_INCOHERENT");
+    }
+  });
+
+  it("rejects fresh impossible-by-construction invalidation paraphrases", () => {
+    for (const text of [
+      "No circumstances exist under which this alarm would sound.",
+      "It is flatly impossible for this rule to be triggered.",
+      "This trigger has no realistic possibility of ever firing.",
+      "Under no conceivable circumstances could this criterion be met.",
+    ]) {
+      expect(codes(manipulationResult({ invalidationConditions: [text] }))).toContain("INVALIDATION_CONDITION_INCOHERENT");
+    }
+  });
+
+  it("does not flag the four round-3 legitimate-inability invalidation controls", () => {
+    for (const text of [
+      "Invalidate if the metric cannot be measured.",
+      "Invalidate if tracking cannot be trusted.",
+      "Invalidate if the treatment cannot be delivered consistently.",
+      "Invalidate if data cannot be collected.",
+    ]) {
+      expect(codes(manipulationResult({ invalidationConditions: [text] }))).not.toContain("INVALIDATION_CONDITION_INCOHERENT");
+    }
+  });
+
+  // --- P2: numeric classification edges ---
+  it("accepts a structural module count and does not flag it", () => {
+    const a = manipulationResult({ treatmentCondition: { description: "Use a 3-module sequence.", whatChanges: "The opening uses a 3-module sequence.", whatStaysConstant: ["Topic selection"] } });
+    expect(codes(a)).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
+    expect(validate(a)).toEqual([]);
+    const b = manipulationResult({ knownUnknowns: ["Whether a 2-module structure reads better than a 3-module sequence."] });
+    expect(codes(b)).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
+  });
+
+  it("rejects a percentage that a label noun previously masked", () => {
+    for (const text of [
+      "Variant 2% is the retention threshold.",
+      "Version 3% is the minimum threshold.",
+      "Phase 1% defines acceptable retention.",
+      "Variant 2 percent is the target.",
+      "Version three percent is the baseline.",
+    ]) {
+      expect(codes(manipulationResult({ primaryMetric: { metric: "AVERAGE_PERCENTAGE_VIEWED", unit: "PERCENT", direction: "INCREASE", rationale: text } }))).toContain("FABRICATED_QUANTITY_IN_DESIGN");
+    }
+  });
+
+  it("still accepts bare label identifiers including 'Panel 2' and 'Round 3'", () => {
+    for (const label of ["Variant 2", "Version 3", "Phase 1", "Chapter 4", "Panel 2", "Round 3"]) {
+      const result = manipulationResult({ knownUnknowns: [`Whether ${label} reads better than the pillar's other videos.`] });
+      expect(codes(result)).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
+    }
+  });
+
+  it("retains round-1/round-2 numeric behaviour", () => {
+    expect(codes(manipulationResult({ knownUnknowns: ["Whether thumbnail variant 2 behaves differently on Episode 7."] }))).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
+    expect(codes(manipulationResult({ treatmentCondition: { description: "Use a 3-part hook in the opening.", whatChanges: "The opening uses a 3-part hook.", whatStaysConstant: ["Topic selection"] } }))).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
+    expect(codes(manipulationResult({ observationWindow: { description: "A 48-hour review window after each treatment upload.", rationale: "Retention data stabilises after the initial surge.", minimumBeforeReading: "Wait until the curve is stable." } }))).toContain("FABRICATED_QUANTITY_IN_DESIGN");
+    expect(codes(manipulationResult({ primaryMetric: { metric: "AVERAGE_PERCENTAGE_VIEWED", unit: "PERCENT", direction: "INCREASE", rationale: "Baseline retention is thirty percent and we want it higher." } }))).toContain("FABRICATED_QUANTITY_IN_DESIGN");
+    expect(codes(manipulationResult({ exposureRequirement: { description: "Read the result once a sample of forty viewers has been reached.", sufficiencyBasis: "OPERATOR_MUST_CONFIRM", caveat: "If the video is still gaining views quickly, the curve is not yet trustworthy." } }))).toEqual(expect.arrayContaining(["FABRICATED_SAMPLE_SIZE"]));
+  });
+});
+
 describe("legitimate variety passes", () => {
   it("accepts a well-formed controlled comparison", () => {
     const base = videoExperimentContentFixture();

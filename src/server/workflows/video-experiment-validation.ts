@@ -45,13 +45,18 @@ const CARDINAL = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|t
 const QUANTITY_NOUN = "%|percent|per ?cent|percentage points?|points?|pp|x|hours?|hrs?|days?|weeks?|months?|years?|minutes?|mins?|seconds?|secs?|viewers?|views?|impressions?|sessions?|subscribers?|clicks?|comments?|likes?|shares?|samples?|participants?|responses?|data ?points?|videos?|episodes?|uploads?|dollars?|usd";
 const DIGIT_RUN = /(?<![\p{L}\p{N}_:.-])\d[\d,]*(?:\.\d+)?/gu;
 const YEAR = /^20\d\d$/;
-const LABEL_BEFORE = /\b(?:variant|arm|cell|group|cohort|option|version|bucket|condition|phase|step|stage|episode|part|section|chapter|act|scene|beat|round|wave|batch|segment|treatment|control|slot|tier|level|figure|table|appendix)s?\s*[#-]?\s*$/i;
-const QUANTITY_AFTER = new RegExp("^\\s*[- ]?(?:" + QUANTITY_NOUN + ")\\b", "i");
+const LABEL_BEFORE = /\b(?:variant|arm|cell|group|cohort|option|version|bucket|condition|phase|step|stage|episode|part|section|chapter|act|scene|beat|round|wave|batch|segment|treatment|control|slot|tier|level|panel|module|figure|table|appendix)s?\s*[#-]?\s*$/i;
+// A measurement noun after the digit is a fabricated quantity. `%` / `percent`
+// glued or spaced to the digit ("2%", "3 percent") must count as a measurement
+// even though "%\b" has no trailing word boundary when a space follows -- so the
+// noun is followed by a real word boundary OR by a non-alphanumeric character.
+// Measurement syntax OUTRANKS the bare-label exemption below.
+const QUANTITY_AFTER = new RegExp("^\\s*[- ]?(?:" + QUANTITY_NOUN + ")(?:\\b|(?![\\p{L}\\p{N}]))", "iu");
 // A digit immediately before an ordinary structural noun is a count of narrative
 // parts, not a measurement, threshold, sample size, or experiment parameter.
 // Deliberately excludes ambiguous allocation nouns (segment / group / arm) and
 // every measurement noun (those still fall through QUANTITY_AFTER and flag).
-const STRUCTURAL_NOUN_AFTER = /^\s*[- ]?(?:parts?|steps?|sections?|chapters?|acts?|scenes?|beats?|phases?|stages?|episodes?|versions?|variants?|rounds?|tiers?|panels?|slides?)\b/i;
+const STRUCTURAL_NOUN_AFTER = /^\s*[- ]?(?:parts?|steps?|sections?|chapters?|acts?|scenes?|beats?|phases?|stages?|episodes?|versions?|variants?|rounds?|tiers?|panels?|slides?|modules?)\b/i;
 const SPELLED_QUANTITY = new RegExp("\\b(?:" + CARDINAL + ")(?:[- ](?:" + CARDINAL + "))?\\s+(?:" + QUANTITY_NOUN + ")\\b", "i");
 const MAGNITUDE_CONTEXT = new RegExp(
   "\\b(?:at least|at most|no (?:fewer|less|more) than|up to|over|under|around|roughly|approximately|about|nearly|circa|minimum of|maximum of|target(?:ing)? (?:of )?|a target of|baseline (?:of|is|was|sits at|of about)|currently (?:at|around|about)|sits at|stands at|hovering around|on the order of|in the range of)\\s+(?:\\$?\\d|(?:" + CARDINAL + ")\\b)",
@@ -75,11 +80,31 @@ const FABRICATED_FORECAST = /\b(?:\d+(?:\.\d+)?\s*x\s*(?:lift|increase|improveme
 // keep/retain the current thing, do not change, no change needed, further
 // investigation unnecessary, status quo should remain -- not only the exact
 // phrasings the round-1 detector listed.
-const STATUS_QUO_INTENT = /\b(?:to (?:confirm|prove|show|demonstrate|validate|establish|verify|reassure (?:us|ourselves)) (?:that )?(?:the )?(?:current|existing|status[- ]?quo|present)\b|(?:should|must|will|to|shall)\s+(?:instead\s+)?(?:remain|stay|be kept|be left|be retained|be preserved|be maintained)\s+(?:unchanged|as[- ]?is|in place|the same|untouched|as it is)|(?:remains?|stays?|staying|remaining)\s+(?:unchanged|as[- ]?is|the same|untouched)|(?:preserve|preserving|keep|keeping|retain|retaining|maintain|maintaining)\s+(?:the\s+)?(?:current|existing|present)\s+\w+|leave\s+(?:the\s+|our\s+)?(?:current|existing|present)?\s*\w+\s+(?:as[- ]?is|unchanged|in place|alone|untouched|the same)|(?:the )?(?:current|existing|present) (?:approach|opening|hook|thumbnail|title|format|structure|packaging|design|version) is (?:fine|correct|best|optimal|working|effective|good enough|already (?:good|working))|(?:do|does|should)\s+not\s+(?:change|modify|alter|touch|test|revise)\b|no\s+(?:further\s+)?change\s+(?:is\s+)?(?:needed|warranted|required|necessary|justified)|(?:no\s+(?:further|additional)\s+(?:investigation|testing|study|experimentation|measurement)\s+(?:is\s+)?(?:necessary|needed|warranted|required|justified)|further\s+(?:investigation|testing|study|experimentation|measurement)\s+(?:is\s+)?(?:unnecessary|unwarranted|unneeded|not (?:needed|warranted|required|justified)))|no\s+need\s+(?:to|for)\s+(?:further\s+|additional\s+|any\s+)?(?:test|testing|investigat\w*|study\w*|experiment\w*|measur\w*)|(?:test|investigat\w*|study\w*|experiment\w*)\s+(?:it\s+|this\s+|the\s+\w+\s+)?(?:any\s+)?further\s+(?:is\s+)?(?:unnecessary|unwarranted|not\s+(?:needed|warranted|worthwhile))|status quo\s+(?:is (?:fine|correct|best|preferable|optimal)|should\s+(?:remain|stand|persist|be (?:kept|retained|preserved))))/i;
-// Conditional / outcome-plan framing: a possible NULL-RESULT outcome or a control
-// condition that "preserves the current opening" is legitimate and must not be
-// read as the experiment's purpose.
-const OUTCOME_FRAME = /\b(?:if\b|should the\b|were the\b|unless\b|when the treatment\b|a?\s*null(?:[- ]result)?\b|a?\s*negative result\b|inconclusive\b|unfavou?rable\b|underperform|does not (?:improve|beat|outperform|move|change|help)|fails to\b|no (?:signal|improvement|effect|lift|gain)\b|absent (?:a|any)\b|control (?:condition|group|arm|case|cell)\b)/i;
+const STATUS_QUO_INTENT = /\b(?:to (?:confirm|prove|show|demonstrate|validate|establish|verify|reassure (?:us|ourselves)) (?:that )?(?:the )?(?:current|existing|status[- ]?quo|present)\b|(?:should|must|will|to|shall)\s+(?:instead\s+)?(?:remain|stay|be kept|be left|be retained|be preserved|be maintained)\s+(?:unchanged|as[- ]?is|in place|the same|untouched|as it is)|(?:remains?|stays?|staying|remaining)\s+(?:unchanged|as[- ]?is|the same|untouched)|(?:preserve|preserving|keep|keeping|retain|retaining|maintain|maintaining)\s+(?:the\s+)?(?:current|existing|present)\s+\w+|leave\s+(?:the\s+|our\s+)?(?:current|existing|present)?\s*\w+\s+(?:as[- ]?is|unchanged|in place|alone|untouched|the same)|(?:the )?(?:current|existing|present) (?:approach|opening|hook|thumbnail|title|format|structure|packaging|design|version) is (?:fine|correct|best|optimal|working|effective|good enough|already (?:good|working))|(?:do|does|should)\s+not\s+(?:change|modify|alter|touch|test|revise)\b|no\s+(?:further\s+)?change\s+(?:is\s+)?(?:needed|warranted|required|necessary|justified)|(?:no\s+(?:further|additional)\s+(?:investigation|testing|study|experimentation|measurement)\s+(?:is\s+)?(?:necessary|needed|warranted|required|justified)|further\s+(?:investigation|testing|study|experimentation|measurement)\s+(?:is\s+)?(?:unnecessary|unwarranted|unneeded|not (?:needed|warranted|required|justified)))|no\s+need\s+(?:to|for)\s+(?:further\s+|additional\s+|any\s+)?(?:test|testing|investigat\w*|study\w*|experiment\w*|measur\w*)|(?:test|investigat\w*|study\w*|experiment\w*)\s+(?:it\s+|this\s+|the\s+\w+\s+)?(?:any\s+)?further\s+(?:is\s+)?(?:unnecessary|unwarranted|not\s+(?:needed|warranted|worthwhile))|no\s+(?:more|further|additional|extra|other)\s+(?:test(?:s|ing)?|investigat\w+|study|studies|studying|experiment\w*|measur\w+|analys\w+|research|iteration\w*|probing|exploration)\b(?:[^.;:!?]{0,40}?\b(?:needed|required|necessary|warranted|justified|called for|worthwhile|of value)\b)?|no\s+(?:reason|point|need|value|benefit)\s+(?:in\s+|to\s+)?(?:further\s+|additional\s+|any\s+|keep\s+)?(?:test\w*|investigat\w*|study\w*|experiment\w*|measur\w*|explor\w*)|(?:needs?|requires?|warrants?|calls?\s+for)\s+no\s+(?:further\s+|additional\s+|more\s+)?(?:experiment\w*|test\w*|testing|investigat\w*|study|studies|measur\w*|analysis|iteration\w*)|status quo\s+(?:is (?:fine|correct|best|preferable|optimal)|should\s+(?:remain|stand|persist|be (?:kept|retained|preserved))))/i;
+// A status-quo clause is a legitimate OUTCOME only when the SAME clause ties the
+// preservation to a measured result -- a null / negative / inconclusive result,
+// the treatment underperforming, a guardrail breach, or an actual control
+// condition that preserves the current asset. A bare "if" / "unless" / "control"
+// / "result" token elsewhere in the field no longer exempts unrelated status-quo
+// intent (the round-3 OUTCOME_FRAME over-exemption): the exemption pattern now
+// requires the outcome semantics themselves, and it is applied clause by clause
+// (sentence / semicolon units; commas kept intact so "if X, preserve Y" stays
+// one clause).
+const OUTCOME_JUSTIFIED_PRESERVE = new RegExp([
+  "\\bif\\b[^.;!?]*\\b(?:treatment|variant|arm|change|rework(?:ed|ing)?|new\\s+\\w+|challenger|candidate|experimental\\s+\\w+)\\b[^.;!?]*\\b(?:under[- ]?perform\\w*|fails?\\b|failing\\b|does\\s+not\\s+(?:beat|improve|outperform|move|help|win)|loses?\\b|is\\s+worse\\b|regress\\w*|shows?\\s+no\\b|no\\s+(?:better|improvement|lift|gain|signal|effect))",
+  "\\b(?:a\\s+)?null(?:[- ]result)?\\b",
+  "\\b(?:negative|inconclusive|flat|non[- ]significant|unfavou?rable|no[- ]effect)\\s+(?:result|read|reading|outcome|finding|signal)\\b",
+  "\\bif\\b[^.;!?]*\\b(?:guardrail|satisfaction|retention|viewer\\s+value|trust|promise\\s+integrity)\\b[^.;!?]*\\b(?:degrad\\w*|breach\\w*|is\\s+breached|drops?\\b|falls?\\b|declines?\\b|worsens?\\b|regress\\w*)",
+  "\\bcontrol\\s+(?:condition|arm|group|cell)\\s+(?:that\\s+|which\\s+|will\\s+|shall\\s+|would\\s+|to\\s+)?(?:preserv|keep|keeps|retain|retains|hold|holds|maintain|maintains|leav|us(?:e|es)|is\\b|serves)\\w*",
+  "\\bwhen\\s+the\\s+treatment\\b[^.;!?]*\\b(?:under[- ]?perform\\w*|fails?\\b|loses?\\b|does\\s+not\\b|shows?\\s+no\\b)",
+  "\\bshould\\s+the\\s+(?:data|evidence|result|read|treatment|change)\\b[^.;!?]*\\b(?:not\\b|fail|under[- ]?perform|show\\s+no)",
+].join("|"), "i");
+
+// Sentence / semicolon clause units. Commas are kept inside a clause so a
+// conditional like "if the treatment underperforms, preserve the current
+// opening" is analysed as one unit and its outcome linkage stays visible.
+const sentenceClauses = (text: string): string[] =>
+  text.split(/[.!?;]+/).map((clause) => clause.trim()).filter((clause) => clause.length > 0);
 const GUARDRAIL_OVERRIDE = /\b(?:ignore|override|overrule|disregard|bypass|wave away|set aside|push past)\s+(?:the |any |a )?(?:guardrail|degradation|breach|threshold|red[- ]?line|stopping condition|harm signal)/i;
 const CONTINUE_NEAR_GUARDRAIL = /(?:\b(?:continue|proceed|keep going|carry on|press on|forge ahead|push (?:on|ahead)|do not (?:stop|halt|pause|revert|roll ?back)|don'?t (?:stop|halt|pause|revert))\b[^.]{0,90}?\b(?:guardrail|degrad|breach|threshold|red[- ]?line|harm signal|regression)\b)|(?:\b(?:guardrail|degrad(?:es|ing|ation)?|breach|threshold breach|red[- ]?line|harm signal)\b[^.]{0,90}?\b(?:continue|proceed|keep going|carry on|press on|forge ahead|still (?:ship|run|adopt|continue)|do not (?:stop|halt|require stopping)|regardless|anyway|nonetheless|is (?:acceptable|tolerable|fine|ok))\b)/i;
 const ROLLBACK_NOT_REVERTING = /\b(?:continue|keep|maintain|leave|retain|preserve|hold|stay with|do not (?:revert|roll ?back|undo|restore|remove|withdraw|change back))\b[^.]{0,60}?\b(?:the |our )?(?:treatment|change|new |reworked |updated |modified )?(?:opening|thumbnail|hook|title|version|variant|format|approach|design|framing|treatment|change)/i;
@@ -91,19 +116,30 @@ const ROLLBACK_NOT_REVERTING = /\b(?:continue|keep|maintain|leave|retain|preserv
 // merely involves an inability ("invalidate if the metric cannot be measured
 // reliably", "if the treatment cannot be delivered consistently") is not caught:
 // the ban is on "the criterion itself can never occur", not on the word "cannot".
+// The ban is on an invalidation CONDITION that is impossible by construction --
+// "the criterion itself can never occur / trigger / activate" -- NOT on the word
+// "cannot". A legitimate failure condition that merely involves an inability
+// ("invalidate if the metric cannot be measured", "if data cannot be collected",
+// "if the treatment cannot be delivered", "if tracking cannot be trusted") must
+// still pass, so the occurrence verbs below deliberately exclude measurement /
+// delivery / collection / trust verbs.
 const IMPOSSIBLE_ADVERB = "(?:ever\\s+|possibly\\s+|conceivably\\s+|realistically\\s+|actually\\s+|in\\s+practice\\s+)?";
+const IMPOSSIBLE_OCCUR = "(?:happen|occur|arise|materiali[sz]e|trigger|triggered|fire|activate|come\\s+about|take\\s+place|be\\s+" + IMPOSSIBLE_ADVERB + "(?:met|satisfied|reached|triggered|realized|realised|true|fulfilled|activated))";
 const INCOHERENT_INVALIDATION = new RegExp(
   "\\b(?:" +
-  "(?:can|could|will|would|shall|does|did)\\s*(?:not|never)\\s+" + IMPOSSIBLE_ADVERB + "(?:happen|occur|arise|materiali[sz]e|be\\s+" + IMPOSSIBLE_ADVERB + "(?:met|satisfied|reached|triggered|realized|realised|true))" +
-  "|never\\s+" + IMPOSSIBLE_ADVERB + "(?:happens?|occurs?|arises?|possible|be\\s+(?:met|satisfied|reached|triggered))" +
-  "|cannot\\s+" + IMPOSSIBLE_ADVERB + "(?:happen|occur|arise|materiali[sz]e|be\\s+" + IMPOSSIBLE_ADVERB + "(?:met|satisfied|reached|triggered))" +
-  "|is\\s+(?:logically\\s+|physically\\s+|simply\\s+)?impossible" +
-  "|impossible\\s+to\\s+(?:satisfy|trigger|meet|reach|occur|happen|achieve|attain)" +
-  "|no\\s+(?:such\\s+)?(?:condition|scenario|circumstance|situation)\\b" +
+  "(?:can|could|will|would|shall|does|did)\\s*(?:not|never)\\s+" + IMPOSSIBLE_ADVERB + IMPOSSIBLE_OCCUR +
+  "|never\\s+" + IMPOSSIBLE_ADVERB + "(?:happens?|occurs?|arises?|triggers?|fires?|activates?|possible|going\\s+to\\s+(?:happen|occur|trigger)|be\\s+(?:met|satisfied|reached|triggered))" +
+  "|cannot\\s+" + IMPOSSIBLE_ADVERB + IMPOSSIBLE_OCCUR +
+  "|is\\s+(?:logically\\s+|physically\\s+|simply\\s+|flatly\\s+|literally\\s+|just\\s+)?impossible" +
+  "|impossible\\s+(?:for\\s+[^.;:!?]{0,50}?\\s+)?to\\s+(?:be\\s+)?(?:satisfy|satisfied|trigger|triggered|meet|met|reach|reached|occur|happen|achieve|attain|arise|fire|activate|activated)" +
+  "|incapable\\s+of\\s+(?:ever\\s+)?(?:occurring|happening|arising|triggering|activating|firing|being\\s+(?:met|triggered|reached|satisfied))" +
+  "|(?:zero|no|0\\s*%?|nil|non-?existent)\\s+(?:\\w+\\s+){0,2}?(?:chance|possibility|probability|likelihood|odds|prospect)\\s+of\\s+(?:ever\\s+)?(?:activation|activating|triggering|occurring|occurrence|happening|firing|being\\s+(?:met|triggered|reached|satisfied))" +
+  "|no\\s+(?:\\w+\\s+){0,3}?(?:scenario|world|universe|situation|circumstance|condition|case|reality|way)s?\\b[^.;:!?]{0,40}?\\b(?:for\\b|in\\s+which|where\\b|whereby\\b|under\\s+which|that\\s+would|could\\s+(?:ever|this|the|it|that)|would\\s+(?:ever|this|the|it|that)|exists?\\b|arises?\\b|obtains?\\b)" +
+  "|under\\s+no\\s+(?:\\w+\\s+){0,3}?(?:circumstances?|conditions?|scenario|situation)\\b" +
   "|nothing\\s+(?:could|would|can|will)\\b" +
   "|not\\s+applicable\\b" +
-  "|there\\s+(?:is|are)\\s+no\\s+(?:condition|scenario|circumstance|way)\\b" +
-  "|by\\s+definition\\s+(?:always|cannot|never)" +
+  "|there\\s+(?:is|are|exists?|will\\s+be|could\\s+be)\\s+no\\s+(?:\\w+\\s+){0,3}?(?:condition|scenario|circumstance|situation|way|world|universe|case|reality)\\b" +
+  "|by\\s+definition\\s+(?:it\\s+|this\\s+|that\\s+|the\\s+\\w+\\s+)?(?:always|cannot|can\\s+not|never|is\\s+impossible|does\\s+not|will\\s+not|won'?t|couldn'?t)" +
   ")",
   "i",
 );
@@ -151,54 +187,116 @@ const PROMISE_HARM_TERM = /\b(?:promise|mislead|deceptiv|trust|satisfaction|rete
 const NO_CHANGE_TREATMENT = /^\s*(nothing|none|n\/?a|no change|measurement only|observe only|no manipulation)\b/i;
 
 // --- Viewer Value: treatment-mechanism safety (Layer 1) ---------------------
-// Independent of guardrail adequacy (Layer 2, below). A treatment whose MECHANISM
-// is deliberate viewer harm is rejected even when a perfectly worded guardrail
-// names the same risk -- "harmful treatment + perfect guardrail => REJECT". This
-// encodes the canonical Viewer Value doctrine harm classes: promise withholding /
-// mismatch, artificial watch-time padding, outrage / manipulation, and
-// trust-damaging conversion. It is a bounded semantic pattern scoped (in the rule
-// below) to the canonical treatment-intent fields, and a negation guard keeps a
-// treatment described by what it AVOIDS ("without padding", "not by stalling")
-// and safe interventions ("remove low-value filler", "tighten the opening so the
+// A bounded, deterministic semantic-intent classifier, independent of guardrail
+// adequacy (Layer 2, below): a treatment whose MECHANISM is deliberate viewer
+// harm is rejected even when a perfectly worded guardrail names the same risk
+// ("harmful treatment + perfect guardrail => REJECT").
+//
+// It works clause by clause rather than off a fixed phrase catalogue:
+//   1. the intent text is normalised (en/em dashes -> spaces so a parenthetical
+//      "do not - under any circumstances - pad" is not severed) and split into
+//      clauses on sentence punctuation, semicolons/colons and a few coordinating
+//      conjunctions -- NOT on "so"/"to", which introduce the harmful PURPOSE;
+//   2. each clause is tested for a harmful MECHANISM in two tiers --
+//        Tier A: the action alone is a Viewer Value harm (outrage / rage bait,
+//                manufactured controversy or scandal, deliberate polarisation,
+//                fake urgency / scarcity / expiry, bait-and-switch);
+//        Tier B: a prolonging or promise-withholding action that is harmful ONLY
+//                when the SAME clause also states a watch-time / keep-watching
+//                PURPOSE ("pad the video" needs "to inflate watch time");
+//   3. clause-scoped negation parity: negation cues before the action are
+//      counted; an odd count flips an otherwise-harmful clause to safe ("do not
+//      pad ..."), an even count leaves it harmful ("do not avoid padding ..." --
+//      a double negative that still instructs padding). "not only" is emphatic
+//      and never counts.
+// A clause that survives all three steps is an affirmed harmful mechanism, and
+// safe interventions ("remove low-value filler", "tighten the opening so the
 // promised value appears sooner", "improve pacing without delaying the payoff")
-// from tripping it.
-const HARMFUL_TREATMENT_MECHANISM = new RegExp(
-  [
-    // artificial watch-time padding
-    "\\bpad(?:s|ded|ding)?\\s+(?:out\\s+)?(?:the\\s+)?(?:video|runtime|run ?time|episode|content|cut|opening|segment|section|piece)",
-    "\\b(?:stretch|lengthen|drag|extend|balloon|pad)(?:es|s|ing|ed)?\\s+(?:out\\s+)?(?:the\\s+)?(?:video|runtime|run ?time|episode|length|cut|content)\\b",
-    "\\badd(?:s|ing)?\\s+(?:low[- ]value|filler|padding|unnecessary|extraneous|throwaway|time[- ]wasting|no[- ]value)\\s+(?:material|content|segments?|footage|filler|padding|sections?|clips?)",
-    "\\b(?:inflat|pad|stretch)(?:e|es|ed|ing)?\\s+(?:the\\s+)?(?:watch ?time|minutes?(?:\\s+viewed)?|view duration|retention|runtime)\\s+(?:by|through|with|via)\\b",
-    "\\b(?:increase|boost|raise|grow|drive up|inflate)\\s+(?:watch ?time|minutes?(?:\\s+viewed)?|view duration|time on video)\\s+(?:by|through|with|via)\\s+(?:padding|filler|stalling|stretching|delaying|slow[- ]walking|dragging)",
-    "\\bfiller\\s+(?:solely|only|purely|just|simply)\\s+to\\s+(?:increase|boost|inflate|pad|raise)\\b",
-    // promise withholding / mismatch
-    "\\bwithhold(?:s|ing)?\\s+(?:the\\s+|a\\s+|an\\s+)?(?:promised\\s+|expected\\s+|core\\s+|actual\\s+)?(?:answer|payoff|reveal|result|information|conclusion|outcome|value|point|takeaway)",
-    "\\bdelay(?:s|ed|ing)?\\s+(?:the\\s+)?(?:delivery\\s+of\\s+|reveal\\s+of\\s+|payoff\\s+of\\s+)?(?:the\\s+)?(?:promised\\s+|expected\\s+)?(?:answer|payoff|reveal|information|conclusion|result|takeaway)\\b",
-    "\\b(?:make|making|keep|keeping|force|forcing|have)\\s+(?:the\\s+)?viewers?\\s+wait(?:ing)?\\s+(?:longer than necessary|unnecessarily|artificially|needlessly)",
-    "\\bbury(?:ing)?\\s+(?:the\\s+)?(?:promised\\s+)?(?:answer|payoff|lede|lead|conclusion|point|takeaway)\\b",
-    "\\bhold(?:s|ing)?\\s+back\\s+(?:the\\s+)?(?:promised\\s+|expected\\s+)?(?:answer|payoff|reveal|result|conclusion|information|takeaway)\\b",
-    "\\bsav(?:e|es|ing)\\s+(?:the\\s+)?(?:promised\\s+)?(?:answer|payoff|reveal|conclusion)\\s+(?:for|until|till)\\s+(?:the\\s+)?(?:end|last|later|final)",
-    "\\bkeep(?:ing)?\\s+(?:the\\s+)?viewers?\\s+guessing\\s+(?:to|for|so)\\b",
-    "\\btease\\s+(?:the\\s+)?(?:answer|payoff|reveal)\\s+(?:endlessly|indefinitely|for retention|to keep|without)",
-    // outrage / manipulation
-    "\\b(?:outrage|rage|engagement|comment|anger)[- ]?bait\\b",
-    "\\bragebait\\b",
-    "\\b(?:provoke|provoking|stir(?:\\s+up|ring\\s+up)?|manufactur(?:e|es|ing|ed)|incit(?:e|es|ing)|inflame|inflaming|whip\\s+up|fuel(?:s|ing)?)\\s+(?:reader|viewer|audience)?\\s*(?:anger|outrage|rage|indignation|controversy|drama|conflict|division|hostility)",
-    "\\bmanufactur(?:e|es|ing|ed)\\s+controvers",
-    "\\binflammatory\\s+(?:framing|hook|title|thumbnail|angle|claim|language)",
-    "\\bbait\\s+(?:viewers|the audience|people|users)\\s+into\\s+(?:commenting|arguing|fighting|reacting)",
-    // trust-damaging conversion
-    "\\bmisleading\\s+(?:urgency|scarcity|framing|claim|hook|thumbnail)",
-    "\\bdeceptive\\s+(?:framing|urgency|scarcity|hook|thumbnail|tactic|claim|conversion)",
-    "\\b(?:fake|false|artificial|manufactured|phony)\\s+(?:urgency|scarcity|deadline|countdown|social proof)",
-    "\\bbait[- ]and[- ]switch\\b",
-    "\\btrust[- ]damaging\\b",
-  ].join("|"),
-  "gi",
-);
-// A harmful phrase within ~32 chars of one of these is a treatment described by
-// what it does NOT do (a guardrail-style statement), not a harmful mechanism.
-const TREATMENT_HARM_NEGATION = /\b(?:without|not|never|avoids?|avoiding|no|rather than|instead of|isn't|does not|do not|doesn't|don't|must not|won't|will not|so as not to|prevent(?:s|ing)?|refus(?:e|es|ing)\s+to|stops?\s+short\s+of)\s+\S*\s*$/i;
+// never reach step 3 because they carry no harmful action.
+const HT_CLAUSE_BOUNDARY = /[.!?;:]+|,\s*(?:and|but|yet|then|plus|also)\b|\s+(?:but|yet|whereas|however)\s+/i;
+const HT_NEGATION_FALSE = /\bnot only\b/gi;
+const HT_NEGATION_CUE = /\b(?:without|avoids?|avoiding|avoided|not|never|no longer|no|rather than|instead of|does\s?n['’]?t|do\s?n['’]?t|is\s?n['’]?t|are\s?n['’]?t|wo\s?n['’]?t|would\s?n['’]?t|ca\s?n['’]?t|cannot|must\s?not|should\s?not|so as not to|prevent(?:s|ing)?|refus(?:e|es|ing)\s+to|stop(?:s|ping)?\s+short\s+of|discourage(?:s|d|ing)?)\b/gi;
+
+// Tier A -- the action alone is a Viewer Value harm.
+const HT_TIER_A = new RegExp([
+  "\\b(?:outrage|rage|engagement|comment|anger|reaction|hate)[ -]?bait(?:ing|s|ed)?\\b",
+  "\\bragebait\\b",
+  "\\b(?:manufactur|fabricat|invent|gin\\s?up|drum\\s?up|whip\\s?up|stir\\s?up|stage|concoct|cook\\s?up|ginn\\w+)(?:e|es|ed|ing)?\\s+(?:a\\s+|an\\s+|the\\s+|some\\s+|extra\\s+|fake\\s+|false\\s+|artificial\\s+)?(?:controvers\\w+|scandal|drama|outrage|conflict|feud|backlash|uproar|furore?|firestorm)\\b",
+  "\\bframe[sd]?\\b[^.;:!?]{0,60}?\\bas\\s+(?:a\\s+|an\\s+)?(?:scandal|controversy|betrayal|outrage|crisis|disaster)\\b",
+  "\\b(?:deliberately|intentionally|purposely|artificially|needlessly|cynically|knowingly)\\s+polari[sz]e\\w*\\b",
+  "\\bpolari[sz]e\\w*\\s+(?:the\\s+)?(?:audience|viewers?|comment\\s+section|room)\\b[^.;:!?]{0,40}?\\b(?:deliberately|on\\s+purpose|to\\s+(?:provoke|drive|boost|increase|farm|spike|maximi[sz]e))\\b",
+  "\\b(?:provoke|provoking|incit(?:e|es|ing)|inflam(?:e|es|ing)|foment(?:s|ing)?|stoke(?:s|d)?|farm(?:s|ing)?)\\s+(?:reader|viewer|audience|user)?\\s*(?:anger|outrage|indignation|rage|hostility|resentment|hate|fury)\\b",
+  "\\b(?:fake|faked|faking|fakes|false|phony|phoney|bogus|invented|manufactured|fabricated|artificial|pretend(?:ed)?|sham|contrived|imaginary|bake\\s+in\\s+(?:a\\s+)?fake)\\s+(?:a\\s+|an\\s+|the\\s+)?(?:urgency|scarcity|deadline|countdown(?:\\s+(?:timer|clock))?|timer|expiry|expiration|shortage|social\\s+proof|limited\\s+supply|limited[- ]time|sold[- ]out\\s+label)\\b",
+  "\\bpretend(?:s|ing)?\\b[^.;:!?]{0,60}?\\b(?:expires?|expiring|runs?\\s+out|running\\s+out|ends?\\s+(?:tonight|today|soon|at\\s+midnight)|sells?\\s+out|selling\\s+out|about\\s+to\\s+(?:end|close|sell\\s+out|run\\s+out))\\b",
+  "\\binvent(?:s|ing)?\\s+(?:a\\s+|an\\s+|some\\s+)?(?:limited\\s+supply|scarcity|shortage|false\\s+deadline|fake\\s+deadline|artificial\\s+deadline|waitlist|waiting\\s+list)\\b",
+  "\\bbait[ -]and[ -]switch\\b",
+  "\\btrust[ -]damaging\\b",
+  "\\bmisleading\\s+(?:urgency|scarcity|hook|thumbnail|framing|claim|deadline|promise)\\b",
+  "\\bdeceptive\\s+(?:framing|urgency|scarcity|hook|thumbnail|tactic|claim|conversion|deadline)\\b",
+  "\\binflammatory\\s+(?:framing|hook|title|thumbnail|angle|claim|language)\\b",
+].join("|"), "i");
+
+// Tier B -- a prolonging OR a promise-withholding action; harmful only with a
+// keep-watching / watch-time PURPOSE in the same clause.
+const HT_PROLONG_ACTION = new RegExp([
+  "\\bpad(?:s|ded|ding)?\\s+(?:out\\s+)?(?:the\\s+|this\\s+|it\\b|each\\s+|every\\s+)",
+  "\\bpad(?:s|ded|ding)?\\b(?=[^.;:!?]*\\b(?:video|runtime|run\\s?time|episode|content|cut|segment|section|middle|intro|opening|explanation)\\b)",
+  "\\b(?:bloat|bloats|bloated|bloating|pad\\s+out|fatten|fattens|fattening)\\s+(?:out\\s+)?(?:the\\s+|this\\s+|its\\s+)?(?:video|intro|introduction|opening|runtime|run\\s?time|middle|section|episode|content|cut)\\b",
+  "\\bstuff(?:s|ed|ing)?\\b[^.;:!?]{0,40}?\\bwith\\s+(?:repetitive\\s+|filler\\s+|recap\\s+|extra\\s+|padding\\s+|low[ -]value\\s+|throwaway\\s+|unnecessary\\s+|redundant\\s+|duplicate\\s+|more\\s+)",
+  "\\b(?:add|adds|adding|insert|inserts|inserting|drop\\s+in|throw\\s+in|tack\\s+on|append|pack|packs|packing|pile\\s+in|fill|fills|filling|load|loads|loading|cram|crams|cramming)\\s+(?:the\\s+(?:\\w+\\s+){0,3}|it\\s+|them\\s+|up\\s+)?(?:up\\s+)?(?:with\\s+)?(?:more\\s+)?(?:repetitive\\s+|filler\\s+|padding\\s+|low[ -]value\\s+|no[ -]value\\s+|throwaway\\s+|time[ -]wasting\\s+|unnecessary\\s+|extraneous\\s+|redundant\\s+|duplicate\\s+|repeated\\s+)(?:recap\\w*|summ\\w+|material|content|segments?|sections?|footage|clips?|filler|padding)",
+  "\\badd(?:s|ing)?\\s+(?:more\\s+)?(?:repetitive\\s+)?recaps?\\b",
+  "\\b(?:stretch|stretches|stretching|stretched|lengthen|lengthens|lengthening|lengthened|drag|drags|dragging|balloon|balloons|ballooning|prolong|prolongs|prolonging|expand|expands|expanding|inflate|inflates|inflating|elongate|elongates|elongating)\\s+(?:out\\s+)?(?:the\\s+|this\\s+|its\\s+|each\\s+|every\\s+)?(?:video|runtime|run\\s?time|episode|length|cut|content|footage|duration|middle|section)\\b",
+  "\\bextend(?:s|ing|ed)?\\s+(?:out\\s+)?(?:the\\s+|this\\s+|its\\s+|each\\s+|every\\s+)?(?:video|runtime|run\\s?time|episode|length|cut|content|footage|segment|middle)\\b",
+  "\\bmake(?:s|ing)?\\b[^.;:!?]{0,40}?\\b(?:deliberately\\s+|needlessly\\s+|artificially\\s+|unnecessarily\\s+|overly\\s+|intentionally\\s+)?(?:verbose|long[ -]winded|wordy|repetitive|drawn[ -]out|meandering|rambl\\w+|padded|bloated)\\b",
+  "\\b(?:slow[ -]walk(?:s|ing)?|belabou?r(?:s|ing)?|dwell\\s+needlessly|stall(?:s|ing)?\\s+(?:the\\s+)?(?:viewer|video|payoff|reveal))",
+].join("|"), "i");
+const HT_WITHHOLD_ACTION = new RegExp([
+  "\\b(?:withhold|withholds|withholding|hold\\s+back|holds\\s+back|holding\\s+back|hold\\s+off\\s+on)\\s+(?:the\\s+|a\\s+|an\\s+|our\\s+|any\\s+)?(?:promised\\s+|expected\\s+|core\\s+|actual\\s+|useful\\s+|key\\s+|real\\s+|main\\s+)?(?:answer|payoff|pay[ -]off|reveal|result|information|conclusion|outcome|value|point|takeaway|take[ -]away|lede|lead|resolution|explanation)",
+  "\\b(?:delay|delays|delayed|delaying|postpone|postpones|postponed|postponing|defer|defers|deferring|deferred|push\\s+back|pushes\\s+back|pushing\\s+back|save|saves|saving|reserve|reserves|reserving)\\s+(?:the\\s+|a\\s+|an\\s+|our\\s+|its\\s+|delivery\\s+of\\s+|reveal\\s+of\\s+|any\\s+)?(?:promised\\s+|expected\\s+|useful\\s+|key\\s+|core\\s+|actual\\s+|main\\s+|real\\s+)?(?:answer|payoff|pay[ -]off|reveal|result|information|conclusion|takeaway|take[ -]away|point|explanation|resolution)",
+  "\\b(?:bury|buries|burying|hide|hides|hiding|conceal|conceals|concealing|tuck\\s+away|tucks\\s+away)\\s+(?:the\\s+|a\\s+|our\\s+|its\\s+)?(?:promised\\s+|key\\s+|core\\s+|main\\s+|useful\\s+|actual\\s+)?(?:answer|payoff|pay[ -]off|lede|lead|conclusion|point|takeaway|take[ -]away|reveal|result|information)\\b",
+  "\\b(?:push|pushes|pushing|move|moves|moving|shift|shifts|shifting|hold|holds|holding|leave|leaves|leaving)\\s+(?:the\\s+)?(?:promised\\s+|useful\\s+|key\\s+|real\\s+|actual\\s+|main\\s+)?(?:answer|payoff|pay[ -]off|reveal|conclusion|takeaway|take[ -]away|point|resolution)\\s+(?:to|until|till|near|toward|towards)\\s+(?:the\\s+)?(?:end|finish|close|last|final|closing|very\\s+end)",
+  "\\b(?:keep|keeps|keeping|make|makes|making|force|forces|forcing|leave|leaves|leaving)\\s+(?:the\\s+)?viewers?\\s+(?:guessing|waiting|hanging|in\\s+suspense|on\\s+the\\s+hook)\\b",
+  "\\b(?:sit|sits|sitting)\\s+(?:tight\\s+)?on\\s+(?:the\\s+)?(?:answer|payoff|pay[ -]off|reveal|result|conclusion|takeaway|take[ -]away|information|explanation)\\b",
+  "\\btease\\s+(?:the\\s+)?(?:answer|payoff|reveal)\\b",
+].join("|"), "i");
+const HT_KEEP_WATCHING_PURPOSE = new RegExp([
+  "\\b(?:increase|increases|increasing|boost|boosts|boosting|inflate|inflates|inflating|raise|raises|raising|drive\\s+up|drives\\s+up|driving\\s+up|grow|grows|growing|maximi[sz]e|maximi[sz]es|maximi[sz]ing|lift|lifts|lifting|pump\\s+up|improve|improves|improving|help|helps|extend|extends|extending|pad|pads|padding)\\b[^.;:!?]{0,45}?\\b(?:watch\\s?time|watch\\s+hours|minutes?\\s+(?:watched|viewed)|minutes?\\s+of\\s+watch|view\\s+duration|average\\s+view\\s+duration|time\\s+(?:on|in)\\s+(?:the\\s+)?(?:video|page)|session\\s+(?:length|duration)|retention|time\\s+watched|dwell\\s+time)\\b",
+  "\\b(?:watch\\s?time|minutes?\\s+(?:watched|viewed)|view\\s+duration|retention|time\\s+watched)\\b[^.;:!?]{0,30}?\\b(?:rises?|rising|climbs?|climbing|goes?\\s+up|going\\s+up|increases?|increasing|grows?|growing|improves?|improving)\\b",
+  "\\b(?:audience|viewers?|people|users?|they|the\\s+viewer)\\b[^.;:!?]{0,45}?\\b(?:spend[s]?\\s+(?:longer|more\\s+time)|stay[s]?\\s+(?:longer|watching|on\\s+the\\s+video)|watch(?:es|ing)?\\s+(?:longer|more|for\\s+longer)|keep[s]?\\s+watching|remain[s]?\\s+(?:longer|watching)|linger[s]?\\b|don['’]?t\\s+leave|do\\s+not\\s+leave)\\b",
+  "\\bkeep(?:s|ing)?\\s+(?:the\\s+)?(?:viewers?|people|users?|them|the\\s+audience|everyone)\\s+(?:watching|on\\s+the\\s+(?:video|page)|around|engaged\\s+longer|hooked|glued|from\\s+leaving)\\b",
+  "\\bso\\s+(?:that\\s+)?(?:people|viewers?|they|the\\s+audience|users?)\\s+(?:stay|stays|keep\\s+watching|keeps\\s+watching|keep\\s+going|don['’]?t\\s+leave|do\\s+not\\s+leave|remain|watch\\s+longer)\\b",
+  "\\bso\\s+(?:that\\s+)?(?:nobody|no\\s+one|noone|not\\s+a\\s+single\\s+(?:viewer|person))\\s+(?:leaves?|drops?\\s+off|clicks?\\s+away|bounces?|tunes?\\s+out)\\b",
+  "\\b(?:nobody|no\\s+one|noone)\\s+(?:leaves?|drops?\\s+off|clicks?\\s+away|bounces?|tunes?\\s+out)\\s+(?:early|before|until|halfway|part\\s?way)\\b",
+  "\\b(?:so|to)\\s+(?:that\\s+)?(?:people|viewers?|they)\\s+(?:rush|scramble|hurry)\\s+to\\s+(?:subscribe|sign\\s+up|buy|convert|act)\\b",
+  "\\b(?:compel|compels|compelling|force|forces|forcing|guarantee|guarantees|ensure|ensures)\\s+(?:continued|further|longer|more|extended)\\s+(?:viewing|watching|watch\\s?time)\\b",
+  "\\bcontinued\\s+viewing\\b",
+  "\\bprolong(?:s|ing)?\\s+(?:the\\s+)?(?:session|view|watch|visit|engagement)\\b",
+].join("|"), "i");
+
+const htClauses = (text: string): string[] =>
+  text.replace(/[‒–—―−]/g, " ").split(HT_CLAUSE_BOUNDARY).map((clause) => clause.trim()).filter((clause) => clause.length > 0);
+
+function htClauseAffirmsHarm(clause: string): boolean {
+  const tierA = HT_TIER_A.exec(clause);
+  const prolong = HT_PROLONG_ACTION.exec(clause);
+  const withhold = HT_WITHHOLD_ACTION.exec(clause);
+  let actionIndex: number;
+  let needsPurpose = false;
+  if (tierA) {
+    actionIndex = tierA.index;
+  } else if (prolong || withhold) {
+    actionIndex = Math.min(...[prolong?.index, withhold?.index].filter((index): index is number => index !== undefined));
+    needsPurpose = true;
+  } else {
+    return false;
+  }
+  if (needsPurpose && !HT_KEEP_WATCHING_PURPOSE.test(clause)) return false;
+  const before = clause.slice(0, actionIndex).replace(HT_NEGATION_FALSE, " ");
+  const negations = before.match(HT_NEGATION_CUE)?.length ?? 0;
+  return negations % 2 === 0;
+}
+
+const treatmentIntentIsHarmful = (text: string): boolean => htClauses(text).some(htClauseAffirmsHarm);
 
 function freeText(result: ChannelVideoExperimentResult): string[] {
   const { experiment, alternatives, decisionDisagreements, viewerValueSafeguards } = result.content;
@@ -298,9 +396,12 @@ export const DETERMINISTIC_VIDEO_EXPERIMENT_RULES: ExperimentRule[] = [
       experiment.targetVariable, experiment.expectedDirection.justification,
       ...(experiment.measurementOnly ? [] : [experiment.treatmentCondition.whatChanges, experiment.treatmentCondition.description]),
     ];
-    // A status-quo phrase inside conditional / null-result / control-condition
-    // framing is a legitimate OUTCOME, not the experiment's purpose.
-    return purpose.some((text) => STATUS_QUO_INTENT.test(text) && !OUTCOME_FRAME.test(text))
+    // A status-quo phrase is a legitimate OUTCOME only when the SAME clause ties
+    // the preservation to a measured result / control condition. A bare
+    // conditional or "control" token elsewhere in the field cannot sanitize
+    // unrelated status-quo intent (round-3 smuggling class).
+    return purpose.some((text) =>
+      sentenceClauses(text).some((clause) => STATUS_QUO_INTENT.test(clause) && !OUTCOME_JUSTIFIED_PRESERVE.test(clause)))
       ? ["The experiment's stated purpose is to confirm, preserve, or leave unchanged the current approach; an INVESTIGATE / PRIORITIZE_CHANGE decision is testing a change, not defending the current approach or concluding further investigation is unwarranted."]
       : [];
   }),
@@ -501,9 +602,10 @@ export const DETERMINISTIC_VIDEO_EXPERIMENT_RULES: ExperimentRule[] = [
   // that deliberately harms Viewer Value (padding, promise-withholding, outrage
   // bait, trust-damaging conversion). This is independent of Layer 2 (guardrail
   // adequacy): a compliant, family-appropriate guardrail does NOT sanitize a
-  // harmful treatment. Scoped to the canonical treatment-intent fields; a
-  // negation guard preserves treatments described by what they avoid and safe
-  // interventions that merely mention retention / watch time / filler / pacing.
+  // harmful treatment. Scoped to the canonical treatment-intent fields; the
+  // clause-aware classifier (see `treatmentIntentIsHarmful`) preserves treatments
+  // described by what they avoid ("improve pacing without delaying the payoff")
+  // and safe interventions that merely mention retention / filler / pacing.
   rule("VIEWER_VALUE_TREATMENT_HARMFUL", "error", ({ result }) => {
     const experiment = result.content.experiment;
     const intentFields = [
@@ -511,18 +613,9 @@ export const DETERMINISTIC_VIDEO_EXPERIMENT_RULES: ExperimentRule[] = [
       experiment.targetVariable, experiment.expectedDirection.justification,
       experiment.treatmentCondition.description, experiment.treatmentCondition.whatChanges,
     ];
-    const messages = new Set<string>();
-    for (const text of intentFields) {
-      HARMFUL_TREATMENT_MECHANISM.lastIndex = 0;
-      let match: RegExpExecArray | null;
-      while ((match = HARMFUL_TREATMENT_MECHANISM.exec(text)) !== null) {
-        const preceding = text.slice(Math.max(0, match.index - 32), match.index);
-        if (TREATMENT_HARM_NEGATION.test(preceding)) continue;
-        messages.add(`The treatment mechanism "${match[0].trim().slice(0, 80)}" deliberately harms Viewer Value; an independent guardrail cannot make a harmful intervention acceptable.`);
-        break;
-      }
-    }
-    return [...messages];
+    return intentFields.some(treatmentIntentIsHarmful)
+      ? ["The treatment mechanism deliberately harms Viewer Value (artificial watch-time padding, promise withholding, outrage / manipulation, or trust-damaging conversion); an independent guardrail cannot make a harmful intervention acceptable."]
+      : [];
   }),
   // Every primary metric -- not only acquisition-side ones -- can be gamed
   // against viewer value. A guardrail metric must independently protect viewer

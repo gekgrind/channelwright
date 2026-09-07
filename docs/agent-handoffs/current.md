@@ -1,12 +1,91 @@
 ---
 Agent: Claude Code
 Task: Implement the CHANNEL_VIDEO_EXPERIMENT workflow vertical
-Completed: 2026-09-07 (round-2 repairs applied after round-2 independent verification)
+Completed: 2026-09-07 (round-3 repairs applied after round-3 independent verification)
 Repository: `C:\DevProjects\channelwright` (worktree `C:\DevProjects\channelwright-experiment`)
 Branch: `feat/channel-video-experiment` (off `main` @ 9888d74 — the merged CHANNEL_VIDEO_DECISION)
-Status: `IMPLEMENTED + REPAIRED (round 2) — ALL LOCAL GATES + DISPOSABLE-POSTGRESQL PASSED, READY FOR INDEPENDENT RE-VERIFICATION`
+Status: `IMPLEMENTED + REPAIRED (round 3) — ALL LOCAL GATES + DISPOSABLE-POSTGRESQL PASSED, READY FOR INDEPENDENT RE-VERIFICATION`
 Merged: NO (do not merge to main)
 ---
+
+## Round-3 independent verification: NOT READY TO MERGE → repaired
+
+Independent verification of `4b39088721f0f6727e023f6ee042aeb44869b63b` returned
+**NOT READY TO MERGE**. It confirmed the round-1 / round-2 repairs to upstream
+resolution, transitive integrity, provider independence, accounting,
+approval/immutability, the rule catalogue and every engineering gate remained
+sound, and listed exactly these blockers (three P1, three P2):
+
+- **P1 — harmful-treatment semantic detection failed open.** Fresh ordinary
+  paraphrases ("stuff the middle with repetitive recap sections so the audience
+  spends longer", "postpone the useful answer … so people stay", "frame a
+  disagreement as a scandal", "pretend the offer expires tonight") and
+  negation smuggling ("not only pad the video…", "do not avoid padding…", "avoid
+  filler; pad the video…") all passed the finite phrase catalogue + 32-char
+  negation look-back. **Replaced with a bounded clause-aware semantic-intent
+  classifier** (`treatmentIntentIsHarmful`): the intent text is normalised
+  (en/em dashes → spaces so a parenthetical "do not — … — pad" is not severed)
+  and split into clauses on sentence punctuation / `;` / `:` / a few
+  coordinating conjunctions (never on "so"/"to", which introduce the PURPOSE);
+  each clause is tested for a harmful MECHANISM in two tiers — **Tier A** the
+  action alone is a harm (outrage / rage bait, manufactured controversy or
+  scandal, deliberate polarisation, fake urgency / scarcity / expiry / countdown,
+  bait-and-switch), **Tier B** a prolonging / promise-withholding action that is
+  harmful only with a watch-time / keep-watching PURPOSE in the same clause —
+  then a **clause-scoped negation parity** check (an odd number of negation cues
+  before the action flips the clause to safe; "not only" never counts; "do not
+  avoid padding" is an even/​double negative and stays harmful).
+- **P1 — status-quo intent smuggled through superficial outcome tokens.**
+  `OUTCOME_FRAME.test(text)` exempted the whole field whenever any bare
+  `if` / `unless` / `control` / `result` / `outcome` token appeared, so "If
+  possible, keep the current opening because no testing is needed" and "Control
+  condition aside, keep the current opening" passed. **Replaced with
+  `OUTCOME_JUSTIFIED_PRESERVE`** (a strict pattern that requires the outcome
+  semantics themselves — treatment underperforms, a null / negative /
+  inconclusive result, a guardrail breach, an actual control condition that
+  preserves the asset) applied **clause by clause** (`sentenceClauses`,
+  splitting on `.!?;` only so "if X, preserve Y" stays one unit). `STATUS_QUO_
+  INTENT` gained "no more/further testing needed", "no reason/point to test",
+  "needs no experiment" families.
+- **P1 — resolver root could belong to another same-owner Decision workflow.**
+  `resolve_approved_video_decision_artifact`'s root predicate checked
+  `id` + `owner_id` + `workflow_type` but not `workflow_id`, so a run of a
+  *different* same-owner `CHANNEL_VIDEO_DECISION` workflow satisfied it. **Added
+  `and workflow_id = v_run.workflow_id`.** New disposable-PG runtime assertion
+  seeds a second same-owner Decision workflow, points the accounting budget's
+  `root_run_id` at that foreign run, and asserts the resolver now raises
+  `UPSTREAM_DECISION_LINEAGE_INVALID: resolved root is not a real run of this
+  workflow` (it also asserts a valid same-workflow root still resolves). The
+  source-text migration test pins the exact predicate.
+- **P2 — invalidation incoherence was phrase-specific.** "There is no possible
+  scenario for this trigger", "by definition this cannot trigger", "incapable of
+  occurring", "zero chance of activation", "no world in which this criterion
+  activates" passed. **Broadened `INCOHERENT_INVALIDATION`** with an
+  occurrence-verb group that includes trigger/fire/activate (still excluding
+  measure / deliver / collect / trust so "invalidate if the metric cannot be
+  measured" stays valid), `incapable of …`, `(zero|no) chance/possibility of …`,
+  `no <adj> scenario/world/circumstance … for/in which/exists`, `under no
+  circumstances`, and a looser `by definition …`.
+- **P2 — numeric classification false-positive / false-negative edges.**
+  `%` glued to a digit ("2%") never matched `QUANTITY_AFTER` (`%\b` has no
+  boundary before a space), so "Variant 2% is the retention threshold" was
+  masked by the label exemption; and "3-module sequence" was flagged because
+  `module` was not a structural noun. **Fixed:** `QUANTITY_AFTER` now accepts the
+  measurement noun followed by a real word boundary **or** a non-alphanumeric
+  char (so `%` / `percent` outrank the bare-label exemption); `module` added to
+  `STRUCTURAL_NOUN_AFTER`; `panel` / `module` added to `LABEL_BEFORE` so
+  "Panel 2." / bare label ids still pass.
+
+Catalogue unchanged at **67 rules** (count still derived from `RULES.length`).
+Source touched: `video-experiment-validation.ts`, the migration's root predicate,
+the disposable-PG gate (one new runtime assertion), and the two test files. A
+round-3 adversarial regression block (every exact round-3 input plus independent
+fresh paraphrases and negative controls per rule) is added to
+`video-experiment-validation.test.ts`. Nothing in the round-1 / round-2 "sound"
+areas was disturbed; all gates re-run green (see Verification).
+
+Rejected round-3 SHA: `4b39088721f0f6727e023f6ee042aeb44869b63b`
+Round-3 repair SHA: recorded in `## Base / HEAD` below after commit.
 
 ## Round-1 independent verification: NOT READY → repaired
 
@@ -228,72 +307,80 @@ branch; the definition + registry + finalizer-map entry; and type exports.
 `workflow-worker.ts` (executor + error-message codes),
 `src/app/api/workflows/route.ts` (idempotency list).
 
-## Verification (local + disposable-PG; no shared/production DB touched) — re-run after the round-2 repair
+## Verification (local + disposable-PG; no shared/production DB touched) — re-run after the round-3 repair
 
 - `npm run typecheck` (`tsc --noEmit`) — PASS, exit 0
 - `npm run lint` (`eslint .`) — PASS, exit 0
-- Focused Experiment suites — **118/118 PASS** (85 validation incl. the round-1
-  and round-2 adversarial matrices + 8 resolver + 13 executor + 12 migration).
-- `npm test` (`vitest run`) — PASS, exit 0, **108 files / 1399 tests** in the
-  green run; the full suite completed with a real exit code (no hang, no
-  inconclusive result on this run).
-- `npx vitest run src/server/workflows` — PASS, exit 0, **60 files / 1053 tests**
-  (CHANNEL_VIDEO_EXPERIMENT / DECISION / DIAGNOSIS / PERFORMANCE, workflow
-  worker, research usage, role routing, API workflow exposure).
-- `npm run build` — PASS, exit 0 ("Compiled successfully").
+- Focused Experiment suites — **135/135 PASS** (101 validation incl. the round-1,
+  round-2 and new round-3 adversarial matrices + 8 resolver + 13 executor + 13
+  migration).
+- `npm test` (`vitest run`) — PASS, exit 0, **108 files / 1416 tests**.
+- `npx vitest run src/server/workflows` — PASS, exit 0, **60 files / 1070 tests**.
+- `npm run build` — PASS, exit 0 ("Compiled successfully"). Build rewrote the
+  generated `next-env.d.ts` (dev→prod type-import paths only); reverted, no
+  source change.
 - `gate:videoexperiment:disposable-pg` — **`VIDEO_EXPERIMENT_DISPOSABLE_PG_PASSED`,
-  40 passed / 0 failed**, exit 0, against a local disposable PostgreSQL 17
+  42 passed / 0 failed**, exit 0, against a local disposable PostgreSQL 17
   cluster (`channelwright-postgres`, 127.0.0.1:55432). Full **31-migration**
-  chain applied from scratch; all ten approved-artifact resolvers compiled;
-  canonical_jsonb_text parity; experiment-eligibility gate; ten-artifact
-  transitive re-hash + supersession (incl. superseded transitive Diagnosis
-  rejected); cross-owner NOT_FOUND; RLS; approved Experiment payload + finalizer
-  output immutable; approved Decision output still immutable (no regression);
-  active/concurrent uniqueness; sequential-after-completion allowed;
-  zero-retrieval / zero-revision accounting (rejects a 5th model attempt and any
-  revision budget). The gate created and dropped its own throwaway database and
-  gate-created roles; both cleaned up. The `channelwright-postgres` container was
-  returned to its prior Exited state.
+  chain applied from scratch; all prior 40 checks still pass; the **two new
+  round-3 checks pass** — "valid same-workflow lineage root still resolves" and
+  "same-owner root from a different Decision workflow is rejected"
+  (`UPSTREAM_DECISION_LINEAGE_INVALID: resolved root is not a real run of this
+  workflow`). Confirmed a real runtime assertion: with the `workflow_id` predicate
+  temporarily removed the gate reported `FAILED` on exactly that check, then
+  passed again once restored. The gate created and dropped its own throwaway
+  database and gate-created roles; both cleaned up. The `channelwright-postgres`
+  container was left running (it was started for this pass; return it to Exited
+  with `docker stop channelwright-postgres` if the prior state must be restored).
 
-No push, deploy, or migration application to any shared/production database. Not
-merged to main.
+No push (feature branch only), deploy, or migration application to any
+shared/production database. Not merged to main.
 
 ## Base / HEAD
 
 - Base SHA: `9888d749ee0bcefdc2d0dfac2b9b60b9230e0806` (origin/main, "Merge CHANNEL_VIDEO_DECISION")
 - Rejected round-2 SHA: `2b8654fa6737a417d286e361cb9d4abc1fb4ea37`
+- Rejected round-3 SHA: `4b39088721f0f6727e023f6ee042aeb44869b63b`
+- Round-3 repair SHA: `bb9e6c9a10cd9f9cfb28422e5c770ff06ab91402`
 - Branch: `feat/channel-video-experiment` — `c254f31` (vertical) → `de6da57` (doc)
-  → `11dc555` (round-1 repairs) → `2b8654f` (round-1 doc) → round-2 repair commit
-  (`fix(video-experiment): close remaining semantic validation gaps`)
-- 0 behind / 5 ahead of `origin/main` after the round-2 repair commit.
+  → `11dc555` (round-1 repairs) → `2b8654f` (round-1 doc) → `11dc555`… → round-2
+  repair (`2b8654f`… doc `de6da57`… — see git log) → `4b39088` (round-2 repair,
+  rejected round-3) → round-3 repair commit
+  (`fix(video-experiment): close semantic and lineage verification gaps`).
+- 0 behind / 6 ahead of `origin/main` after the round-3 repair commit.
 
 ## Open findings
 
-- Round-1 P1/P2 findings: repaired in `11dc555`; round-2 verification confirmed
-  those areas (upstream resolution, transitive integrity, parent/root
-  reconciliation, provider independence, accounting, all engineering gates) sound.
-- Round-2 P1/P2 findings: all four repaired in the round-2 repair commit
-  (`VIEWER_VALUE_TREATMENT_HARMFUL` new; `STATUS_QUO_INTENT` + `OUTCOME_FRAME`;
-  broadened `INCOHERENT_INVALIDATION`; `STRUCTURAL_NOUN_AFTER`) — see the
-  round-2 section at the top.
+- Round-1 / round-2 P1/P2 findings: repaired earlier; round-3 verification
+  reconfirmed upstream resolution, transitive integrity, provider independence,
+  accounting, approval/immutability, rule catalogue/counting and all engineering
+  gates sound.
+- Round-3 P1/P2 findings (6): all repaired in the round-3 repair commit — see the
+  round-3 section at the top. Harmful-treatment detection is now a clause-aware
+  two-tier classifier with negation parity; status-quo exemption requires real
+  outcome semantics and is clause-scoped; the resolver root is pinned to the
+  exact `workflow_id` (source + runtime asserted); invalidation incoherence and
+  numeric `%`/label precedence are broadened with negative controls.
 - Non-blocking: the treatment-harm / status-quo / invalidation / quantity
-  detectors are bounded deterministic semantic patterns scoped to the canonical
-  treatment / purpose / invalidation fields. They now cover every round-1 and
-  round-2 adversarial input plus independent paraphrases and the doctrine's four
-  named harm classes, but a determined paraphrase could still evade a specific
-  pattern; the structured server-stamped fields (`testsDecisionStatement`,
-  `disposition`, `measurementOnly`, `evidenceStrength`, `experimentReady`,
-  `portfolioEligible`, control kind) remain the hard guarantees. Do not read the
-  claims "Viewer Value safe" / "Decision semantics pinned" / "quantity handling
-  complete" more broadly than source + tests support.
-- Follow-up: refresh Graphify (`graphify update .`) — the checked-in graph
-  predates even the DECISION merge.
+  detectors remain **bounded deterministic semantic patterns** scoped to the
+  canonical treatment / purpose / invalidation fields. They now cover every
+  round-1/2/3 adversarial input plus independent fresh paraphrases per class and
+  the doctrine's four named harm classes, but they are not general NLP — a
+  determined novel paraphrase could still evade a specific pattern. The
+  structured server-stamped fields (`testsDecisionStatement`, `disposition`,
+  `measurementOnly`, `evidenceStrength`, `experimentReady`, `portfolioEligible`,
+  control kind) remain the hard guarantees. Do not read "Viewer Value safe" /
+  "Decision semantics pinned" / "quantity handling complete" more broadly than
+  source + tests support.
+- Follow-up: refresh Graphify (`graphify update .`); update the canonical
+  Obsidian implementation / current-state notes (the `vault-as-mcp` server was
+  unreachable this session, so only the git-tracked handoff was updated).
 
 ## Next action
 
 Independent re-verification of the vertical on `feat/channel-video-experiment` at
-the round-2 repair commit (re-run the round-1 + round-2 adversarial matrices
-against `video-experiment-validation.ts`; re-run the disposable-PG gate), then a
-merge decision. To re-run the disposable-PG gate: `docker start
-channelwright-postgres`, then
+the round-3 repair commit (re-run the round-1 + round-2 + round-3 adversarial
+matrices against `video-experiment-validation.ts`, including fresh paraphrases;
+re-run the disposable-PG gate). To re-run the disposable-PG gate:
+`docker start channelwright-postgres`, then
 `CHANNELWRIGHT_DISPOSABLE_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/postgres npm run gate:videoexperiment:disposable-pg`.
