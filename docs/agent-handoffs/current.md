@@ -348,9 +348,10 @@ shared/production database. Not merged to main.
   repair (`2b8654f`… doc `de6da57`… — see git log) → `4b39088` (round-2 repair,
   rejected round-3) → round-3 repair commit
   (`fix(video-experiment): close semantic and lineage verification gaps`).
-- 0 behind / 7 ahead of `origin/main`: the round-3 repair commit
-  (`bb9e6c9`… → amended `46c01e5`…) plus a one-line container-state doc
-  correction (`98cd912`…).
+- 0 behind `origin/main`; the branch carries the round-1/2/3 repair history
+  ending in the round-3 repair commit `46c01e5c63d6a299a1630ff21293433603d35522`
+  plus follow-up handoff-doc corrections. Run
+  `git rev-list --left-right --count origin/main...HEAD` for the exact count.
 
 ## Open findings
 
