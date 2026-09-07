@@ -348,7 +348,9 @@ shared/production database. Not merged to main.
   repair (`2b8654f`… doc `de6da57`… — see git log) → `4b39088` (round-2 repair,
   rejected round-3) → round-3 repair commit
   (`fix(video-experiment): close semantic and lineage verification gaps`).
-- 0 behind / 6 ahead of `origin/main` after the round-3 repair commit.
+- 0 behind / 7 ahead of `origin/main`: the round-3 repair commit
+  (`bb9e6c9`… → amended `46c01e5`…) plus a one-line container-state doc
+  correction (`98cd912`…).
 
 ## Open findings
 
