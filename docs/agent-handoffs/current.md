@@ -90,7 +90,7 @@ novel paraphrase could still evade a bounded deterministic pattern; the
 server-stamped structured fields remain the hard guarantees.
 
 Rejected round-4 SHA: `46c01e5c63d6a299a1630ff21293433603d35522`
-Round-4 repair SHA: `a8131bd9d215093d049482b0a491ed89576418e5`
+Round-4 repair SHA: `80b67648b038897d73ec50af0cf72472e40f4217`
 
 ## Round-3 independent verification: NOT READY TO MERGE → PARTIALLY repaired (superseded by round-4)
 
@@ -427,7 +427,7 @@ shared/production database. Not merged to main.
 - Rejected round-3 SHA: `4b39088721f0f6727e023f6ee042aeb44869b63b`
 - Round-3 repair SHA (partial): `46c01e5c63d6a299a1630ff21293433603d35522`
 - Rejected round-4 SHA: `46c01e5c63d6a299a1630ff21293433603d35522`
-- Round-4 repair SHA: `a8131bd9d215093d049482b0a491ed89576418e5`
+- Round-4 repair SHA: `80b67648b038897d73ec50af0cf72472e40f4217`
 - Branch: `feat/channel-video-experiment` — `c254f31` (vertical) → `de6da57` (doc)
   → `11dc555` (round-1 repairs) → `2b8654f` (round-1 doc) → round-2 repair →
   `4b39088` (round-2 repair, rejected at round 3) → `46c01e5` (round-3 repair,
