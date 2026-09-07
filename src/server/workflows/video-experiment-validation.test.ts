@@ -864,3 +864,256 @@ describe("legitimate variety passes", () => {
     expect(validate(result)).toEqual([]);
   });
 });
+
+describe("adversarial matrix — round-4 independent-verification regressions", () => {
+  it("sanity: the manipulation base result is deterministically clean", () => {
+    expect(validate(manipulationResult())).toEqual([]);
+  });
+
+  const asTreatment = (text: string) =>
+    manipulationResult({ treatmentCondition: { description: text, whatChanges: text, whatStaysConstant: ["Topic selection"] } });
+  const asPurpose = (text: string) => {
+    const result = manipulationResult();
+    result.content.experiment.decisionLinkage.hypothesisUnderTest = text;
+    return result;
+  };
+  const asJustification = (text: string) => {
+    const result = manipulationResult();
+    result.content.experiment.expectedDirection.justification = text;
+    return result;
+  };
+
+  // --- P1-A: harmful treatment still fails open (fresh paraphrases) ---
+  it("rejects every round-4 fresh harmful-treatment paraphrase", () => {
+    for (const text of [
+      "Repeat the same summary after every section to make the episode run longer and lift watch time.",
+      "Let the host ramble through side points so the audience remains watching longer.",
+      "Insert an unnecessary recap between sections so people spend more time on the video.",
+      "Draw the explanation out with redundant restatements to increase viewing minutes.",
+      "Hold the practical answer back until the final section so viewers keep watching.",
+      "Save the useful guidance for the last minute to stop viewers leaving early.",
+      "Keep the main lesson in reserve until the close so the audience stays.",
+      "Create a needless feud between experts to make viewers fight in the comments.",
+      "Overstate a minor dispute as explosive drama to spark hostile comments.",
+      "Tell viewers access vanishes tomorrow even though it will remain available.",
+      "Claim stock is almost gone although supply is unlimited, pushing viewers to subscribe.",
+      "Bury the actual answer in the closing segment so users remain on the video.",
+    ]) {
+      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
+  });
+
+  it("rejects a harmful clause even after a safe prohibition in the same sentence", () => {
+    for (const text of [
+      "Without misleading viewers, manufacture controversy to drive angry comments.",
+      "Never use rage bait, pad the video to raise watch time.",
+      "Avoid deceptive urgency, stretch the video to boost retention.",
+    ]) {
+      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
+  });
+
+  it("preserves the round-4 safe treatment controls", () => {
+    for (const text of [
+      "Remove repeated summaries so the lesson reaches the answer faster.",
+      "Keep the practical answer up front and cut rambling side points.",
+      "Describe availability honestly without inventing a deadline.",
+      "Present disagreement fairly instead of manufacturing conflict.",
+    ]) {
+      expect(codes(asTreatment(text))).not.toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+      expect(validate(asTreatment(text))).toEqual([]);
+    }
+  });
+
+  // --- P1-B: negation / clause handling ---
+  it("keeps working negation controls (PASS) and rejects the round-4 double-negation bypasses", () => {
+    for (const text of ["Never pad the video merely to inflate watch time.", "Don't use filler to keep viewers longer."]) {
+      expect(codes(asTreatment(text))).not.toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
+    for (const text of [
+      "Don't avoid filler; instead, stretch the video to raise minutes watched.",
+      "Avoid unnecessary recap, but make the explanations longer so people stay.",
+      "We should not refrain from delaying the answer if it improves retention.",
+      "Do not fail to withhold the payoff so viewers stay.",
+    ]) {
+      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
+  });
+
+  // --- P1-C: decision-purpose smuggling ---
+  it("rejects every round-4 fresh contradictory purpose statement", () => {
+    for (const text of [
+      "Even if we call this a test, the existing opening should stay.",
+      "The control can be measured, but there is no reason to change the current opening.",
+      "If leadership permits, skip the experiment and keep what we have.",
+      "Whether or not results arrive, the opening is staying put.",
+      "If the treatment underperforms, or even if it outperforms, preserve the current opening because no more testing is needed.",
+      "If the treatment underperforms, preserve the current opening, but whatever the result, keep the current opening permanently.",
+    ]) {
+      expect(codes(asPurpose(text))).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    }
+  });
+
+  it("keeps rejecting the semantically-similar phrases and preserves legitimate conditional control preservation", () => {
+    for (const text of [
+      "Whatever the result, retain the current hook.",
+      "Assuming nothing forces us otherwise, leave the opening as-is.",
+      "The experiment may run, yet we intend to leave the hook alone.",
+      "A null result may preserve the opening; regardless, keep the current opening permanently.",
+    ]) {
+      expect(codes(asPurpose(text))).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    }
+    for (const text of [
+      "If the challenger loses on the primary metric, retain the existing hook.",
+      "The simultaneous control arm keeps the current opening while the treatment changes it.",
+      "An inconclusive outcome would justify preserving the current version pending another test.",
+    ]) {
+      expect(codes(asJustification(text))).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    }
+  });
+
+  // --- P2: impossible invalidation paraphrases ---
+  it("rejects every round-4 fresh impossible-invalidation paraphrase", () => {
+    for (const text of [
+      "This tripwire is guaranteed to remain dormant.",
+      "Activation lies beyond the realm of possibility.",
+      "No chain of events can set off this alarm.",
+      "The rule is certain to stay inactive forever.",
+    ]) {
+      expect(codes(manipulationResult({ invalidationConditions: [text] }))).toContain("INVALIDATION_CONDITION_INCOHERENT");
+    }
+  });
+
+  it("keeps rejecting the prior impossible forms and preserves legitimate failure conditions", () => {
+    for (const text of [
+      "There is no circumstance where this trigger would fire.",
+      "This criterion has no possibility of ever being met.",
+      "It would be impossible for this safeguard to activate.",
+      "Nothing could ever cause this invalidation rule to trigger.",
+    ]) {
+      expect(codes(manipulationResult({ invalidationConditions: [text] }))).toContain("INVALIDATION_CONDITION_INCOHERENT");
+    }
+    for (const text of [
+      "Analytics unavailable long enough to prevent reliable comparison.",
+      "Baseline cannot be matched to a comparable treatment period.",
+      "Delivery tooling fails to apply the treatment consistently.",
+    ]) {
+      expect(codes(manipulationResult({ invalidationConditions: [text] }))).not.toContain("INVALIDATION_CONDITION_INCOHERENT");
+    }
+  });
+
+  // --- second-order paraphrase matrix (author-generated, not the supplied strings) ---
+  it("second-order: padding via repetition / rambling / redundancy / draw-out", () => {
+    for (const text of [
+      "Loop back to earlier points again and again so the video runs long and retention climbs.",
+      "Have the presenter go off on a tangent about unrelated trivia to pad viewing minutes.",
+      "Restate the thesis at the top of every chapter so the video is longer and retention rises.",
+      "Circle back to the intro claims mid-video so it runs longer and average view duration rises.",
+      "Add a second walkthrough of the same steps to push the runtime up and hold attention.",
+    ]) {
+      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
+  });
+
+  it("second-order: delayed payoff / withheld answer", () => {
+    for (const text of [
+      "Push the takeaway into the final third so nobody clicks away early.",
+      "Reserve the actionable step for the very end so viewers watch the whole thing.",
+      "Keep the verdict in your back pocket until the last section so people finish the video.",
+      "Cling to the final recommendation until the sign-off so people finish the whole video.",
+    ]) {
+      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
+  });
+
+  it("second-order: manufactured conflict / outrage", () => {
+    for (const text of [
+      "Cook up a rivalry with a competing channel to get commenters arguing.",
+      "Blow a minor wording quibble out of proportion into a scandal to farm angry replies.",
+      "Pit two commenters against each other to keep the comment war going.",
+      "Brand a minor caption fix as an outrageous betrayal of viewers to bait angry replies.",
+    ]) {
+      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
+  });
+
+  it("second-order: deceptive scarcity / urgency", () => {
+    for (const text of [
+      "Fake a countdown timer so people rush to subscribe before it hits zero.",
+      "Say only three copies remain even though the inventory is effectively unlimited.",
+      "Post that enrolment shuts tonight while it will in fact stay open all year.",
+      "Suggest fewer than five kits are left when we can ship as many as ordered.",
+    ]) {
+      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
+  });
+
+  it("second-order: double negation (not refrain / do not fail to / wrong not to / never skip)", () => {
+    for (const text of [
+      "It would be wrong not to defer the payoff if retention improves.",
+      "Never skip padding the middle; that is how minutes viewed rise.",
+      "Do not neglect to stretch the segment so watch time climbs.",
+      "It would be careless not to hold the answer back for retention.",
+    ]) {
+      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
+  });
+
+  it("second-order: safe controls that only mention the harm vocabulary still pass", () => {
+    for (const text of [
+      "Front-load the promised answer and cut the recap entirely.",
+      "Trim tangents so the runtime drops and the payoff arrives sooner.",
+      "Get to the recommendation fast and keep the video lean.",
+      "State plainly that registration stays open year-round.",
+      "Summarise both sides of the wording debate fairly.",
+    ]) {
+      expect(validate(asTreatment(text))).toEqual([]);
+    }
+  });
+
+  it("second-order: decision-immutability variants", () => {
+    for (const text of [
+      "Even if the treatment wins, the current opening stays.",
+      "No matter how the numbers land, we will keep the existing thumbnail.",
+      "Run it as a box-ticking exercise; the current opening is set in stone.",
+      "The experiment cannot overturn the decision to keep the current version.",
+      "We have no intention of altering the present thumbnail after this run.",
+    ]) {
+      expect(codes(asPurpose(text))).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    }
+  });
+
+  it("second-order: legitimate outcome-conditioned preservation still passes", () => {
+    for (const text of [
+      "If the reworked hook underperforms the baseline, keep the current opening this quarter.",
+      "Should satisfaction decline, revert to the existing hook.",
+      "A null or adverse read would support keeping the current version pending more data.",
+      "When retention drops under the guardrail, roll back to the existing hook.",
+    ]) {
+      expect(codes(asJustification(text))).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    }
+  });
+
+  it("second-order: impossible-invalidation variants", () => {
+    for (const text of [
+      "Activation is beyond the realm of possibility.",
+      "This safeguard is guaranteed never to fire.",
+      "Nothing that could happen would ever activate this rule.",
+      "There is no realistic path by which this safeguard ever activates.",
+      "It is inconceivable that anything could trigger this rule.",
+    ]) {
+      expect(codes(manipulationResult({ invalidationConditions: [text] }))).toContain("INVALIDATION_CONDITION_INCOHERENT");
+    }
+  });
+
+  it("second-order: legitimate inability invalidation conditions still pass", () => {
+    for (const text of [
+      "Invalidate if the platform stops reporting audience retention for this video.",
+      "Invalidate if the treatment window coincides with a major algorithm change.",
+      "Invalidate if fewer than half the planned videos receive the treatment.",
+      "Invalidate if an unrelated news spike distorts the treatment period.",
+    ]) {
+      expect(codes(manipulationResult({ invalidationConditions: [text] }))).not.toContain("INVALIDATION_CONDITION_INCOHERENT");
+    }
+  });
+});

@@ -80,7 +80,7 @@ const FABRICATED_FORECAST = /\b(?:\d+(?:\.\d+)?\s*x\s*(?:lift|increase|improveme
 // keep/retain the current thing, do not change, no change needed, further
 // investigation unnecessary, status quo should remain -- not only the exact
 // phrasings the round-1 detector listed.
-const STATUS_QUO_INTENT = /\b(?:to (?:confirm|prove|show|demonstrate|validate|establish|verify|reassure (?:us|ourselves)) (?:that )?(?:the )?(?:current|existing|status[- ]?quo|present)\b|(?:should|must|will|to|shall)\s+(?:instead\s+)?(?:remain|stay|be kept|be left|be retained|be preserved|be maintained)\s+(?:unchanged|as[- ]?is|in place|the same|untouched|as it is)|(?:remains?|stays?|staying|remaining)\s+(?:unchanged|as[- ]?is|the same|untouched)|(?:preserve|preserving|keep|keeping|retain|retaining|maintain|maintaining)\s+(?:the\s+)?(?:current|existing|present)\s+\w+|leave\s+(?:the\s+|our\s+)?(?:current|existing|present)?\s*\w+\s+(?:as[- ]?is|unchanged|in place|alone|untouched|the same)|(?:the )?(?:current|existing|present) (?:approach|opening|hook|thumbnail|title|format|structure|packaging|design|version) is (?:fine|correct|best|optimal|working|effective|good enough|already (?:good|working))|(?:do|does|should)\s+not\s+(?:change|modify|alter|touch|test|revise)\b|no\s+(?:further\s+)?change\s+(?:is\s+)?(?:needed|warranted|required|necessary|justified)|(?:no\s+(?:further|additional)\s+(?:investigation|testing|study|experimentation|measurement)\s+(?:is\s+)?(?:necessary|needed|warranted|required|justified)|further\s+(?:investigation|testing|study|experimentation|measurement)\s+(?:is\s+)?(?:unnecessary|unwarranted|unneeded|not (?:needed|warranted|required|justified)))|no\s+need\s+(?:to|for)\s+(?:further\s+|additional\s+|any\s+)?(?:test|testing|investigat\w*|study\w*|experiment\w*|measur\w*)|(?:test|investigat\w*|study\w*|experiment\w*)\s+(?:it\s+|this\s+|the\s+\w+\s+)?(?:any\s+)?further\s+(?:is\s+)?(?:unnecessary|unwarranted|not\s+(?:needed|warranted|worthwhile))|no\s+(?:more|further|additional|extra|other)\s+(?:test(?:s|ing)?|investigat\w+|study|studies|studying|experiment\w*|measur\w+|analys\w+|research|iteration\w*|probing|exploration)\b(?:[^.;:!?]{0,40}?\b(?:needed|required|necessary|warranted|justified|called for|worthwhile|of value)\b)?|no\s+(?:reason|point|need|value|benefit)\s+(?:in\s+|to\s+)?(?:further\s+|additional\s+|any\s+|keep\s+)?(?:test\w*|investigat\w*|study\w*|experiment\w*|measur\w*|explor\w*)|(?:needs?|requires?|warrants?|calls?\s+for)\s+no\s+(?:further\s+|additional\s+|more\s+)?(?:experiment\w*|test\w*|testing|investigat\w*|study|studies|measur\w*|analysis|iteration\w*)|status quo\s+(?:is (?:fine|correct|best|preferable|optimal)|should\s+(?:remain|stand|persist|be (?:kept|retained|preserved))))/i;
+const STATUS_QUO_INTENT = /\b(?:to (?:confirm|prove|show|demonstrate|validate|establish|verify|reassure (?:us|ourselves)) (?:that )?(?:the )?(?:current|existing|status[- ]?quo|present)\b|(?:should|must|will|to|shall)\s+(?:instead\s+)?(?:remain|stay|be kept|be left|be retained|be preserved|be maintained)\s+(?:unchanged|as[- ]?is|in place|the same|untouched|as it is)|(?:remains?|stays?|staying|remaining)\s+(?:unchanged|as[- ]?is|the same|untouched)|(?:preserve|preserving|keep|keeping|retain|retaining|maintain|maintaining)\s+(?:the\s+)?(?:current|existing|present)\s+\w+|leave\s+(?:the\s+|our\s+)?(?:current|existing|present)?\s*\w+\s+(?:as[- ]?is|unchanged|in place|alone|untouched|the same)|(?:the )?(?:current|existing|present) (?:approach|opening|hook|thumbnail|title|format|structure|packaging|design|version) is (?:fine|correct|best|optimal|working|effective|good enough|already (?:good|working))|(?:do|does|should)\s+not\s+(?:change|modify|alter|touch|test|revise)\b|no\s+(?:further\s+)?change\s+(?:is\s+)?(?:needed|warranted|required|necessary|justified)|(?:no\s+(?:further|additional)\s+(?:investigation|testing|study|experimentation|measurement)\s+(?:is\s+)?(?:necessary|needed|warranted|required|justified)|further\s+(?:investigation|testing|study|experimentation|measurement)\s+(?:is\s+)?(?:unnecessary|unwarranted|unneeded|not (?:needed|warranted|required|justified)))|no\s+need\s+(?:to|for)\s+(?:further\s+|additional\s+|any\s+)?(?:test|testing|investigat\w*|study\w*|experiment\w*|measur\w*)|(?:test|investigat\w*|study\w*|experiment\w*)\s+(?:it\s+|this\s+|the\s+\w+\s+)?(?:any\s+)?further\s+(?:is\s+)?(?:unnecessary|unwarranted|not\s+(?:needed|warranted|worthwhile))|no\s+(?:more|further|additional|extra|other)\s+(?:test(?:s|ing)?|investigat\w+|study|studies|studying|experiment\w*|measur\w+|analys\w+|research|iteration\w*|probing|exploration)\b(?:[^.;:!?]{0,40}?\b(?:needed|required|necessary|warranted|justified|called for|worthwhile|of value)\b)?|no\s+(?:reason|point|need|value|benefit)\s+(?:in\s+|to\s+)?(?:further\s+|additional\s+|any\s+|keep\s+)?(?:test\w*|investigat\w*|study\w*|experiment\w*|measur\w*|explor\w*)|(?:needs?|requires?|warrants?|calls?\s+for)\s+no\s+(?:further\s+|additional\s+|more\s+)?(?:experiment\w*|test\w*|testing|investigat\w*|study|studies|measur\w*|analysis|iteration\w*)|(?:current|existing|present|status[- ]?quo)\s+(?:\w+\s+){0,2}?(?:should|must|will|shall|is going to|is|are|has to|ought to|had better|gets? to)\s+(?:just |simply )?(?:stay|stays|staying|remain|remains|remaining|persist|persists|stand|stands|be left alone|be kept|be preserved|not change|carry on)\b|(?:current|existing|present|status[- ]?quo)\s+(?:\w+\s+){0,2}?(?:stay|stays|staying|remain|remains|remaining|persist|persists|carr(?:y|ies))\s+(?:for good|for ever|forever|put|the same|in place|on|as[- ]?is|unchanged|permanently)\b|(?:current|existing|present)\s+(?:opening|hook|thumbnail|title|version|format|approach|design|framing|cut|packaging|structure|one)\s+(?:just |simply |still )?(?:stay|stays|staying|remain|remains|remaining|persist|persists|is staying|is n['’]?t changing|does n['’]?t change|holds)\b|\b(?:stay|stays|staying)\s+put\b|\bhere to stay\b|\bthe opening is staying\b|status quo\s+(?:is (?:fine|correct|best|preferable|optimal)|should\s+(?:remain|stand|persist|be (?:kept|retained|preserved))))/i;
 // A status-quo clause is a legitimate OUTCOME only when the SAME clause ties the
 // preservation to a measured result -- a null / negative / inconclusive result,
 // the treatment underperforming, a guardrail breach, or an actual control
@@ -90,14 +90,16 @@ const STATUS_QUO_INTENT = /\b(?:to (?:confirm|prove|show|demonstrate|validate|es
 // requires the outcome semantics themselves, and it is applied clause by clause
 // (sentence / semicolon units; commas kept intact so "if X, preserve Y" stays
 // one clause).
+const OUTCOME_COND = "(?:if|should|when|whenever|were)";
 const OUTCOME_JUSTIFIED_PRESERVE = new RegExp([
-  "\\bif\\b[^.;!?]*\\b(?:treatment|variant|arm|change|rework(?:ed|ing)?|new\\s+\\w+|challenger|candidate|experimental\\s+\\w+)\\b[^.;!?]*\\b(?:under[- ]?perform\\w*|fails?\\b|failing\\b|does\\s+not\\s+(?:beat|improve|outperform|move|help|win)|loses?\\b|is\\s+worse\\b|regress\\w*|shows?\\s+no\\b|no\\s+(?:better|improvement|lift|gain|signal|effect))",
+  OUTCOME_COND + "\\b[^.;!?]*\\b(?:treatment|variant|arm|change|rework(?:ed|ing)?|new\\s+\\w+|reworked\\s+\\w+|challenger|candidate|experimental\\s+\\w+)\\b[^.;!?]*\\b(?:under[- ]?perform\\w*|fails?\\b|failing\\b|does\\s+not\\s+(?:beat|improve|outperform|move|help|win)|(?:do|does|did)\\s+not\\s+beat|loses?\\b|losing\\b|is\\s+worse\\b|regress\\w*|shows?\\s+no\\b|no\\s+(?:better|improvement|lift|gain|signal|effect)|worse\\s+on)",
   "\\b(?:a\\s+)?null(?:[- ]result)?\\b",
-  "\\b(?:negative|inconclusive|flat|non[- ]significant|unfavou?rable|no[- ]effect)\\s+(?:result|read|reading|outcome|finding|signal)\\b",
-  "\\bif\\b[^.;!?]*\\b(?:guardrail|satisfaction|retention|viewer\\s+value|trust|promise\\s+integrity)\\b[^.;!?]*\\b(?:degrad\\w*|breach\\w*|is\\s+breached|drops?\\b|falls?\\b|declines?\\b|worsens?\\b|regress\\w*)",
+  "\\b(?:negative|inconclusive|flat|non[- ]significant|unfavou?rable|no[- ]effect|adverse)\\s+(?:result|read|reading|outcome|finding|signal|effect)\\b",
+  "\\bflat\\s+or\\s+negative\\s+result\\b",
+  OUTCOME_COND + "\\b[^.;!?]*\\b(?:guardrail|safety\\s+metric|satisfaction|retention|viewer\\s+value|trust|promise\\s+integrity)\\b[^.;!?]*\\b(?:degrad\\w*|breach\\w*|is\\s+breached|drops?\\b|falls?\\b|declines?\\b|worsens?\\b|regress\\w*|is\\s+harmed|takes\\s+a\\s+hit)",
   "\\bcontrol\\s+(?:condition|arm|group|cell)\\s+(?:that\\s+|which\\s+|will\\s+|shall\\s+|would\\s+|to\\s+)?(?:preserv|keep|keeps|retain|retains|hold|holds|maintain|maintains|leav|us(?:e|es)|is\\b|serves)\\w*",
   "\\bwhen\\s+the\\s+treatment\\b[^.;!?]*\\b(?:under[- ]?perform\\w*|fails?\\b|loses?\\b|does\\s+not\\b|shows?\\s+no\\b)",
-  "\\bshould\\s+the\\s+(?:data|evidence|result|read|treatment|change)\\b[^.;!?]*\\b(?:not\\b|fail|under[- ]?perform|show\\s+no)",
+  OUTCOME_COND + "\\s+the\\s+(?:data|evidence|result|read|treatment|change|numbers?|reworked\\s+\\w+)\\b[^.;!?]*\\b(?:not\\b|fail|under[- ]?perform|show\\s+no|do(?:es)?\\s+not\\s+beat|are\\s+(?:flat|weak|negative))",
 ].join("|"), "i");
 
 // Sentence / semicolon clause units. Commas are kept inside a clause so a
@@ -105,6 +107,45 @@ const OUTCOME_JUSTIFIED_PRESERVE = new RegExp([
 // opening" is analysed as one unit and its outcome linkage stays visible.
 const sentenceClauses = (text: string): string[] =>
   text.split(/[.!?;]+/).map((clause) => clause.trim()).filter((clause) => clause.length > 0);
+
+// --- Decision-purpose contradiction: the experiment must let the OUTCOME move
+// the decision. Two families:
+//   (a) plain status-quo purpose (STATUS_QUO_INTENT) -- contradictory UNLESS the
+//       clause legitimately ties preservation to a measured outcome
+//       (OUTCOME_JUSTIFIED_PRESERVE);
+//   (b) unconditional immutability -- "keep the current/existing/control version
+//       REGARDLESS of the result / whatever the outcome / even if it outperforms
+//       / permanently" -- which is ALWAYS contradictory, even next to a valid
+//       conditional, because a real experiment's result can change the decision.
+// The mere presence of "result" / "control" / "outcome" / "experiment" never
+// exempts (b).
+const PRESERVE_CURRENT_VERB = /\b(?:preserv\w+|keep\w*|retain\w*|maintain\w*|(?:should|must|will|shall|is\s+going\s+to|are\s+going\s+to|intend\w*\s+to|plan\w*\s+to|mean\w*\s+to)\s+(?:just\s+)?(?:stay|stays|remain|remains|persist|stand|continue|be\s+kept)\b|(?:stay|stays|staying|remain|remains|remaining)\s+(?:for\s+good|for\s+ever|forever|put|in\s+place|the\s+same|as[- ]?is|unchanged|permanently)|stay\w*\s+put|stays?\s+the\s+same|remain\w*\s+(?:unchanged|as[- ]?is|in\s+place|the\s+same|untouched)|here\s+to\s+stay|left\s+(?:as[- ]?is|alone|untouched|in\s+place|the\s+same)|leave\s+(?:it|the\s+\w+|them|things)\s+(?:alone|as[- ]?is|unchanged|untouched|be)|(?:will|shall|is\s+going\s+to|are\s+going\s+to|wo\s?n['’]?t|will\s+not|is\s+not\s+going\s+to|is\s+n['’]?t\s+going\s+to)\s+(?:not\s+)?(?:be\s+)?(?:touched|changed|altered|modified|revised|adjusted|reworked|replaced|swapped|moved?|moving|budge[sd]?|budging|shift(?:ed|s|ing)?|change)\b|(?:lock\w*\s+in|locked\s+down|set\s+in\s+stone|nailed\s+down|fixed\s+in\s+place|non-?negotiable|off\s+the\s+table|not\s+up\s+for\s+(?:debate|discussion|change)|a\s+foregone\s+conclusion|already\s+(?:final|decided|settled)))/i;
+const CURRENT_ASSET_REF = /\b(?:(?:current|existing|present|status[- ]?quo)\s+(?:\w+\s+){0,2}?(?:opening|hook|thumbnail|title|format|approach|design|framing|packaging|structure|cut|edit|version|one|way|setup|configuration|treatment|variant|content|video)|the\s+control\b|control\s+(?:version|arm|condition|group|cell|opening|hook|cut)?|what\s+we\s+(?:have|already\s+have|currently\s+use)|things?\s+as\s+they\s+are|the\s+status[- ]?quo|it\s+as[- ]?is|the\s+way\s+(?:it|things)\s+(?:is|are))\b/i;
+const UNCONDITIONAL_MARKER = /\b(?:regardless(?:\s+of\s+(?:the\s+)?(?:result|results|outcome|data|read|reading|finding|findings|evidence|numbers?))?|whatever\s+(?:the\s+)?(?:result|results|outcome|data|read|reading|finding|findings|numbers?|metrics?|happens?)|whatever\s+(?:we|you|the\s+team)\s+(?:see|sees|find|finds|learn|learns|observe|observes|get|gets|discover|discovers|turn\s+up|turns\s+up)|nothing\s+(?:this|the)\s+(?:experiment|test|run|trial|comparison)\s+(?:turns\s+up|shows|reveals|finds|produces)\s+(?:will|would|can|could)|however\s+(?:the\s+)?(?:result|results|outcome|data|metrics?|numbers?|read|experiment|it|things?)\s+(?:move|moves|moved|land|lands|fall|falls|come\s+out|comes\s+out|turn\s+out|turns\s+out|shake\s+out|shakes\s+out|go|goes|play\s+out)|no\s+matter\s+(?:the\s+(?:result|outcome|data|metrics?)|what(?:\s+(?:the\s+)?(?:result|data|evidence|numbers?)\s+says?)?|how\s+(?:the\s+)?(?:numbers?|metrics?|data|results?)\s+(?:land|move|fall|come\s+out))|whether\s+or\s+not\b|whether\s+(?:the\s+)?(?:it|treatment|challenger|variant|candidate|they|results?|data|test)\s+(?:wins?|loses?|outperform\w*|underperform\w*|succeeds?|fails?|arrive|arrives|come|comes|helps?|says?)|win\s+or\s+lose|wins?\s+or\s+loses?|either\s+way|come\s+what\s+may|even\s+if\s+(?:it|the\s+treatment|the\s+challenger|the\s+variant|the\s+candidate|they|results?)\s+(?:outperform\w*|out-?perform\w*|wins?|beats?|succeeds?|improves?|helps?|is\s+better)|permanent(?:ly)?|for\s+good\b|forever\b|for\s+all\s+time|in\s+perpetuity|non-?negotiable|locked\s+in\s+for\s+good|no\s+more\s+(?:testing|experiment\w*|investigat\w*)\s+(?:is\s+)?(?:needed|required|necessary|warranted)|(?:the\s+)?(?:result|results|outcome|data|evidence|read|finding)\s+(?:cannot|can'?t|won'?t|will\s+not|shan'?t|is\s+not\s+going\s+to)\s+(?:change|alter|affect|move|sway|shift|overturn|influence)\s+(?:the\s+|this\s+|our\s+|any\b)?(?:decision|call|plan|choice|outcome))\b/i;
+// Explicit refusal to act on the decision.
+const NO_INTENT_TO_CHANGE = /\b(?:no\s+(?:reason|intention|intent|plan|plans|desire|willingness|appetite|need|wish|basis|grounds|case|point)\s+(?:whatsoever\s+)?(?:in\s+|to\s+|for\s+|of\s+)?(?:ever\s+)?|not\s+(?:prepared|willing|going|planning|about|inclined|of\s+a\s+mind)\s+to\s+|(?:wo\s?n['’]?t|will\s+not|refuse[sd]?\s+to|declin(?:e|es|ed)\s+to|have\s+no\s+plans\s+to)\s+)(?:chang\w+|alter\w*|modif\w+|revis\w+|touch\w*|adjust\w*|rework\w*|replac\w+|updat\w+|swap\w*|switch\w*|change\s+course|mov(?:e|ing)\s+(?:on|away)\s+from)\b/i;
+const SKIP_EXPERIMENT = /\b(?:skip|skipping|forgo|forgoing|forego|foregoing|cancel\w*|call\s+off|calling\s+off|called\s+off|drop\w*|abandon\w*|ignore|ignoring|bypass\w*|do\s+without|no\s+need\s+for|dispense\s+with|scrap\w*|shelve\w*|waive)\s+(?:the\s+|this\s+|any\s+|our\s+)?(?:experiment|test|trial|a[/-]?b\s+test|comparison|study|measurement)\b/i;
+const KEEP_WHAT_WE_HAVE = /\bkeep\s+(?:what\s+we\s+(?:have|already\s+have)|things?\s+(?:as\s+(?:they\s+are|is)|the\s+same)|the\s+(?:current|existing|present)|it\s+(?:as[- ]?is|the\s+same)|the\s+status[- ]?quo)\b/i;
+// The decision/asset is declared fixed -- immutability phrasing that is
+// contradictory whenever it attaches to the current/control version.
+const IMMUTABLE_PHRASE = /\b(?:set\s+in\s+stone|carved\s+in\s+stone|written\s+in\s+stone|locked\s+(?:in|down)|nailed\s+down|non-?negotiable|off\s+the\s+table|not\s+up\s+for\s+(?:debate|discussion|change|grabs)|a\s+foregone\s+conclusion|already\s+(?:final|finali[sz]ed|decided|settled|made)|final\s+and\s+(?:will\s+not|wo\s?n['’]?t)\s+change|here\s+to\s+stay|staying\s+for\s+good|for\s+good\s+regardless)\b/i;
+// The experiment's result is declared powerless to move the decision.
+const RESULT_CANNOT_MOVE = /\b(?:experiment|test|trial|comparison|result|results|outcome|data|read|finding|numbers?)\s+(?:cannot|can\s?not|can'?t|wo\s?n['’]?t|will\s+not|shall\s+not|is\s+not\s+going\s+to|are\s+not\s+going\s+to|has\s+no\s+power\s+to|is\s+powerless\s+to)\s+(?:change|alter|overturn|affect|move|sway|shift|influence|reverse|undo|reopen)\b/i;
+const PURPOSE_ASSET_NOUN = /\b(?:opening|hook|thumbnail|title|format|approach|design|framing|packaging|structure|cut|edit|version|hook)\b/i;
+
+function purposeClauseContradicts(clause: string): boolean {
+  const assetPresent = CURRENT_ASSET_REF.test(clause) || PURPOSE_ASSET_NOUN.test(clause);
+  const preservesCurrent = PRESERVE_CURRENT_VERB.test(clause) && assetPresent;
+  // (b) unconditional immutability -- never exempted by an outcome token
+  if (preservesCurrent && UNCONDITIONAL_MARKER.test(clause)) return true;
+  if (assetPresent && IMMUTABLE_PHRASE.test(clause)) return true;
+  if (RESULT_CANNOT_MOVE.test(clause)) return true;
+  if (NO_INTENT_TO_CHANGE.test(clause)) return true;
+  if (SKIP_EXPERIMENT.test(clause) && (PRESERVE_CURRENT_VERB.test(clause) || KEEP_WHAT_WE_HAVE.test(clause))) return true;
+  // (a) plain status-quo purpose, unless outcome-conditioned in the same clause
+  if (STATUS_QUO_INTENT.test(clause) && !OUTCOME_JUSTIFIED_PRESERVE.test(clause)) return true;
+  return false;
+}
 const GUARDRAIL_OVERRIDE = /\b(?:ignore|override|overrule|disregard|bypass|wave away|set aside|push past)\s+(?:the |any |a )?(?:guardrail|degradation|breach|threshold|red[- ]?line|stopping condition|harm signal)/i;
 const CONTINUE_NEAR_GUARDRAIL = /(?:\b(?:continue|proceed|keep going|carry on|press on|forge ahead|push (?:on|ahead)|do not (?:stop|halt|pause|revert|roll ?back)|don'?t (?:stop|halt|pause|revert))\b[^.]{0,90}?\b(?:guardrail|degrad|breach|threshold|red[- ]?line|harm signal|regression)\b)|(?:\b(?:guardrail|degrad(?:es|ing|ation)?|breach|threshold breach|red[- ]?line|harm signal)\b[^.]{0,90}?\b(?:continue|proceed|keep going|carry on|press on|forge ahead|still (?:ship|run|adopt|continue)|do not (?:stop|halt|require stopping)|regardless|anyway|nonetheless|is (?:acceptable|tolerable|fine|ok))\b)/i;
 const ROLLBACK_NOT_REVERTING = /\b(?:continue|keep|maintain|leave|retain|preserve|hold|stay with|do not (?:revert|roll ?back|undo|restore|remove|withdraw|change back))\b[^.]{0,60}?\b(?:the |our )?(?:treatment|change|new |reworked |updated |modified )?(?:opening|thumbnail|hook|title|version|variant|format|approach|design|framing|treatment|change)/i;
@@ -131,13 +172,28 @@ const INCOHERENT_INVALIDATION = new RegExp(
   "|never\\s+" + IMPOSSIBLE_ADVERB + "(?:happens?|occurs?|arises?|triggers?|fires?|activates?|possible|going\\s+to\\s+(?:happen|occur|trigger)|be\\s+(?:met|satisfied|reached|triggered))" +
   "|cannot\\s+" + IMPOSSIBLE_ADVERB + IMPOSSIBLE_OCCUR +
   "|is\\s+(?:logically\\s+|physically\\s+|simply\\s+|flatly\\s+|literally\\s+|just\\s+)?impossible" +
+  "|(?:inconceivable|unthinkable|unimaginable|unfathomable|beyond\\s+belief|absurd|ludicrous|preposterous|hard|impossible)\\s+(?:to\\s+(?:think|imagine|believe|conceive|suppose)\\s+)?that\\s+(?:anything|any\\s+\\w+|it|this|the\\s+\\w+|such\\s+a\\s+\\w+)\\b[^.;:!?]{0,40}?\\b(?:could|would|can|might|will)\\b" +
   "|impossible\\s+(?:for\\s+[^.;:!?]{0,50}?\\s+)?to\\s+(?:be\\s+)?(?:satisfy|satisfied|trigger|triggered|meet|met|reach|reached|occur|happen|achieve|attain|arise|fire|activate|activated)" +
   "|incapable\\s+of\\s+(?:ever\\s+)?(?:occurring|happening|arising|triggering|activating|firing|being\\s+(?:met|triggered|reached|satisfied))" +
   "|(?:zero|no|0\\s*%?|nil|non-?existent)\\s+(?:\\w+\\s+){0,2}?(?:chance|possibility|probability|likelihood|odds|prospect)\\s+of\\s+(?:ever\\s+)?(?:activation|activating|triggering|occurring|occurrence|happening|firing|being\\s+(?:met|triggered|reached|satisfied))" +
-  "|no\\s+(?:\\w+\\s+){0,3}?(?:scenario|world|universe|situation|circumstance|condition|case|reality|way)s?\\b[^.;:!?]{0,40}?\\b(?:for\\b|in\\s+which|where\\b|whereby\\b|under\\s+which|that\\s+would|could\\s+(?:ever|this|the|it|that)|would\\s+(?:ever|this|the|it|that)|exists?\\b|arises?\\b|obtains?\\b)" +
+  "|no\\s+(?:\\w+\\s+){0,3}?(?:scenario|world|universe|situation|circumstance|condition|case|reality|way|path|route|means|mechanism|avenue|combination|chain|sequence)s?\\b[^.;:!?]{0,40}?\\b(?:for\\b|in\\s+which|by\\s+which|through\\s+which|where\\b|whereby\\b|under\\s+which|that\\s+would|that\\s+could|could\\s+(?:ever|this|the|it|that)|would\\s+(?:ever|this|the|it|that)|exists?\\b|arises?\\b|obtains?\\b|this\\s+\\w+\\s+(?:ever\\s+)?(?:activates?|triggers?|fires?))" +
   "|under\\s+no\\s+(?:\\w+\\s+){0,3}?(?:circumstances?|conditions?|scenario|situation)\\b" +
+  "|nothing\\s+(?:that\\s+(?:could|would|can|might)\\s+(?:ever\\s+)?(?:happen|occur|arise|be\\s+done)\\s+)?(?:could|would|can|will|might)\\b[^.;:!?]{0,40}?\\b(?:activate|trigger|fire|set\\s+.{0,10}?off|cause|make\\s+.{0,15}?(?:fire|trigger)|meet|satisfy|happen|occur)\\b" +
   "|nothing\\s+(?:could|would|can|will)\\b" +
   "|not\\s+applicable\\b" +
+  // "guaranteed / certain / bound to remain dormant / inactive", "inactive forever"
+  "|(?:guaranteed|certain|sure|bound|assured|destined|doomed|100%\\s+(?:going\\s+)?)\\s+(?:to\\s+|of\\s+)?(?:(?:remain|remaining|stay|stays|staying|be|being)\\s+[^.;:!?]{0,45}?(?:dormant|inactive|inert|unused|un(?:triggered|fired|activated)|silent|idle|asleep|passive|off|latent|quiet)|never\\s+(?:to\\s+)?(?:fire|trigger|triggered|activate|activated|go\\s+off|happen|occur|be\\s+(?:met|triggered|reached|activated|satisfied|fulfilled|true)))\\b" +
+  "|(?:remain|remains|stay|stays|be|sit|sits)\\s+(?:forever\\s+|permanently\\s+|always\\s+|indefinitely\\s+|perpetually\\s+)(?:dormant|inactive|inert|silent|idle|latent|un(?:triggered|fired|activated))\\b" +
+  "|(?:dormant|inactive|inert|silent|idle|latent|un(?:triggered|fired|activated))\\s+(?:forever|permanently|for\\s+all\\s+time|for\\s+good|indefinitely|in\\s+perpetuity|always)\\b" +
+  "|(?:forever|permanently|always|perpetually|eternally)\\s+(?:dormant|inactive|inert|silent|idle|latent|un(?:triggered|fired|activated))\\b" +
+  // "beyond the realm of possibility", "outside all possibility"
+  "|(?:beyond|outside|past)\\s+(?:the\\s+realm\\s+of\\s+|the\\s+bounds\\s+of\\s+|any\\s+|all\\s+|what\\s+is\\s+|the\\s+limits\\s+of\\s+)?(?:possibilit(?:y|ies)|what\\s+is\\s+possible|the\\s+possible)\\b" +
+  "|not\\s+(?:simply\\s+|even\\s+|really\\s+|remotely\\s+|at\\s+all\\s+|entirely\\s+|quite\\s+)?(?:within|inside|in|a\\s+)\\s*(?:the\\s+(?:realm|bounds|range|limits|scope)\\s+of\\s+)?(?:the\\s+)?(?:realm\\s+of\\s+)?(?:possibilit(?:y|ies)|what\\s+is\\s+possible)\\b" +
+  "|(?:lies|is|remains|falls|sits)\\s+(?:well\\s+|simply\\s+|firmly\\s+)?(?:beyond|outside)\\s+(?:the\\s+)?(?:realm|bounds|limits|range)?\\s*of\\s+(?:the\\s+)?(?:possibilit(?:y|ies)|what\\s+is\\s+possible)\\b" +
+  // "no chain / sequence / combination of events can set off / trigger this"
+  "|no\\s+(?:\\w+\\s+){0,2}?(?:chain|sequence|series|string|combination|set|course|run)\\s+of\\s+(?:events|factors|circumstances|conditions|actions|steps|inputs?)\\b[^.;:!?]{0,45}?\\b(?:can|could|will|would|is\\s+able\\s+to|might|would\\s+ever)\\b" +
+  "|no\\s+(?:\\w+\\s+){0,2}?(?:event|circumstance|condition|factor|action|input|scenario|situation|combination|sequence|series|chain)\\b[^.;:!?]{0,35}?\\b(?:can|could|will|would|is\\s+able\\s+to)\\s+(?:ever\\s+)?(?:set\\s+(?:it\\s+|this\\s+)?off|trigger|activate|fire|cause|produce|lead\\s+to|bring\\s+about|result\\s+in|make\\s+.{0,20}?(?:fire|trigger))\\b" +
+  "|(?:never|not)\\s+(?:capable|able)\\s+of\\s+(?:being\\s+|ever\\s+)?(?:triggered|activated|met|fired|reached|set\\s+off)\\b" +
   "|there\\s+(?:is|are|exists?|will\\s+be|could\\s+be)\\s+no\\s+(?:\\w+\\s+){0,3}?(?:condition|scenario|circumstance|situation|way|world|universe|case|reality)\\b" +
   "|by\\s+definition\\s+(?:it\\s+|this\\s+|that\\s+|the\\s+\\w+\\s+)?(?:always|cannot|can\\s+not|never|is\\s+impossible|does\\s+not|will\\s+not|won'?t|couldn'?t)" +
   ")",
@@ -214,18 +270,43 @@ const NO_CHANGE_TREATMENT = /^\s*(nothing|none|n\/?a|no change|measurement only|
 // promised value appears sooner", "improve pacing without delaying the payoff")
 // never reach step 3 because they carry no harmful action.
 const HT_CLAUSE_BOUNDARY = /[.!?;:]+|,\s*(?:and|but|yet|then|plus|also)\b|\s+(?:but|yet|whereas|however)\s+/i;
-const HT_NEGATION_FALSE = /\bnot only\b/gi;
-const HT_NEGATION_CUE = /\b(?:without|avoids?|avoiding|avoided|not|never|no longer|no|rather than|instead of|does\s?n['’]?t|do\s?n['’]?t|is\s?n['’]?t|are\s?n['’]?t|wo\s?n['’]?t|would\s?n['’]?t|ca\s?n['’]?t|cannot|must\s?not|should\s?not|so as not to|prevent(?:s|ing)?|refus(?:e|es|ing)\s+to|stop(?:s|ping)?\s+short\s+of|discourage(?:s|d|ing)?)\b/gi;
+// Constructions that read as negations token-by-token but AFFIRM the action, so
+// they are neutralised before parity counting: "not only X" (emphatic), and
+// "wrong / a mistake / remiss not to X" (two operators -> affirm X).
+const HT_NEGATION_FALSE = /\bnot only\b|\b(?:wrong|a\s+mistake|mistaken|bad|foolish|unwise|remiss|negligent|careless|silly)\s+not\s+to\b/gi;
+// A negation cue flips harmful intent to safe. "refrain from" / "fail to" /
+// "neglect to" / "skip" are themselves negations, so "do not fail to X" / "not
+// refrain from X" / "never skip X" is a DOUBLE negative (parity even) that still
+// affirms X. "wrong to X" / "a mistake to X" is a single negation (X is bad).
+const HT_NEGATION_CUE = /\b(?:without|avoids?|avoiding|avoided|not|never|no longer|no|rather than|instead of|does\s?n['’]?t|do\s?n['’]?t|is\s?n['’]?t|are\s?n['’]?t|wo\s?n['’]?t|would\s?n['’]?t|ca\s?n['’]?t|cannot|must\s?not|should\s?not|so as not to|prevent(?:s|ing)?|refus(?:e|es|ing)\s+to|refrain(?:s|ing|ed)?\s+from|fail(?:s|ing|ed)?\s+to|neglect(?:s|ing|ed)?\s+to|omit(?:s|ting|ted)?\s+to|hesitat\w+\s+to|shy\s+away\s+from|skip(?:s|ping|ped)?|forgo(?:es|ing)?|forego(?:es|ing)?|leave\s+out|leaves\s+out|stop(?:s|ping)?\s+short\s+of|(?:wrong|a\s+mistake|mistaken|bad|foolish|unwise|remiss|counterproductive)\s+to|discourage(?:s|d|ing)?)\b/gi;
+// A negation only governs the predicate it is adjacent to: when computing parity
+// for an action, the look-back is cut at the last comma or contrastive
+// coordinator before it, so "Never use rage bait, pad the video ..." leaves the
+// second clause's "pad" unnegated.
+const HT_NEG_SCOPE_CUT = /,|\b(?:but|yet|however|nonetheless|nevertheless|though|although|whereas)\b/gi;
 
 // Tier A -- the action alone is a Viewer Value harm.
+const HT_CONFLICT_NOUN = "controvers\\w+|scandal|drama|outrage|conflict|feud|rivalr(?:y|ies)|backlash|uproar|furore?|firestorm|spat|quarrel|row|beef|dust[- ]?up|kerfuffle|flame\\s+war|shouting\\s+match|pile[- ]?on|war\\s+of\\s+words|hit\\s?piece";
 const HT_TIER_A = new RegExp([
   "\\b(?:outrage|rage|engagement|comment|anger|reaction|hate)[ -]?bait(?:ing|s|ed)?\\b",
   "\\bragebait\\b",
-  "\\b(?:manufactur|fabricat|invent|gin\\s?up|drum\\s?up|whip\\s?up|stir\\s?up|stage|concoct|cook\\s?up|ginn\\w+)(?:e|es|ed|ing)?\\s+(?:a\\s+|an\\s+|the\\s+|some\\s+|extra\\s+|fake\\s+|false\\s+|artificial\\s+)?(?:controvers\\w+|scandal|drama|outrage|conflict|feud|backlash|uproar|furore?|firestorm)\\b",
-  "\\bframe[sd]?\\b[^.;:!?]{0,60}?\\bas\\s+(?:a\\s+|an\\s+)?(?:scandal|controversy|betrayal|outrage|crisis|disaster)\\b",
+  // manufactured / needless / exaggerated conflict, by any of a broad verb family,
+  // with up to a couple of adjectives before the conflict noun ("a needless feud").
+  "\\b(?:manufactur|fabricat|invent|gin\\s?up|ginn\\w+|drum\\s?up|whip\\s?up|stir\\s?up|stir|stage|concoct|cook\\s?up|create|creates|creating|start|starts|starting|spark|sparks|sparking|generat(?:e|es|ing)|engineer(?:s|ing)?|orchestrat(?:e|es|ing)|foster(?:s|ing)?|brew(?:s|ing)?|sow(?:s|ing)?|kick\\s+off|set\\s+up|provoke|provokes|provoking|incite|incites|inciting|foment(?:s|ing)?|hype\\s+up|drum\\s+up)(?:e|es|ed|ing)?\\s+(?:a\\s+|an\\s+|the\\s+|some\\s+)?(?:[-\\w]+\\s+){0,3}?(?:" + HT_CONFLICT_NOUN + ")\\b",
+  // exaggerate a small matter INTO / AS explosive drama
+  "\\b(?:overstate|overstates|overstating|exaggerat(?:e|es|ing)|blow(?:s|ing|n)?\\s+up|blew\\s+up|inflat(?:e|es|ing)|hyp(?:e|es|ing)(?:\\s+up)?|play(?:s|ing)?\\s+up|dramati[sz]e\\w*|sensationali[sz]e\\w*|overhyp\\w+|spin(?:s|ning)?|turn(?:s|ing)?)\\s+(?:a\\s+|an\\s+|the\\s+|some\\s+)?(?:[-\\w]+\\s+){0,3}?(?:dispute|disagreement|difference|spat|quarrel|issue|matter|point|debate|argument|remark|comment|story|nitpick|niggle|quibble|gripe|complaint|detail|thing|slight)\\b[^.;:!?]{0,50}?\\b(?:as|into|out\\s+of\\s+(?:all\\s+)?proportion\\s+(?:as|into))\\s+(?:a\\s+|an\\s+)?(?:[-\\w]+\\s+){0,3}?(?:drama|scandal|controvers\\w+|outrage|crisis|war|feud|firestorm|catastrophe|disaster|betrayal|bombshell|explosion|meltdown)\\b",
+  // "blow <a minor thing> out of (all) proportion"
+  "\\b(?:blow|blows|blowing|blew|blown)\\s+(?:a\\s+|an\\s+|the\\s+|some\\s+|this\\s+)?(?:[-\\w]+\\s+){0,4}?(?:dispute|disagreement|difference|spat|quarrel|issue|matter|point|nitpick|niggle|quibble|gripe|complaint|remark|comment|thing|detail|wording)\\b[^.;:!?]{0,30}?\\bout\\s+of\\s+(?:all\\s+)?proportion\\b",
+  "\\b(?:frame|frames|framed|cast|casts|casting|paint|paints|painting|portray\\w*|depict\\w*|dress(?:es|ed)?\\s+up|brand|brands|branded|branding|label|labels|labelled|labeled|spin|spins|spinning|present\\w*)\\b[^.;:!?]{0,60}?\\bas\\s+(?:a\\s+|an\\s+)?(?:[-\\w]+\\s+){0,3}?(?:scandal|controversy|betrayal|outrage|crisis|disaster|drama|war|firestorm|bombshell|catastrophe|travesty|meltdown)\\b",
+  // get viewers to fight / argue / attack each other
+  "\\b(?:make|makes|making|get|gets|getting|have|has|having|drive|drives|driving|goad|goads|goading|egg|eggs|egging|set|sets|setting|put|puts|putting)\\s+(?:the\\s+)?(?:viewers?|people|users?|the\\s+audience|readers?|commenters?|the\\s+comments?\\s+section|comment\\s+section|two\\s+\\w+|them|everyone)\\s+(?:to\\s+)?(?:fight|fighting|argue|arguing|bicker\\w*|attack\\s+(?:each\\s+other|one\\s+another)|pile\\s+on|rage|go\\s+at\\s+(?:each\\s+other|it)|turn\\s+on\\s+each\\s+other|clash|at\\s+(?:each\\s+other|one\\s+another'?s\\s+throats))\\b",
+  // pit people against each other / keep the comment war going
+  "\\bpit\\s+(?:[-\\w]+\\s+){0,4}?(?:commenters?|viewers?|fans?|people|guests?|experts?|two\\s+\\w+|sides?|camps?|factions?)\\s+against\\s+(?:each\\s+other|one\\s+another|(?:one\\s+)?another)\\b",
+  "\\b(?:keep|keeps|keeping|fuel|fuels|fueling|fuelling|stoke|stokes|stoking|sustain|sustains|sustaining|prolong|prolongs|prolonging|feed|feeds|feeding|inflame|inflames)\\s+(?:a\\s+|the\\s+)?(?:comment[- ]?section|comment|flame|comments)\\s+(?:war|brawl|fight|slugfest|scrap|dust-?up|meltdown|feud)\\s*(?:going|alive|burning|raging)?\\b",
+  "\\b(?:comment[- ]?section|comment|flame)\\s+(?:war|brawl|slugfest)\\b",
   "\\b(?:deliberately|intentionally|purposely|artificially|needlessly|cynically|knowingly)\\s+polari[sz]e\\w*\\b",
   "\\bpolari[sz]e\\w*\\s+(?:the\\s+)?(?:audience|viewers?|comment\\s+section|room)\\b[^.;:!?]{0,40}?\\b(?:deliberately|on\\s+purpose|to\\s+(?:provoke|drive|boost|increase|farm|spike|maximi[sz]e))\\b",
-  "\\b(?:provoke|provoking|incit(?:e|es|ing)|inflam(?:e|es|ing)|foment(?:s|ing)?|stoke(?:s|d)?|farm(?:s|ing)?)\\s+(?:reader|viewer|audience|user)?\\s*(?:anger|outrage|indignation|rage|hostility|resentment|hate|fury)\\b",
+  "\\b(?:provoke|provoking|incit(?:e|es|ing)|inflam(?:e|es|ing)|foment(?:s|ing)?|stoke(?:s|d)?|farm(?:s|ing)?|drum\\s+up|stir\\s+up|whip\\s+up)\\s+(?:reader|viewer|audience|user|hostile|angry)?\\s*(?:anger|outrage|indignation|rage|hostility|resentment|hate|fury|hostile\\s+comments|angry\\s+comments)\\b",
   "\\b(?:fake|faked|faking|fakes|false|phony|phoney|bogus|invented|manufactured|fabricated|artificial|pretend(?:ed)?|sham|contrived|imaginary|bake\\s+in\\s+(?:a\\s+)?fake)\\s+(?:a\\s+|an\\s+|the\\s+)?(?:urgency|scarcity|deadline|countdown(?:\\s+(?:timer|clock))?|timer|expiry|expiration|shortage|social\\s+proof|limited\\s+supply|limited[- ]time|sold[- ]out\\s+label)\\b",
   "\\bpretend(?:s|ing)?\\b[^.;:!?]{0,60}?\\b(?:expires?|expiring|runs?\\s+out|running\\s+out|ends?\\s+(?:tonight|today|soon|at\\s+midnight)|sells?\\s+out|selling\\s+out|about\\s+to\\s+(?:end|close|sell\\s+out|run\\s+out))\\b",
   "\\binvent(?:s|ing)?\\s+(?:a\\s+|an\\s+|some\\s+)?(?:limited\\s+supply|scarcity|shortage|false\\s+deadline|fake\\s+deadline|artificial\\s+deadline|waitlist|waiting\\s+list)\\b",
@@ -235,68 +316,170 @@ const HT_TIER_A = new RegExp([
   "\\bdeceptive\\s+(?:framing|urgency|scarcity|hook|thumbnail|tactic|claim|conversion|deadline)\\b",
   "\\binflammatory\\s+(?:framing|hook|title|thumbnail|angle|claim|language)\\b",
 ].join("|"), "i");
+// Deceptive scarcity / urgency asserted while the SAME clause admits the claim is
+// untrue (supply unlimited, access remains available, no real deadline). Two
+// parts, order-independent -- a genuine deadline description without the
+// contradiction is left alone.
+const HT_SPELLED_SMALL = "few|handful|couple|\\d+|one|two|three|four|five|six|seven|eight|nine|ten|a\\s+dozen";
+const HT_SCARCITY_CLAIM = new RegExp("\\b(?:almost\\s+gone|nearly\\s+(?:gone|sold\\s+out|out|exhausted|depleted)|running\\s+(?:low|out)|about\\s+to\\s+(?:run\\s+out|sell\\s+out|close|end|expire|disappear)|only\\s+(?:a\\s+)?(?:" + HT_SPELLED_SMALL + ")\\s+(?:of\\s+)?(?:[-\\w]+\\s+){0,2}?(?:left|remain\\w*|spots?|seats?|copies|slots?|units?|places?|kits?|licen[cs]es?)\\s*(?:are\\s+)?(?:left|remain\\w*)?|(?:just|merely)\\s+(?:" + HT_SPELLED_SMALL + ")\\s+(?:of\\s+)?(?:left|remain\\w*|spots?|seats?|copies|slots?|places?|kits?)|(?:fewer|less)\\s+than\\s+(?:" + HT_SPELLED_SMALL + ")\\s+(?:[-\\w]+\\s+){0,2}?(?:left|remain\\w*|available|in\\s+stock|kits?|units?|copies|spots?|seats?|slots?|licen[cs]es?)|(?:under|no\\s+more\\s+than|barely)\\s+(?:" + HT_SPELLED_SMALL + ")\\s+(?:[-\\w]+\\s+){0,2}?(?:left|remain\\w*|kits?|units?|copies|spots?|seats?)|limited\\s+(?:spots?|seats?|copies|stock|supply|quantit\\w+|availability|slots?|units?|number|places?|licen[cs]es?)|last\\s+chance|final\\s+chance|selling\\s+(?:out|fast)|sells?\\s+out\\s+(?:at|by|before|tonight|today|tomorrow|soon|at\\s+\\w+)|(?:seats?|spots?|slots?|copies|tickets?|places?)\\s+(?:sell|sells|are\\s+selling)\\s+out\\b|stock\\s+(?:is\\s+)?(?:low|almost\\s+gone|nearly\\s+gone|running\\s+out)|supplies?\\s+(?:are\\s+)?(?:low|limited|dwindling|running\\s+out|nearly\\s+(?:exhausted|gone|out|depleted)|almost\\s+(?:exhausted|gone|out))|(?:access|the\\s+(?:offer|deal|price|discount|bonus|course|link|video|content|workshop|webinar|class|session|cohort|programme?|sale|store|shop|window|batch|intake)|it|enrol?ment|registration|the\\s+door|the\\s+cart|sign-?ups?)\\s+(?:vanish\\w*|disappear\\w*|goes?\\s+away|going\\s+away|expires?|expiring|ends?|ending|closes?|closing|shuts?|shutting|shut\\s+down|goes?\\s+dark|drop\\w*)\\b[^.;:!?]{0,25}?\\b(?:today|tomorrow|tonight|soon|at\\s+midnight|at\\s+noon|this\\s+week|at\\s+\\d{1,2}\\s*(?:[ap]\\.?m\\.?|:\\d\\d|o'?clock)|by\\s+\\d{1,2}\\s*[ap]\\.?m\\.?|in\\s+\\w+\\s+(?:hours?|days?|minutes?)))\\b", "i");
+const HT_ADMIT_ADV = "(?:effectively\\s+|essentially\\s+|basically\\s+|actually\\s+|really\\s+|virtually\\s+|practically\\s+|in\\s+fact\\s+|truly\\s+)?";
+const HT_AVAILABILITY_TRUTH = new RegExp("\\b(?:even\\s+though|although|though|but|while\\s+it|while\\s+(?:in\\s+fact|really)|when\\s+(?:in\\s+fact|really|actually|it|we|you|the\\s+team)|despite|in\\s+(?:fact|reality|truth)|actually|really|when\\s+it\\s+(?:will|does|is|stays?|remains?)|when\\s+(?:we|you|the\\s+team)\\s+(?:can|could))\\b[^.;:!?]{0,95}?\\b(?:remains?\\s+" + HT_ADMIT_ADV + "available|stay\\w*\\s+" + HT_ADMIT_ADV + "available|stay\\w*\\s+(?:up|live|online|posted|active|open)(?:\\s+(?:indefinitely|for\\s+good|permanently|all\\s+year|year-?round|for\\s+the\\s+foreseeable(?:\\s+future)?))?|still\\s+(?:be\\s+)?(?:available|around|for\\s+sale|on\\s+sale|open|accessible|there|up|live)|will\\s+(?:still\\s+|in\\s+fact\\s+)?(?:remain|stay|be)\\s+(?:there|available|around|accessible|for\\s+sale|open|up|live)|(?:supply|stock|quantit\\w+|availability|inventory|seating|seats|capacity|room|space|spaces|places?)\\s+(?:is|are|remains?|stays?)\\s+" + HT_ADMIT_ADV + "(?:unlimited|ample|plentiful|not\\s+limited|fine|healthy|endless|abundant|uncapped)|plenty\\s+(?:left|available|in\\s+stock|to\\s+go\\s+around|remain\\w*|of\\s+(?:room|space|seats|copies))|(?:effectively|essentially|basically|virtually|practically)\\s+unlimited|unlimited\\s+(?:supply|stock|availability|copies|seats|spots?|seating)|no\\s+(?:real\\s+|actual\\s+|hard\\s+)?(?:deadline|limit|shortage|scarcity|cap|cut[- ]?off|end\\s+date)|not\\s+(?:actually\\s+|really\\s+)?(?:going\\s+away|limited|scarce|running\\s+out|ending|disappearing|expiring)|is\\s+not\\s+(?:ending|going\\s+away|limited|expiring)|never\\s+(?:closes?|ends?|expires?|sells?\\s+out|runs?\\s+out|goes?\\s+away)|(?:can|could)\\s+(?:print|make|produce|offer|add|supply|generate|create|issue|mint|spin\\s+up|ship|deliver|fulfil?l?|send|churn\\s+out)\\s+(?:unlimited|as\\s+many|endless|any\\s+number\\s+of|as\\s+many\\s+as\\s+(?:ordered|needed|wanted|requested|asked\\s+for)|them\\s+on\\s+demand|(?:more\\s+)?(?:keys|copies|seats|licen[cs]es|slots|kits|units)\\s+on\\s+demand)|(?:keys|copies|seats|licen[cs]es|slots|kits|units)\\s+on\\s+demand|(?:sign-?ups?|enrol?ment|registration|intake|the\\s+(?:workshop|webinar|class|cohort|course|programme?|sale|store|door|cart))\\s+(?:actually\\s+)?(?:run|runs|stay|stays|remain|remains|is|are)\\s+(?:open\\s+)?(?:year-?round|all\\s+year|continuous(?:ly)?|on\\s+a\\s+rolling\\s+basis|always|perpetually|open|ongoing))\\b", "i");
+const HT_AVAILABILITY_TRUTH_LOOSE = /\b(?:supply|stock|inventory|availability|seating|seats|capacity)\s+(?:is|are|remains?)\s+(?:effectively\s+|essentially\s+|basically\s+|virtually\s+|practically\s+)?(?:unlimited|ample|plentiful|not\s+limited|endless|abundant|uncapped)\b|\b(?:effectively|essentially|basically|virtually|practically)\s+unlimited\b|\bunlimited\s+(?:supply|stock|inventory|availability|seating)\b|\bwill\s+(?:still\s+)?(?:remain|stay|be)\s+(?:there|available|around|accessible|up|live)\b|\bstay\w*\s+(?:up|live|online|posted)\s+(?:indefinitely|for\s+good|permanently|for\s+the\s+foreseeable)\b|\bremains?\s+(?:fully\s+)?available\b|\b(?:has|have)\s+no\s+(?:real\s+|actual\s+)?(?:deadline|end\s+date)\b/i;
 
 // Tier B -- a prolonging OR a promise-withholding action; harmful only with a
 // keep-watching / watch-time PURPOSE in the same clause.
+const HT_FILLER_NOUN = "recap\\w*|summ\\w+|restatement\\w*|restating|reiteration\\w*|repetition\\w*|material|content|segments?|sections?|footage|clips?|filler|padding|tangents?|side[- ]points?|digressions?|waffle";
 const HT_PROLONG_ACTION = new RegExp([
   "\\bpad(?:s|ded|ding)?\\s+(?:out\\s+)?(?:the\\s+|this\\s+|it\\b|each\\s+|every\\s+)",
   "\\bpad(?:s|ded|ding)?\\b(?=[^.;:!?]*\\b(?:video|runtime|run\\s?time|episode|content|cut|segment|section|middle|intro|opening|explanation)\\b)",
   "\\b(?:bloat|bloats|bloated|bloating|pad\\s+out|fatten|fattens|fattening)\\s+(?:out\\s+)?(?:the\\s+|this\\s+|its\\s+)?(?:video|intro|introduction|opening|runtime|run\\s?time|middle|section|episode|content|cut)\\b",
   "\\bstuff(?:s|ed|ing)?\\b[^.;:!?]{0,40}?\\bwith\\s+(?:repetitive\\s+|filler\\s+|recap\\s+|extra\\s+|padding\\s+|low[ -]value\\s+|throwaway\\s+|unnecessary\\s+|redundant\\s+|duplicate\\s+|more\\s+)",
-  "\\b(?:add|adds|adding|insert|inserts|inserting|drop\\s+in|throw\\s+in|tack\\s+on|append|pack|packs|packing|pile\\s+in|fill|fills|filling|load|loads|loading|cram|crams|cramming)\\s+(?:the\\s+(?:\\w+\\s+){0,3}|it\\s+|them\\s+|up\\s+)?(?:up\\s+)?(?:with\\s+)?(?:more\\s+)?(?:repetitive\\s+|filler\\s+|padding\\s+|low[ -]value\\s+|no[ -]value\\s+|throwaway\\s+|time[ -]wasting\\s+|unnecessary\\s+|extraneous\\s+|redundant\\s+|duplicate\\s+|repeated\\s+)(?:recap\\w*|summ\\w+|material|content|segments?|sections?|footage|clips?|filler|padding)",
+  "\\b(?:add|adds|adding|insert|inserts|inserting|drop\\s+in|throw\\s+in|tack\\s+on|append|pack|packs|packing|pile\\s+in|fill|fills|filling|load|loads|loading|cram|crams|cramming|slip\\s+in|work\\s+in|put\\s+in)\\s+(?:(?:the|a|an|another|some|extra|one)\\s+(?:\\w+\\s+){0,3}|it\\s+|them\\s+|up\\s+)?(?:up\\s+)?(?:with\\s+)?(?:more\\s+|another\\s+|extra\\s+)?(?:repetitive\\s+|filler\\s+|padding\\s+|low[ -]value\\s+|no[ -]value\\s+|throwaway\\s+|time[ -]wasting\\s+|unnecessary\\s+|extraneous\\s+|redundant\\s+|duplicate\\s+|repeated\\s+|needless\\s+|pointless\\s+)(?:" + HT_FILLER_NOUN + ")",
   "\\badd(?:s|ing)?\\s+(?:more\\s+)?(?:repetitive\\s+)?recaps?\\b",
-  "\\b(?:stretch|stretches|stretching|stretched|lengthen|lengthens|lengthening|lengthened|drag|drags|dragging|balloon|balloons|ballooning|prolong|prolongs|prolonging|expand|expands|expanding|inflate|inflates|inflating|elongate|elongates|elongating)\\s+(?:out\\s+)?(?:the\\s+|this\\s+|its\\s+|each\\s+|every\\s+)?(?:video|runtime|run\\s?time|episode|length|cut|content|footage|duration|middle|section)\\b",
-  "\\bextend(?:s|ing|ed)?\\s+(?:out\\s+)?(?:the\\s+|this\\s+|its\\s+|each\\s+|every\\s+)?(?:video|runtime|run\\s?time|episode|length|cut|content|footage|segment|middle)\\b",
+  // adding a duplicate pass over the same material
+  "\\b(?:add|adds|adding|insert|inserts|inserting|include|includes|including|slip\\s+in|throw\\s+in|do|does|doing)\\s+(?:a\\s+|an\\s+|another\\s+)?(?:second|another|extra|repeat|duplicate|additional|further)\\s+(?:[-\\w]+\\s+){0,2}?(?:walkthrough|walk-through|run-?through|pass|recap|summary|overview|explanation|rundown|round|go-?over)\\b",
+  "\\b(?:go\\s+(?:back\\s+)?over|cover|run\\s+through|walk\\s+through|revisit|repeat)\\s+(?:the\\s+same\\s+(?:[-\\w]+\\s+){0,2}?(?:steps?|points?|material|content|ground|thing|section|explanation)\\s+(?:again|twice|once\\s+more)|(?:the\\s+)?(?:[-\\w]+\\s+){0,2}?(?:steps?|points?|material|content|ground|section|explanation)\\s+(?:twice|a\\s+second\\s+time|over\\s+again|two\\s+more\\s+times|repeatedly))\\b",
+  // repeating / restating / recapping the same content
+  "\\b(?:repeat|repeats|repeating|re-?state|re-?states|re-?stating|reiterat(?:e|es|ing)|echo|echoes|echoing|duplicat(?:e|es|ing)|recap|recaps|recapping|recapped|say(?:ing)?\\s+(?:the\\s+same\\s+thing|it)\\s+again|go(?:es|ing)?\\s+over\\s+(?:it|the\\s+same\\b)[^.;:!?]{0,20}?again)\\s+(?:the\\s+|each\\s+|every\\s+|all\\s+)?(?:same\\s+)?(?:\\w+\\s+){0,2}?(?:summary|summaries|point|points|section|sections|segment|segments|content|material|recap|recaps|explanation|information|idea|ideas|lesson|thing|argument|steps?)\\b",
+  "\\b(?:repeat|repeats|repeating|recap|recaps|recapping|re-?state|re-?states|re-?stating|reiterat(?:e|es|ing)|go\\s+over|loop\\s+back|loops?\\s+back|looping\\s+back|circl(?:e|es|ing)\\s+back|revisit(?:s|ing)?|return(?:s|ing)?\\s+to|rehash(?:es|ing)?)\\b[^.;:!?]{0,45}?\\b(?:twice|again|repeatedly|multiple\\s+times|over\\s+and\\s+over|again\\s+and\\s+again|a\\s+second\\s+time|two\\s+or\\s+more\\s+times|time\\s+and\\s+again|after\\s+(?:every|each)\\s+(?:section|segment|chapter|point|part|scene|beat))\\b",
+  // let the host ramble / meander through side points
+  "\\b(?:let|lets|letting|allow|allows|allowing|have|has|having)\\s+(?:the\\s+)?(?:host|presenter|narrator|speaker|guest|voiceover)\\s+(?:ramble|rambles|rambling|meander|meanders|meandering|go\\s+off|goes\\s+off|wander|wanders|wandering|digress\\w*|drone\\s+on|waffle|waffles|waffling|ad[- ]lib|meander)\\b",
+  "\\brambl\\w+\\s+(?:on\\s+)?(?:through|on|about|over|around)\\s+(?:the\\s+)?(?:side[- ]points?|tangents?|irrelevan\\w+|unrelated\\s+\\w+|minor\\s+\\w+|digressions?)\\b",
+  "\\b(?:go(?:es|ing)?|going|wander(?:s|ing)?)\\s+off\\s+on\\s+(?:a\\s+|multiple\\s+|endless\\s+)?tangents?\\b",
+  "\\b(?:stretch|stretches|stretching|stretched|lengthen|lengthens|lengthening|lengthened|drag|drags|dragging|balloon|balloons|ballooning|prolong|prolongs|prolonging|expand|expands|expanding|inflate|inflates|inflating|elongate|elongates|elongating)\\s+(?:out\\s+)?(?:the\\s+|this\\s+|its\\s+|each\\s+|every\\s+)?(?:video|runtime|run\\s?time|episode|length|cut|content|footage|duration|middle|section|segment|explanation|intro)\\b",
+  "\\bextend(?:s|ing|ed)?\\s+(?:out\\s+)?(?:the\\s+|this\\s+|its\\s+|each\\s+|every\\s+)?(?:video|runtime|run\\s?time|episode|length|cut|content|footage|segment|section|middle|explanation|intro)\\b",
+  // draw / drag / spin the explanation out
+  "\\b(?:draw|draws|drawing|drag|drags|dragging|spin|spins|spinning|string|strings|stringing|stretch|stretches|stretching)\\s+(?:the\\s+|this\\s+|it\\s+|out\\s+)?(?:\\w+\\s+){0,4}?\\bout\\b",
+  // make X longer / run longer / verbose / rambling
   "\\bmake(?:s|ing)?\\b[^.;:!?]{0,40}?\\b(?:deliberately\\s+|needlessly\\s+|artificially\\s+|unnecessarily\\s+|overly\\s+|intentionally\\s+)?(?:verbose|long[ -]winded|wordy|repetitive|drawn[ -]out|meandering|rambl\\w+|padded|bloated)\\b",
-  "\\b(?:slow[ -]walk(?:s|ing)?|belabou?r(?:s|ing)?|dwell\\s+needlessly|stall(?:s|ing)?\\s+(?:the\\s+)?(?:viewer|video|payoff|reveal))",
+  "\\bmake(?:s|ing)?\\s+(?:the\\s+|each\\s+|every\\s+)?(?:\\w+\\s+){0,2}?(?:episode|video|explanation|explanations|segment|segments|intro|section|sections|answer|answers|cut)\\s+(?:run\\s+)?longer\\b",
+  "\\bmake(?:s|ing)?\\b[^.;:!?]{0,30}?\\b(?:run|runs|running|be)\\s+longer\\b",
+  "\\b(?:run|runs|running)\\s+longer\\b(?=[^.;:!?]*\\b(?:watch\\s?time|retention|minutes?|viewing|stay|longer|audience)\\b)",
+  "\\b(?:slow[ -]walk(?:s|ing)?|belabou?r(?:s|ing)?|dwell\\s+needlessly|labour\\s+the\\s+point|stall(?:s|ing)?\\s+(?:the\\s+)?(?:viewer|video|payoff|reveal))",
 ].join("|"), "i");
+const HT_VALUE_NOUN = "answer|payoff|pay[ -]off|reveal|result|information|conclusion|outcome|value|point|takeaway|take[ -]away|lede|lead|resolution|explanation|lesson|guidance|advice|tip|tips|insight|insights|instruction|instructions|solution|recommendation|recommendations|help|fix|fixes|remedy|correction|verdict|the\\s+useful\\s+(?:bit|part|stuff)|main\\s+point|key\\s+takeaway";
+const HT_VALUE_ADJ = "(?:promised\\s+|expected\\s+|core\\s+|actual\\s+|useful\\s+|key\\s+|real\\s+|main\\s+|practical\\s+|important\\s+|central\\s+|substantive\\s+|meaningful\\s+)*";
 const HT_WITHHOLD_ACTION = new RegExp([
-  "\\b(?:withhold|withholds|withholding|hold\\s+back|holds\\s+back|holding\\s+back|hold\\s+off\\s+on)\\s+(?:the\\s+|a\\s+|an\\s+|our\\s+|any\\s+)?(?:promised\\s+|expected\\s+|core\\s+|actual\\s+|useful\\s+|key\\s+|real\\s+|main\\s+)?(?:answer|payoff|pay[ -]off|reveal|result|information|conclusion|outcome|value|point|takeaway|take[ -]away|lede|lead|resolution|explanation)",
-  "\\b(?:delay|delays|delayed|delaying|postpone|postpones|postponed|postponing|defer|defers|deferring|deferred|push\\s+back|pushes\\s+back|pushing\\s+back|save|saves|saving|reserve|reserves|reserving)\\s+(?:the\\s+|a\\s+|an\\s+|our\\s+|its\\s+|delivery\\s+of\\s+|reveal\\s+of\\s+|any\\s+)?(?:promised\\s+|expected\\s+|useful\\s+|key\\s+|core\\s+|actual\\s+|main\\s+|real\\s+)?(?:answer|payoff|pay[ -]off|reveal|result|information|conclusion|takeaway|take[ -]away|point|explanation|resolution)",
-  "\\b(?:bury|buries|burying|hide|hides|hiding|conceal|conceals|concealing|tuck\\s+away|tucks\\s+away)\\s+(?:the\\s+|a\\s+|our\\s+|its\\s+)?(?:promised\\s+|key\\s+|core\\s+|main\\s+|useful\\s+|actual\\s+)?(?:answer|payoff|pay[ -]off|lede|lead|conclusion|point|takeaway|take[ -]away|reveal|result|information)\\b",
-  "\\b(?:push|pushes|pushing|move|moves|moving|shift|shifts|shifting|hold|holds|holding|leave|leaves|leaving)\\s+(?:the\\s+)?(?:promised\\s+|useful\\s+|key\\s+|real\\s+|actual\\s+|main\\s+)?(?:answer|payoff|pay[ -]off|reveal|conclusion|takeaway|take[ -]away|point|resolution)\\s+(?:to|until|till|near|toward|towards)\\s+(?:the\\s+)?(?:end|finish|close|last|final|closing|very\\s+end)",
+  "\\b(?:withhold|withholds|withholding|hold\\s+back|holds\\s+back|holding\\s+back|hold\\s+off\\s+on)\\s+(?:the\\s+|a\\s+|an\\s+|our\\s+|any\\s+)?" + HT_VALUE_ADJ + "(?:" + HT_VALUE_NOUN + ")",
+  // "hold / keep the <value> back / in reserve / under wraps / for later"
+  "\\b(?:hold|holds|holding|keep|keeps|keeping|put|puts|putting|leave|leaves|leaving|stash|stashes|stashing|park|parks|parking)\\s+(?:the\\s+|a\\s+|an\\s+|our\\s+|its\\s+)?" + HT_VALUE_ADJ + "(?:" + HT_VALUE_NOUN + ")\\s+(?:back|in\\s+reserve|in\\s+(?:the|your|our|its)\\s+back\\s+pocket|on\\s+hold|under\\s+wraps|out\\s+of\\s+sight|to\\s+(?:one|the)\\s+side|aside|for\\s+later|for\\s+the\\s+(?:end|close|finish|last|final)|till\\s+the\\s+end|until\\s+the\\s+(?:end|last|final|close|closing))\\b",
+  "\\b(?:delay|delays|delayed|delaying|postpone|postpones|postponed|postponing|defer|defers|deferring|deferred|push\\s+back|pushes\\s+back|pushing\\s+back|save|saves|saving|reserve|reserves|reserving|hold\\s+off)\\s+(?:the\\s+|a\\s+|an\\s+|our\\s+|its\\s+|delivery\\s+of\\s+|reveal\\s+of\\s+|any\\s+)?" + HT_VALUE_ADJ + "(?:" + HT_VALUE_NOUN + ")",
+  "\\b(?:bury|buries|burying|hide|hides|hiding|conceal|conceals|concealing|tuck\\s+away|tucks\\s+away|tuck|tucks|tucking)\\s+(?:the\\s+|a\\s+|our\\s+|its\\s+)?" + HT_VALUE_ADJ + "(?:" + HT_VALUE_NOUN + ")\\b",
+  "\\b(?:push|pushes|pushing|move|moves|moving|shift|shifts|shifting|hold|holds|holding|leave|leaves|leaving|slot|slots|slotting)\\s+(?:the\\s+)?" + HT_VALUE_ADJ + "(?:" + HT_VALUE_NOUN + ")\\s+(?:to|until|till|near|toward|towards|into)\\s+(?:the\\s+)?(?:end|finish|close|last|final|closing|very\\s+end|last\\s+(?:minute|section|segment|third))",
   "\\b(?:keep|keeps|keeping|make|makes|making|force|forces|forcing|leave|leaves|leaving)\\s+(?:the\\s+)?viewers?\\s+(?:guessing|waiting|hanging|in\\s+suspense|on\\s+the\\s+hook)\\b",
-  "\\b(?:sit|sits|sitting)\\s+(?:tight\\s+)?on\\s+(?:the\\s+)?(?:answer|payoff|pay[ -]off|reveal|result|conclusion|takeaway|take[ -]away|information|explanation)\\b",
+  "\\b(?:sit|sits|sitting)\\s+(?:tight\\s+)?on\\s+(?:the\\s+|a\\s+|our\\s+)?" + HT_VALUE_ADJ + "(?:" + HT_VALUE_NOUN + ")\\b",
   "\\btease\\s+(?:the\\s+)?(?:answer|payoff|reveal)\\b",
 ].join("|"), "i");
 const HT_KEEP_WATCHING_PURPOSE = new RegExp([
-  "\\b(?:increase|increases|increasing|boost|boosts|boosting|inflate|inflates|inflating|raise|raises|raising|drive\\s+up|drives\\s+up|driving\\s+up|grow|grows|growing|maximi[sz]e|maximi[sz]es|maximi[sz]ing|lift|lifts|lifting|pump\\s+up|improve|improves|improving|help|helps|extend|extends|extending|pad|pads|padding)\\b[^.;:!?]{0,45}?\\b(?:watch\\s?time|watch\\s+hours|minutes?\\s+(?:watched|viewed)|minutes?\\s+of\\s+watch|view\\s+duration|average\\s+view\\s+duration|time\\s+(?:on|in)\\s+(?:the\\s+)?(?:video|page)|session\\s+(?:length|duration)|retention|time\\s+watched|dwell\\s+time)\\b",
-  "\\b(?:watch\\s?time|minutes?\\s+(?:watched|viewed)|view\\s+duration|retention|time\\s+watched)\\b[^.;:!?]{0,30}?\\b(?:rises?|rising|climbs?|climbing|goes?\\s+up|going\\s+up|increases?|increasing|grows?|growing|improves?|improving)\\b",
-  "\\b(?:audience|viewers?|people|users?|they|the\\s+viewer)\\b[^.;:!?]{0,45}?\\b(?:spend[s]?\\s+(?:longer|more\\s+time)|stay[s]?\\s+(?:longer|watching|on\\s+the\\s+video)|watch(?:es|ing)?\\s+(?:longer|more|for\\s+longer)|keep[s]?\\s+watching|remain[s]?\\s+(?:longer|watching)|linger[s]?\\b|don['’]?t\\s+leave|do\\s+not\\s+leave)\\b",
-  "\\bkeep(?:s|ing)?\\s+(?:the\\s+)?(?:viewers?|people|users?|them|the\\s+audience|everyone)\\s+(?:watching|on\\s+the\\s+(?:video|page)|around|engaged\\s+longer|hooked|glued|from\\s+leaving)\\b",
-  "\\bso\\s+(?:that\\s+)?(?:people|viewers?|they|the\\s+audience|users?)\\s+(?:stay|stays|keep\\s+watching|keeps\\s+watching|keep\\s+going|don['’]?t\\s+leave|do\\s+not\\s+leave|remain|watch\\s+longer)\\b",
-  "\\bso\\s+(?:that\\s+)?(?:nobody|no\\s+one|noone|not\\s+a\\s+single\\s+(?:viewer|person))\\s+(?:leaves?|drops?\\s+off|clicks?\\s+away|bounces?|tunes?\\s+out)\\b",
-  "\\b(?:nobody|no\\s+one|noone)\\s+(?:leaves?|drops?\\s+off|clicks?\\s+away|bounces?|tunes?\\s+out)\\s+(?:early|before|until|halfway|part\\s?way)\\b",
+  "\\b(?:increase|increases|increasing|boost|boosts|boosting|inflate|inflates|inflating|raise|raises|raising|drive\\s+up|drives\\s+up|driving\\s+up|grow|grows|growing|maximi[sz]e|maximi[sz]es|maximi[sz]ing|lift|lifts|lifting|pump\\s+up|improve|improves|improving|help|helps|extend|extends|extending|pad|pads|padding|add\\s+to|bump\\s+up|push\\s+up|build|builds|building|rack\\s+up|racks\\s+up|racking\\s+up|drive|drives|driving|juice)\\b[^.;:!?]{0,45}?\\b(?:watch\\s?time|watch\\s+hours|minutes?\\s+(?:watched|viewed|of\\s+viewing)|viewing\\s+(?:minutes|time)|minutes?\\s+of\\s+watch|view\\s+duration|average\\s+view\\s+duration|time\\s+(?:on|in)\\s+(?:the\\s+)?(?:video|page)|session\\s+(?:length|duration)|retention|time\\s+watched|dwell\\s+time)\\b",
+  "\\b(?:watch\\s?time|minutes?\\s+(?:watched|viewed)|viewing\\s+minutes|view\\s+duration|retention|time\\s+watched|runtime|run\\s?time|episode\\s+length|the\\s+length)\\b[^.;:!?]{0,30}?\\b(?:rises?|rising|climbs?|climbing|goes?\\s+up|going\\s+up|increases?|increasing|grows?|growing|improves?|improving|jumps?|balloons?|expands?|benefits?|gains?)\\b",
+  "\\b(?:stop|stops|stopping|reduce|reduces|reducing|cut|cuts|cutting|curb|curbs|curbing|minimi[sz]e\\w*|prevent|prevents|preventing)\\s+(?:the\\s+)?(?:early\\s+)?(?:drop[- ]?off|drop[- ]?outs?|bounce\\s+rate|early\\s+exits?|early\\s+abandonment|viewers?\\s+leaving)\\b",
+  "\\b(?:so|to\\s+(?:get|have|make))\\s+(?:that\\s+)?(?:people|viewers?|they|the\\s+audience)\\s+(?:watch|watches|finish|finishes|see|sees|stay\\s+for)\\s+(?:the\\s+)?(?:whole|entire|full|all\\s+of\\s+(?:the|it))\\s+(?:thing|video|clip|episode)\\b",
+  "\\bso\\s+(?:that\\s+)?(?:the\\s+)?(?:video|clip|episode|it|runtime)\\s+is\\s+longer\\b",
+  "\\b(?:audience|viewers?|people|users?|they|the\\s+viewer|nobody|no\\s+one)\\b[^.;:!?]{0,45}?\\b(?:spend[s]?\\s+(?:longer|more\\s+time)|stay[s]?\\s+(?:longer|watching|on\\s+the\\s+video|put)|watch(?:es|ing)?\\s+(?:longer|more|for\\s+longer)|keep[s]?\\s+watching|remain[s]?\\s+(?:longer|watching|on\\s+the\\s+(?:video|page))|linger[s]?\\b|stick\\s+(?:around|with\\s+it)|hang\\s+(?:on|around)|don['’]?t\\s+(?:leave|bail)|do\\s+not\\s+leave|leaves?\\s+early|leaving\\s+early|finish(?:es)?\\s+(?:the\\s+video|it|watching)|watch\\s+(?:it\\s+)?to\\s+the\\s+end)\\b",
+  "\\b(?:the\\s+)?(?:clip|video|episode|piece|it|runtime|segment)\\s+(?:lasts?|runs?|goes?\\s+on)\\s+(?:longer|for\\s+longer)\\b",
+  "\\bhold\\s+(?:on\\s+to\\s+|onto\\s+)?(?:the\\s+(?:viewers?|audience|people|them)['’]?s?\\s+)?attention\\b",
+  "\\b(?:hold|holds|holding)\\s+(?:on\\s+to\\s+|onto\\s+)?(?:the\\s+)?(?:viewers?|audience|people|them)\\b",
+  "\\bfor\\s+(?:retention|watch\\s?time|watch\\s+hours|viewing\\s+minutes|minutes?\\s+(?:watched|viewed)|dwell\\s+time|more\\s+watch\\s?time)\\b",
+  "\\bkeep(?:s|ing)?\\s+(?:the\\s+)?(?:viewers?|people|users?|them|the\\s+audience|everyone)\\s+(?:watching|on\\s+the\\s+(?:video|page)|around|engaged(?:\\s+longer)?|hooked|glued|from\\s+leaving|in\\s+their\\s+seats?|there|put)\\b",
+  "\\b(?:stop|stops|stopping|prevent|prevents|preventing|keep|keeps|keeping)\\s+(?:the\\s+)?(?:viewers?|people|users?|them|the\\s+audience|anyone|folks)\\s+(?:from\\s+)?(?:leaving|dropping\\s+off|clicking\\s+(?:away|off)|bouncing|bailing|exiting|tuning\\s+out|abandoning|leaving\\s+early)\\b",
+  "\\bso\\s+(?:that\\s+)?(?:people|viewers?|they|the\\s+audience|users?)\\s+(?:stay|stays|keep\\s+watching|keeps\\s+watching|keep\\s+going|don['’]?t\\s+(?:leave|bail|bounce|drop\\s+off|click\\s+away)|do\\s+not\\s+(?:leave|bail)|remain|watch\\s+longer|hang\\s+(?:on|around))\\b",
+  "\\bso\\s+(?:that\\s+)?(?:nobody|no\\s+one|noone|not\\s+a\\s+single\\s+(?:viewer|person))\\s+(?:leaves?|bails?|drops?\\s+off|clicks?\\s+away|bounces?|tunes?\\s+out)\\b",
+  "\\b(?:nobody|no\\s+one|noone)\\s+(?:leaves?|bails?|drops?\\s+off|clicks?\\s+away|bounces?|tunes?\\s+out)\\s+(?:early|before|until|halfway|part\\s?way)\\b",
   "\\b(?:so|to)\\s+(?:that\\s+)?(?:people|viewers?|they)\\s+(?:rush|scramble|hurry)\\s+to\\s+(?:subscribe|sign\\s+up|buy|convert|act)\\b",
   "\\b(?:compel|compels|compelling|force|forces|forcing|guarantee|guarantees|ensure|ensures)\\s+(?:continued|further|longer|more|extended)\\s+(?:viewing|watching|watch\\s?time)\\b",
   "\\bcontinued\\s+viewing\\b",
   "\\bprolong(?:s|ing)?\\s+(?:the\\s+)?(?:session|view|watch|visit|engagement)\\b",
 ].join("|"), "i");
 
+// Compositional concept detection -- a generalisation layer over the rigid
+// verb+object patterns above. A prolonging CONCEPT (lengthen / add-redundancy /
+// ramble / slow) anywhere in the clause, or a withholding SIGNAL + a value noun
+// + (an end-position phrase OR a keep-watching purpose), is a harmful Tier-B
+// mechanism. It is deliberately looser than HT_PROLONG_ACTION / HT_WITHHOLD_ACTION
+// because the purpose gate (watch-time / keep-watching) already carries the
+// harm; a lengthen concept with no such purpose is an ordinary edit and passes.
+const HT_LENGTHEN_CONCEPT = /\b(?:lengthen\w*|elongat\w+|prolong\w*|drag\s+\w+(?:\s+\w+)?\s+out|draw\s+\w+(?:\s+\w+)?\s+out|spin\s+\w+(?:\s+\w+)?\s+out|string\s+\w+(?:\s+\w+)?\s+(?:out|along)|stretch\w*\s+(?:it|this|the|out)|pad(?:s|ded|ding)?\s+(?:it|this|the|out)|bloat\w*|balloon\w*|fatten\w*|make[s]?\s+\w+(?:\s+\w+){0,2}?\s+(?:run\s+)?longer|run[s]?\s+longer|last[s]?\s+longer|go(?:es)?\s+on\s+(?:for\s+)?longer|inflate[s]?\s+(?:the\s+)?(?:runtime|run\s?time|length|duration|video|episode))\b/i;
+const HT_REDUNDANCY_CONCEPT = /\b(?:repeat\w*|re-?state\w*|reiterat\w+|recap\w*|echo\w*|duplicat\w+|rehash\w*|loop\s+back|circl\w+\s+back|go(?:es|ing)?\s+(?:back\s+)?over\b[^.;:!?]{0,25}?\bagain|say\w*\s+(?:it|the\s+same\s+thing)\s+again)\b|\b(?:another|a\s+second|an?\s+extra|a\s+duplicate|a\s+repeat|an?\s+additional|one\s+more)\s+(?:[-\w]+\s+){0,2}?(?:walkthrough|walk-through|run-?through|pass|recap|summary|overview|rundown|go-?over|explanation|lap)\b|\b(?:redundant|repetitive|duplicate|needless|pointless|filler|padding|throwaway|low[- ]value|no[- ]value|time[- ]wasting|unnecessary|extraneous)\s+(?:[-\w]+\s+){0,2}?(?:material|content|segments?|sections?|recap\w*|summ\w+|restatement\w*|footage|clips?|filler|padding|tangents?|asides?|repetition\w*)\b/i;
+const HT_RAMBLE_CONCEPT = /\b(?:rambl\w+|meander\w*|waffl\w+|digress\w*|drone\s+on)\b|\bgo(?:es|ing)?\s+(?:off\s+)?on\s+(?:a\s+|multiple\s+|lengthy\s+|long\s+|endless\s+|extended\s+)?tangents?\b|\b(?:lengthy|long|endless|extended|needless)\s+(?:tangents?|asides?|digressions?)\b|\bwander\w*\s+off\b|\bpad\s+with\s+tangents\b/i;
+const HT_SLOW_CONCEPT = /\b(?:slow[- ]walk\w*|belabou?r\w*|labou?r\s+the\s+point|drag\s+(?:one'?s|your|their)\s+feet|dwell\s+(?:needlessly|too\s+long|at\s+length))\b|\bstall\w*\s+(?:the\s+)?(?:viewer|video|reveal|payoff|answer)\b/i;
+const HT_WITHHOLD_SIGNAL = /\b(?:withhold\w*|hold(?:s|ing)?\s+(?:back|off|on\s+to)\b|hangs?\s+(?:on\s+)?to\b|hanging\s+(?:on\s+)?to\b|clings?\s+to\b|clinging\s+to\b|clutch\w*|hold(?:s|ing)?\s+[^.;:!?]{0,25}?\bback\b|keep(?:s|ing)?\s+[^.;:!?]{0,25}?\b(?:back\b|in\s+reserve|under\s+wraps|out\s+of\s+sight|in\s+(?:the|your|our)\s+back\s+pocket|to\s+(?:one|the)\s+side)|sit(?:s|ting)?\s+(?:tight\s+)?on\b|reserv\w+|sav(?:e|es|ing)|delay\w*|postpon\w+|defer\w*|push(?:es|ing)?\s+back|bury|buries|burying|hid(?:e|es|ing)|conceal\w*|stash\w*|park(?:s|ed|ing)?|tuck\w*\s+away|time\s+(?:the\s+)?(?:reveal|answer|payoff|verdict|conclusion)\s+(?:for|to)|wait(?:s|ing)?\s+to\s+(?:reveal|share|give|deliver)|not\s+(?:reveal|share|give|deliver)\s+[^.;:!?]{0,25}?until)\b/i;
+const HT_VALUE_NOUN_RE = new RegExp("\\b(?:" + HT_VALUE_NOUN + "|actionable\\s+(?:step|item|takeaway|advice)|practical\\s+(?:step|advice|guidance)|concrete\\s+(?:step|recommendation|advice)|the\\s+(?:real|actual|useful|concrete)\\s+(?:answer|point|info|information|part|recommendation|guidance))\\b", "i");
+const HT_END_POSITION = /\b(?:until|till|to|for|near|toward|towards|at)\s+(?:the\s+)?(?:very\s+)?(?:end|finish|close|closing|wrap-?up|conclusion|coda)\b|\b(?:last|final|closing|very\s+last|dying|home)\s+(?:minute|minutes|section|segment|third|seconds?|moments?|stretch|part|chapter|breath)\b|\bat\s+the\s+(?:very\s+)?(?:end|wrap-?up)\b|\bright\s+at\s+the\s+end\b|\bin\s+the\s+(?:final|closing|home)\s+(?:stretch|minutes?)\b/i;
+
 const htClauses = (text: string): string[] =>
   text.replace(/[‒–—―−]/g, " ").split(HT_CLAUSE_BOUNDARY).map((clause) => clause.trim()).filter((clause) => clause.length > 0);
 
-function htClauseAffirmsHarm(clause: string): boolean {
-  const tierA = HT_TIER_A.exec(clause);
-  const prolong = HT_PROLONG_ACTION.exec(clause);
-  const withhold = HT_WITHHOLD_ACTION.exec(clause);
-  let actionIndex: number;
-  let needsPurpose = false;
-  if (tierA) {
-    actionIndex = tierA.index;
-  } else if (prolong || withhold) {
-    actionIndex = Math.min(...[prolong?.index, withhold?.index].filter((index): index is number => index !== undefined));
-    needsPurpose = true;
-  } else {
-    return false;
+const HT_TIER_A_G = new RegExp(HT_TIER_A.source, "gi");
+const HT_PROLONG_ACTION_G = new RegExp(HT_PROLONG_ACTION.source, "gi");
+const HT_WITHHOLD_ACTION_G = new RegExp(HT_WITHHOLD_ACTION.source, "gi");
+const HT_PROLONG_CONCEPTS = [HT_LENGTHEN_CONCEPT, HT_REDUNDANCY_CONCEPT, HT_RAMBLE_CONCEPT, HT_SLOW_CONCEPT];
+
+/** Every harmful-action hit in the clause, with whether it needs a keep-watching purpose. */
+function htActionHits(clause: string): Array<{ index: number; needsPurpose: boolean }> {
+  const hits: Array<{ index: number; needsPurpose: boolean }> = [];
+  for (const [re, needsPurpose] of [[HT_TIER_A_G, false], [HT_PROLONG_ACTION_G, true], [HT_WITHHOLD_ACTION_G, true]] as const) {
+    re.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(clause)) !== null) {
+      hits.push({ index: match.index, needsPurpose });
+      if (match.index === re.lastIndex) re.lastIndex++;
+    }
   }
-  if (needsPurpose && !HT_KEEP_WATCHING_PURPOSE.test(clause)) return false;
-  const before = clause.slice(0, actionIndex).replace(HT_NEGATION_FALSE, " ");
+  return hits;
+}
+
+/**
+ * Negation parity for one action: cues before it, but only within the predicate
+ * it governs -- the look-back is cut at the last comma or contrastive
+ * coordinator, so a safe prohibition in an earlier clause fragment ("Never use
+ * rage bait, pad the video ...") does not sanitize this action. An even count
+ * (including the "do not fail to X" / "not refrain from X" double negative)
+ * leaves the action affirmed.
+ */
+function htActionIsAffirmed(clause: string, actionIndex: number): boolean {
+  let before = clause.slice(0, actionIndex).replace(HT_NEGATION_FALSE, " ");
+  HT_NEG_SCOPE_CUT.lastIndex = 0;
+  let cut = 0;
+  let m: RegExpExecArray | null;
+  while ((m = HT_NEG_SCOPE_CUT.exec(before)) !== null) {
+    cut = m.index + m[0].length;
+    if (m.index === HT_NEG_SCOPE_CUT.lastIndex) HT_NEG_SCOPE_CUT.lastIndex++;
+  }
+  before = before.slice(cut);
   const negations = before.match(HT_NEGATION_CUE)?.length ?? 0;
   return negations % 2 === 0;
 }
 
-const treatmentIntentIsHarmful = (text: string): boolean => htClauses(text).some(htClauseAffirmsHarm);
+function htClauseAffirmsHarm(clause: string, purposePresent: boolean): boolean {
+  // Deceptive scarcity / urgency contradicted by admitted availability.
+  if (HT_SCARCITY_CLAIM.test(clause) && (HT_AVAILABILITY_TRUTH.test(clause) || HT_AVAILABILITY_TRUTH_LOOSE.test(clause))) return true;
+  const hits = htActionHits(clause);
+  if (hits.some((hit) => (!hit.needsPurpose || purposePresent) && htActionIsAffirmed(clause, hit.index))) return true;
+  // Compositional Tier-B fallback: a prolonging concept + purpose, or a
+  // withholding signal + a value noun + (end-position OR purpose).
+  if (purposePresent) {
+    for (const concept of HT_PROLONG_CONCEPTS) {
+      const m = concept.exec(clause);
+      concept.lastIndex = 0;
+      if (m && htActionIsAffirmed(clause, m.index)) return true;
+    }
+  }
+  const withhold = HT_WITHHOLD_SIGNAL.exec(clause);
+  HT_WITHHOLD_SIGNAL.lastIndex = 0;
+  if (withhold && HT_VALUE_NOUN_RE.test(clause) && (purposePresent || HT_END_POSITION.test(clause)) && htActionIsAffirmed(clause, withhold.index)) return true;
+  return false;
+}
+
+// A prolonging / withholding MECHANISM plus a watch-time / keep-watching PURPOSE
+// anywhere in the same intent field is harmful even when the two land in
+// different clauses ("Never skip padding the middle; that is how minutes viewed
+// rise."). Tier-A harms and deceptive scarcity are judged per clause.
+const treatmentIntentIsHarmful = (text: string): boolean => {
+  const clauses = htClauses(text);
+  const purposePresent = clauses.some((clause) => HT_KEEP_WATCHING_PURPOSE.test(clause));
+  return clauses.some((clause) => htClauseAffirmsHarm(clause, purposePresent));
+};
 
 function freeText(result: ChannelVideoExperimentResult): string[] {
   const { experiment, alternatives, decisionDisagreements, viewerValueSafeguards } = result.content;
@@ -397,11 +580,10 @@ export const DETERMINISTIC_VIDEO_EXPERIMENT_RULES: ExperimentRule[] = [
       ...(experiment.measurementOnly ? [] : [experiment.treatmentCondition.whatChanges, experiment.treatmentCondition.description]),
     ];
     // A status-quo phrase is a legitimate OUTCOME only when the SAME clause ties
-    // the preservation to a measured result / control condition. A bare
-    // conditional or "control" token elsewhere in the field cannot sanitize
-    // unrelated status-quo intent (round-3 smuggling class).
-    return purpose.some((text) =>
-      sentenceClauses(text).some((clause) => STATUS_QUO_INTENT.test(clause) && !OUTCOME_JUSTIFIED_PRESERVE.test(clause)))
+    // the preservation to a measured result / control condition; unconditional
+    // immutability ("keep the current version regardless of the result / even if
+    // it outperforms / permanently") is always contradictory (round-3 smuggling).
+    return purpose.some((text) => sentenceClauses(text).some(purposeClauseContradicts))
       ? ["The experiment's stated purpose is to confirm, preserve, or leave unchanged the current approach; an INVESTIGATE / PRIORITIZE_CHANGE decision is testing a change, not defending the current approach or concluding further investigation is unwarranted."]
       : [];
   }),
