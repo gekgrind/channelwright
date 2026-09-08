@@ -8,6 +8,13 @@ import {
 } from "@/domain/production-workflows";
 import { canonicalEquals } from "./canonical-json";
 import {
+  harmfulTreatmentByFeatures,
+  invalidationDomainContradiction,
+  normalizeSemanticText,
+  retentionPurposePresent,
+  segmentSemClauses,
+} from "./video-experiment-semantics";
+import {
   deriveExperimentReady,
   deriveVideoExperimentConstraints,
   EXPERIMENT_TYPE_CONTROL_KIND,
@@ -31,7 +38,14 @@ const CONFIDENCE_ORDER = { low: 0, medium: 1, high: 2 } as const;
 const PROMISE_RISK_ORDER = { NONE: 0, POSSIBLE: 1, LIKELY: 2 } as const;
 const EVIDENCE_STRENGTH_CEILING = { STRONG: "high", MODERATE: "medium", WEAK: "low", NONE: "low" } as const;
 
-const CAUSAL_CERTAINTY = /\b(?:causes?|caused|proves?|proven cause|resulted in|led to|is the reason|responsible for|directly driv(?:e|es|en|ing)|made viewers|definitively explains)\b/i;
+// `prove` is only a forbidden causal-certainty assertion when it claims a
+// mechanism was DEFINITIVELY PROVEN to cause something -- not when it is
+// outcome-conditioned / copular ("if the reworked opening proves stronger",
+// "the variant proves better", "tests stronger"), which is ordinary hypothetical
+// language about what to do given a result. So `prove` requires an explicit
+// causal complement (`prove that ...`, `prove(n) cause`, `prove causation`) or a
+// certainty adverb; it is never matched bare.
+const CAUSAL_CERTAINTY = /\b(?:causes?|caused|resulted in|led to|is the reason|responsible for|directly driv(?:e|es|en|ing)|made viewers|definitively explains|(?:definitively|conclusively|beyond doubt|for certain)\s+prov(?:e|es|ed|en|ing)\b|prov(?:e|es|ed|en|ing)\s+(?:that\b|causal\w*|causation|it\s+caused|(?:the\s+)?\w+(?:\s+\w+)?\s+caused)|prov(?:es|ed|en)\s+(?:the\s+)?(?:root\s+)?(?:cause|reason|driver)\b)/i;
 
 // --- Fabricated-quantity detection ----------------------------------------
 // The design contract is qualitative: any asserted magnitude, duration, sample
@@ -102,12 +116,6 @@ const OUTCOME_JUSTIFIED_PRESERVE = new RegExp([
   OUTCOME_COND + "\\s+the\\s+(?:data|evidence|result|read|treatment|change|numbers?|reworked\\s+\\w+)\\b[^.;!?]*\\b(?:not\\b|fail|under[- ]?perform|show\\s+no|do(?:es)?\\s+not\\s+beat|are\\s+(?:flat|weak|negative))",
 ].join("|"), "i");
 
-// Sentence / semicolon clause units. Commas are kept inside a clause so a
-// conditional like "if the treatment underperforms, preserve the current
-// opening" is analysed as one unit and its outcome linkage stays visible.
-const sentenceClauses = (text: string): string[] =>
-  text.split(/[.!?;]+/).map((clause) => clause.trim()).filter((clause) => clause.length > 0);
-
 // --- Decision-purpose contradiction: the experiment must let the OUTCOME move
 // the decision. Two families:
 //   (a) plain status-quo purpose (STATUS_QUO_INTENT) -- contradictory UNLESS the
@@ -133,18 +141,124 @@ const IMMUTABLE_PHRASE = /\b(?:set\s+in\s+stone|carved\s+in\s+stone|written\s+in
 const RESULT_CANNOT_MOVE = /\b(?:experiment|test|trial|comparison|result|results|outcome|data|read|finding|numbers?)\s+(?:cannot|can\s?not|can'?t|wo\s?n['’]?t|will\s+not|shall\s+not|is\s+not\s+going\s+to|are\s+not\s+going\s+to|has\s+no\s+power\s+to|is\s+powerless\s+to)\s+(?:change|alter|overturn|affect|move|sway|shift|influence|reverse|undo|reopen)\b/i;
 const PURPOSE_ASSET_NOUN = /\b(?:opening|hook|thumbnail|title|format|approach|design|framing|packaging|structure|cut|edit|version|hook)\b/i;
 
-function purposeClauseContradicts(clause: string): boolean {
-  const assetPresent = CURRENT_ASSET_REF.test(clause) || PURPOSE_ASSET_NOUN.test(clause);
-  const preservesCurrent = PRESERVE_CURRENT_VERB.test(clause) && assetPresent;
-  // (b) unconditional immutability -- never exempted by an outcome token
-  if (preservesCurrent && UNCONDITIONAL_MARKER.test(clause)) return true;
-  if (assetPresent && IMMUTABLE_PHRASE.test(clause)) return true;
-  if (RESULT_CANNOT_MOVE.test(clause)) return true;
+// --- Decision-purpose relation model ------------------------------------
+// The invariant is a RELATION, not a phrase set: an experiment may preserve the
+// current asset ONLY as a consequence of a measured experiment OUTCOME. Two
+// contradiction families, expressed structurally:
+//   (b) immutability -- the outcome is declared powerless to move the decision
+//       (regardless of the result / even if the challenger wins / predetermined /
+//       ceremonial / documentation-only / "for keeps"). Field-wide and always
+//       contradictory; a valid conditional clause elsewhere does not rescue it.
+//   (a) plain status-quo intent that is NOT tied, in its own clause, to a
+//       measured outcome (treatment underperforms / null / inconclusive /
+//       guardrail breach / "unless it improves" / preservation explicitly
+//       pending another run).
+// Legitimate outcome-conditioned preservation ("keep the current opening unless
+// the treatment shows a clear improvement", "if the result is inconclusive, keep
+// it pending a second run") satisfies (a)'s exemption and carries no (b) signal,
+// so it passes.
+
+// Extension to OUTCOME_JUSTIFIED_PRESERVE: `unless` + challenger-success ("keep X
+// unless the treatment improves"), the reversed word order ("the result is
+// inconclusive" as well as "an inconclusive result"), and preservation that is
+// explicitly provisional ("pending a second run / more data").
+const OUTCOME_JUSTIFIED_PRESERVE_EXT = new RegExp([
+  "\\bunless\\b[^.;!?]*\\b(?:improv\\w*|better|stronger|superior|beat\\w*|out-?perform\\w*|win\\w*|succeed\\w*|clear(?:\\s+and)?\\s+(?:sustained\\s+)?(?:improvement|gain|win|lift|advantage)|shows?\\s+(?:a\\s+)?(?:clear|sustained|meaningful|significant|real)\\b|lift\\w*|gain\\w*|move\\w*\\s+the\\s+(?:metric|needle))",
+  "\\b(?:result\\w*|read(?:out|ing)?|outcome\\w*|finding\\w*|data|evidence|signal\\w*|number\\w*|comparison|effect)\\b\\s+(?:is|are|was|were|turns?\\s+out|comes?\\s+(?:back|out)|looks?|reads?|remains?|proves?\\s+(?:to\\s+be\\s+)?)\\s+(?:\\w+\\s+){0,3}?(?:inconclusive|null|negative|flat|adverse|unfavou?rable|non-?significant|weak|unclear|mixed|ambiguous|murky|opaque|cloudy|hazy|muddy|noisy|hard\\s+to\\s+read|hard-to-read|a\\s+wash|not\\s+(?:clear|significant|conclusive|meaningful))",
+  "\\b(?:inconclusive|adverse|null|flat|negative|ambiguous|non-?significant|unfavou?rable|murky|opaque|hard[- ]to[- ]read|hard\\s+to\\s+read)\\b[^.;!?]{0,25}?\\b(?:read(?:out|ing)?|outcome\\w*|result\\w*|finding\\w*|signal\\w*|effect|comparison)\\b",
+  "\\bpending\\s+(?:a\\s+|the\\s+|another\\s+|further\\s+|more\\s+)?(?:second|another|further|additional|repeat|follow[- ]?up|new|fresh)\\s+(?:run|test|read(?:out)?|window|experiment|comparison|data|measurement|pass|rerun|re-?run)",
+  "\\b(?:until|pending|awaiting)\\s+(?:a\\s+|the\\s+|another\\s+)?(?:re-?run|rerun|repeat(?:\\s+run)?|second\\s+run|follow[- ]?up|another\\s+read|another\\s+window|more\\s+data)\\b",
+  "\\bpending\\s+more\\s+data\\b",
+].join("|"), "i");
+
+// (b) immutability markers not tied to the current/asset-preserve phrasings.
+const IMMUTABLE_CHALLENGER_WINS = /\b(?:challenger|treatment|variant|candidate|rework(?:ed|ing)?|new\s+(?:version|opening|hook|cut|framing|thumbnail)|alternate\s+\w+)\b[^.;!?]{0,55}?\b(?:can|could|may|might)\s+(?:win|beat\s+\w+|come\s+out\s+ahead|prove\s+\w+|be\s+(?:stronger|better))\b[^.;!?]{0,55}?\b(?:but|still|yet|cannot|can\s+not|will\s+not|wo\s+not|nonetheless|nevertheless|even\s+so|regardless)\b[^.;!?]{0,35}?\b(?:will\s+not|wo\s+not|cannot|can\s+not|is\s+not\s+going\s+to|still)\s*(?:be\s+)?(?:ship\w*|adopt\w*|use\w*|go\s+live|replace\w*|change\s+anything|win\s+out|matter)?\b/i;
+const CHALLENGER_WINS_NO_SHIP = /\b(?:can|could|may|might)\s+(?:win|beat\s+\w+|come\s+out\s+ahead|prove\s+\w+|be\s+(?:stronger|better|the\s+winner))\b[^.;!?]{0,70}?\b(?:but|yet|still|however|nonetheless|regardless)\b[^.;!?]{0,45}?\b(?:will\s+not|wo\s+not|cannot|can\s+not|is\s+not\s+going\s+to|shall\s+not)\s+(?:be\s+)?(?:ship\w*|adopt\w*|be\s+used|go\s+live|replace\w*|win\s+out|change\s+(?:anything|the\s+\w+))\b/i;
+const CEREMONIAL_RUN = /\b(?:ceremonial|box[- ]?ticking|box\s+ticking|rubber[- ]?stamp\w*|going\s+through\s+the\s+motions|a\s+(?:mere\s+)?formality|for\s+show\b|window[- ]dressing|dog[- ]and[- ]pony|for\s+the\s+record\s+only|purely\s+(?:performative|symbolic|cosmetic|for\s+optics)|(?:a\s+)?(?:dry\s+run|practice\s+run|dress\s+rehearsal|dummy\s+run|warm-?up\s+run)|(?:just|merely|only|purely)\s+(?:for\s+)?practice|\bas\s+(?:a\s+)?(?:practice|rehearsal|warm-?up|dry\s+run|trial\s+run|dress\s+rehearsal)\b|\btreat\w*\s+(?:this|it|the\s+run)\s+as\s+(?:a\s+)?(?:practice|rehearsal|dry\s+run|formality|box[- ]?ticking))\b/i;
+const DOCUMENTATION_ONLY_RUN = /\b(?:merely|only|just|simply|purely|nothing\s+more\s+than)\s+(?:to\s+)?(?:document\w*|record\w*|catalogu?\w*|log\w*|note\w*|show\w*|measur\w*|illustrat\w*|chronicl\w*|describ\w*|report\w*|observ\w*|capture\w*)\b[^.;!?]{0,55}?\b(?:performance|challenger\w*|result\w*|difference\w*|number\w*|outcome\w*|it|the\s+comparison|the\s+two)\b|\b(?:the\s+)?(?:test|run|experiment|comparison|trial|exercise)\s+(?:merely|only|just|simply|purely)\s+(?:document\w*|record\w*|measur\w*|show\w*|log\w*|note\w*|illustrat\w*|observ\w*|capture\w*)\b|\b(?:this|the)\s+(?:comparison|run|test|experiment|exercise|trial)\s+is\s+(?:purely\s+|merely\s+|just\s+|only\s+|strictly\s+)?(?:informational|for\s+information|documentary|for\s+the\s+record|a\s+formality|diagnostic\s+only|observational\s+only)\b/i;
+const PREDETERMINED_DECISION = /\b(?:outcome\w*|decision\w*|call|choice\w*|answer\w*|result\w*|conclusion\w*|winner|verdict)\b[^.;!?]{0,40}?\b(?:was|is|has\s+been|had\s+been|were)\s+(?:already\s+)?(?:settled|decided|determined|made|fixed|chosen|sealed|locked(?:\s+(?:in|down))?|predetermined|a\s+foregone\s+conclusion)\b|\b(?:settled|decided|determined|chosen|fixed|sealed|locked(?:\s+(?:in|down))?)\b[^.;!?]{0,30}?\b(?:before|ahead\s+of|in\s+advance|prior\s+to|up\s+front|from\s+the\s+(?:start|outset))\b[^.;!?]{0,25}?\b(?:data|result\w*|run|test|experiment|evidence|number\w*|comparison|anything)\b|\bdecid\w*\s+in\s+advance\b|\bpre-?determin\w*\b|\bmade\s+up\s+(?:our|my|their)\s+mind\w*\s+(?:before|already|in\s+advance)\b/i;
+const RESULT_NO_WEIGHT = /\b(?:finding\w*|result\w*|outcome\w*|data|comparison|number\w*|read(?:out)?|winner|whichever\s+\w+\s+wins?|which\s+\w+\s+wins?)\b[^.;!?]{0,45}?\b(?:carr(?:y|ies|ied)|have|has|hold\w*|bear\w*|count\w*|weigh\w*)\s+(?:no|little|zero)\s+(?:weight|bearing|sway|influence|force|say|impact|part)\b|\b(?:finding\w*|result\w*|outcome\w*|comparison|winner|which(?:ever)?\s+\w+\s+wins?)\b[^.;!?]{0,40}?\b(?:changes?\s+nothing|makes?\s+no\s+difference|does\s+not\s+matter|doesn['’]?t\s+matter|is\s+irrelevant|has\s+no\s+bearing|is\s+moot|is\s+decoupled\s+from|will\s+not\s+affect\s+(?:what|the\s+decision))\b|\b(?:outcome\w*|result\w*|finding\w*|read(?:out)?|comparison|winner)\b[^.;!?]{0,25}?\bbear\w*\s+on\s+nothing\b|\b(?:has|have)\s+no\s+bearing\s+on\b[^.;!?]{0,40}?\b(?:which|what|whether)\b[^.;!?]{0,25}?\b(?:cut|opening|hook|version|framing|thumbnail|title)\b|\bno\s+(?:weight|bearing|say|influence|impact|effect|role|part|input)\b[^.;!?]{0,30}?\b(?:over|on|in|about|regarding|as\s+to|toward\w*|when\s+it\s+comes\s+to)\b[^.;!?]{0,35}?\b(?:which|what|whether|the)\b[^.;!?]{0,25}?\b(?:ship\w*|adopt\w*|framing|version|opening|hook|cut|decision|choice|change|win\w*|go(?:es)?\s+live)\b/i;
+const EXTRA_UNCONDITIONAL = /\bregardless\s+of\s+(?:what|how)\s+(?:the\s+)?(?:run|test|experiment|comparison|data|it|this|number\w*)\s+(?:show\w*|reveal\w*|find\w*|say\w*|turn\w*\s+up|produce\w*|come\w*\s+up\s+with|land\w*|fall\w*|shake\w*\s+out|play\w*\s+out)\b|\bno\s+matter\s+(?:what|how)\s+(?:the\s+)?(?:run|test|experiment|comparison|data|number\w*|result\w*|it)\b|\bshould\s+the\s+(?:challenger|fresh\s+\w+|new\s+\w+|alternate\s+\w+|reworked?\s+\w+)\b[^.;!?]{0,40}?\b(?:turn\s+out\s+|come\s+out\s+|prove\s+|edge\s+)?(?:strong\w*|better|superior|ahead|the\s+winner|on\s+top)\b|\beven\s+(?:if|when|where|though|should)\s+(?:it|the\s+\w+|they|challenger|alternate\s+\w+|fresh\s+\w+|new\s+\w+|which\w*\s+\w+)\b[^.;!?]{0,30}?\b(?:win\w*|beat\w*|out-?perform\w*|stronger|better|ahead|superior|succeed\w*|edge\s+(?:ahead|out|past)|come\w*\s+out\s+ahead)\b|\ball\s+the\s+same\b/i;
+const EXTRA_IMMUTABLE_PHRASE = /\bfor\s+keeps\b|\bin\s+place\s+for\s+keeps\b|\b(?:stay\w*|remain\w*|kept|keep\w*)\s+in\s+service\b|\bin\s+service\s+(?:afterward|either\s+way|regardless)\b|\b(?:is|are)\s+not\s+going\s+anywhere\b|\bgoing\s+nowhere\b|\bnot\s+for\s+moving\b/i;
+// Challenger success is conceded / hypothesised and the consequence is still to
+// keep the current asset ("even if it wins, keep current") -- not the legitimate
+// "if it wins, adopt it".
+const CHALLENGER_SUCCESS = /\b(?:challenger|treatment|variant|candidate|rework(?:ed|ing)?|new\s+(?:version|opening|hook|cut|framing|thumbnail)|alternate\s+(?:hook|opening|version|thumbnail|cut)|experimental\s+\w+|which\s?ever\s+(?:hook|version|opening|option|arm|cut|one)|it|they)\b[^.;!?]{0,55}?\b(?:turn(?:s|ed)?\s+out\s+)?(?:prov(?:e|es|ed|en)\s+)?(?:come(?:s)?\s+out\s+)?(?:strong\w*|better|superior|ahead|winning|the\s+winner|out-?perform\w*|beat\w*|wins?\b|won\b|succeed\w*|improv\w*\s+(?:on|over|things)|is\s+better|does\s+better|come\w*\s+out\s+(?:ahead|on\s+top))\b/i;
+// The current asset persists via ANY persistence predicate ("rides", "stands",
+// "isn't going anywhere", "carries on", "remains in service") -- broader than
+// PRESERVE_CURRENT_VERB, used only alongside an immutability / irrelevance
+// marker so an ordinary "the opening stays put once we pick a winner" is not
+// swept in on its own.
+const ASSET_PERSISTS = /\b(?:ride\w*|stand\w*|persist\w*|carr(?:y|ies|ying)\s+on|stick\w*\s+around|is\s+not\s+going\s+anywhere|are\s+not\s+going\s+anywhere|here\s+to\s+stay|hold\w*\s+(?:firm|steady|fast)|live\w*\s+on|stay\w*\s+in\s+(?:place|service|use|the\s+lineup)|remain\w*\s+in\s+(?:place|service|use)|continu\w*\s+in\s+(?:place|service|use)|keep\w*\s+(?:its\s+)?(?:slot|spot|place)|in\s+the\s+lineup\s+(?:regardless|either\s+way|afterward))\b/i;
+const ADOPT_CHALLENGER = /\b(?:adopt\w*|ship\w*|switch\w*\s+to|roll\w*\s+out|go\s+with|move\s+to|take\s+up)\s+(?:it\b|the\s+challenger|the\s+treatment|the\s+new\s+\w+|the\s+rework\w*|the\s+variant|the\s+candidate)\b/i;
+// Passive / participial preservation the active PRESERVE_CURRENT_VERB misses
+// ("is kept", "was retained", "is left as is", "are not moving/changing it").
+const PRESERVE_PARTICIPLE = /\b(?:is|are|was|were|be|been|being|stay\w*|remain\w*|gets?|got)\s+(?:\w+ly\s+|then\s+|nonetheless\s+|still\s+|simply\s+)?(?:kept|retained|preserved|maintained|held(?:\s+in\s+place)?|frozen|locked(?:\s+(?:in|down))?|left\s+(?:alone|as\s+is|untouched|in\s+place|the\s+same))\b|\b(?:are|were|is|was)\s+not\s+(?:going\s+to\s+be\s+)?(?:touch\w*|chang\w*|alter\w*|modif\w*|revis\w*|adjust\w*|rework\w*|replac\w*|swap\w*|mov\w*|budg\w*|shift\w*|dropp\w*)\b/i;
+
+const assetRef = (clause: string): boolean =>
+  CURRENT_ASSET_REF.test(clause) || PURPOSE_ASSET_NOUN.test(clause) || /\b(?:incumbent|the\s+existing\s+\w+)\b/i.test(clause);
+
+const clauseOutcomeConditioned = (clause: string): boolean =>
+  OUTCOME_JUSTIFIED_PRESERVE.test(clause) || OUTCOME_JUSTIFIED_PRESERVE_EXT.test(clause);
+
+/** (b) A decision-immutability signal -- always contradictory, wherever it sits. */
+function clauseAssertsImmutability(clause: string): boolean {
+  const asset = assetRef(clause);
+  const unconditional = UNCONDITIONAL_MARKER.test(clause) || EXTRA_UNCONDITIONAL.test(clause);
+  const preserve = asset && (PRESERVE_CURRENT_VERB.test(clause) || ASSET_PERSISTS.test(clause) || PRESERVE_PARTICIPLE.test(clause));
+  if (preserve && unconditional) return true;
+  if (STATUS_QUO_INTENT.test(clause) && unconditional) return true;
+  // asset + an unconditional marker + a bare persistence verb ("however the read
+  // shakes out, the opening we run today stays") -- safe because the
+  // unconditional marker is itself decisive.
+  if (asset && unconditional && /\b(?:stay\w*|remain\w*|stand\w*|hold\w*|keep\w*|kept|ride\w*|carr(?:y|ies|ying)\s+on)\b/i.test(clause)) return true;
+  if (asset && (IMMUTABLE_PHRASE.test(clause) || EXTRA_IMMUTABLE_PHRASE.test(clause))) return true;
+  if (RESULT_CANNOT_MOVE.test(clause) || RESULT_NO_WEIGHT.test(clause)) return true;
+  if (NO_INTENT_TO_CHANGE.test(clause)) return true;
+  if (CEREMONIAL_RUN.test(clause) || DOCUMENTATION_ONLY_RUN.test(clause) || PREDETERMINED_DECISION.test(clause)) return true;
+  if (IMMUTABLE_CHALLENGER_WINS.test(clause)) return true;
+  return false;
+}
+
+/** (b) cross-clause: challenger success conceded, consequence still keeps current. */
+function fieldConcedesSuccessButKeeps(clauses: string[]): boolean {
+  for (let i = 0; i < clauses.length; i++) {
+    const c = clauses[i];
+    if (!CHALLENGER_SUCCESS.test(c)) continue;
+    // "keep X unless it improves" / "if it wins, adopt it" -- legitimate.
+    if (/\b(?:unless|only\s+if|provided|as\s+long\s+as)\b/i.test(c)) continue;
+    if (clauseOutcomeConditioned(c)) continue;
+    if (ADOPT_CHALLENGER.test(c)) continue;
+    const sib = [c, clauses[i + 1] ?? "", clauses[i - 1] ?? ""].join(" ");
+    const keepsCurrent =
+      ((PRESERVE_CURRENT_VERB.test(sib) || ASSET_PERSISTS.test(sib) || PRESERVE_PARTICIPLE.test(sib)) && assetRef(sib)) ||
+      STATUS_QUO_INTENT.test(sib) ||
+      KEEP_WHAT_WE_HAVE.test(sib);
+    if (!keepsCurrent || ADOPT_CHALLENGER.test(sib)) continue;
+    return true;
+  }
+  return false;
+}
+
+/** (a) plain status-quo intent (any of the "leave it alone" families). */
+function clauseIsPlainStatusQuo(clause: string): boolean {
   if (NO_INTENT_TO_CHANGE.test(clause)) return true;
   if (SKIP_EXPERIMENT.test(clause) && (PRESERVE_CURRENT_VERB.test(clause) || KEEP_WHAT_WE_HAVE.test(clause))) return true;
-  // (a) plain status-quo purpose, unless outcome-conditioned in the same clause
-  if (STATUS_QUO_INTENT.test(clause) && !OUTCOME_JUSTIFIED_PRESERVE.test(clause)) return true;
-  return false;
+  if (KEEP_WHAT_WE_HAVE.test(clause)) return true;
+  return STATUS_QUO_INTENT.test(clause);
+}
+
+function purposeFieldContradicts(text: string): boolean {
+  const clauses = segmentSemClauses(text).map((c) => c.norm);
+  // Whole-field idioms whose two halves the clause splitter separates
+  // ("the challenger can win, but it still will not ship"; "the winner here
+  // changes nothing about what ships"). Use the normalised full text so the
+  // contrastive coordinator the splitter consumes is still visible.
+  const whole = normalizeSemanticText(text);
+  if (CHALLENGER_WINS_NO_SHIP.test(whole) || IMMUTABLE_CHALLENGER_WINS.test(whole) || RESULT_NO_WEIGHT.test(whole)) return true;
+  if (clauses.some(clauseAssertsImmutability)) return true;
+  if (fieldConcedesSuccessButKeeps(clauses)) return true;
+  return clauses.some((clause) => clauseIsPlainStatusQuo(clause) && !clauseOutcomeConditioned(clause));
 }
 const GUARDRAIL_OVERRIDE = /\b(?:ignore|override|overrule|disregard|bypass|wave away|set aside|push past)\s+(?:the |any |a )?(?:guardrail|degradation|breach|threshold|red[- ]?line|stopping condition|harm signal)/i;
 const CONTINUE_NEAR_GUARDRAIL = /(?:\b(?:continue|proceed|keep going|carry on|press on|forge ahead|push (?:on|ahead)|do not (?:stop|halt|pause|revert|roll ?back)|don'?t (?:stop|halt|pause|revert))\b[^.]{0,90}?\b(?:guardrail|degrad|breach|threshold|red[- ]?line|harm signal|regression)\b)|(?:\b(?:guardrail|degrad(?:es|ing|ation)?|breach|threshold breach|red[- ]?line|harm signal)\b[^.]{0,90}?\b(?:continue|proceed|keep going|carry on|press on|forge ahead|still (?:ship|run|adopt|continue)|do not (?:stop|halt|require stopping)|regardless|anyway|nonetheless|is (?:acceptable|tolerable|fine|ok))\b)/i;
@@ -477,8 +591,15 @@ function htClauseAffirmsHarm(clause: string, purposePresent: boolean): boolean {
 // rise."). Tier-A harms and deceptive scarcity are judged per clause.
 const treatmentIntentIsHarmful = (text: string): boolean => {
   const clauses = htClauses(text);
-  const purposePresent = clauses.some((clause) => HT_KEEP_WATCHING_PURPOSE.test(clause));
-  return clauses.some((clause) => htClauseAffirmsHarm(clause, purposePresent));
+  const purposePresent =
+    clauses.some((clause) => HT_KEEP_WATCHING_PURPOSE.test(clause)) || retentionPurposePresent(text);
+  if (clauses.some((clause) => htClauseAffirmsHarm(clause, purposePresent))) return true;
+  // Generalisation layer (video-experiment-semantics): composed semantic
+  // features -- inflection / passive / nominalisation tolerant mechanism
+  // detection, field-wide keep-watching purpose, cross-clause deceptive
+  // scarcity, and deterministic value-noun coreference -- with negation-parity
+  // and reduction/front-position guards so legitimate tightening edits pass.
+  return harmfulTreatmentByFeatures(text);
 };
 
 function freeText(result: ChannelVideoExperimentResult): string[] {
@@ -583,7 +704,7 @@ export const DETERMINISTIC_VIDEO_EXPERIMENT_RULES: ExperimentRule[] = [
     // the preservation to a measured result / control condition; unconditional
     // immutability ("keep the current version regardless of the result / even if
     // it outperforms / permanently") is always contradictory (round-3 smuggling).
-    return purpose.some((text) => sentenceClauses(text).some(purposeClauseContradicts))
+    return purpose.some((text) => purposeFieldContradicts(text))
       ? ["The experiment's stated purpose is to confirm, preserve, or leave unchanged the current approach; an INVESTIGATE / PRIORITIZE_CHANGE decision is testing a change, not defending the current approach or concluding further investigation is unwarranted."]
       : [];
   }),
@@ -765,7 +886,17 @@ export const DETERMINISTIC_VIDEO_EXPERIMENT_RULES: ExperimentRule[] = [
   }),
   rule("INVALIDATION_CONDITION_INCOHERENT", "error", ({ result }) =>
     result.content.experiment.invalidationConditions
-      .filter((text) => INCOHERENT_INVALIDATION.test(text.replace(/\bcan['’]t\b/gi, "can not").replace(/\bwon['’]t\b/gi, "will not").replace(/(\w)n['’]t\b/gi, "$1 not")))
+      .filter((text) => {
+        const expanded = text.replace(/\bcan['’]t\b/gi, "can not").replace(/\bwon['’]t\b/gi, "will not").replace(/(\w)n['’]t\b/gi, "$1 not");
+        // Two independent ways a criterion is not a real safeguard: it can never
+        // occur (lexical "impossible by construction" family), OR it asserts a
+        // relationship between known experiment quantities that cannot hold
+        // (average view duration above the video's own length, a percentage of a
+        // whole above 100%, more views than impressions, a criterion required to
+        // be both met and unmet). The second is domain-scoped, not a general
+        // theorem prover: merely unlikely thresholds are left alone.
+        return INCOHERENT_INVALIDATION.test(expanded) || invalidationDomainContradiction(expanded);
+      })
       .map((text) => `Invalidation condition "${text.trim().slice(0, 90)}" can never trigger; it is not a real safeguard.`)),
 
   // --- Viewer Value (hard constraint) ----------------------------------

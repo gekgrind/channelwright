@@ -1117,3 +1117,184 @@ describe("adversarial matrix — round-4 independent-verification regressions", 
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Round 5 -- semantic-generalization repair. The prior detectors fitted known
+// phrasings (36/41 fresh harmful-treatment probes bypassed while 120/120
+// regression tests passed). These exercise the composed-feature layer at three
+// levels: (A) direct regressions for the five verified findings, (B)
+// semantic-equivalence paraphrases that vary voice / clause order / sentence
+// boundaries / inflection / nominalisation / conditional structure / coreference,
+// (C) nearby legitimate language that must still pass, plus a metamorphic table.
+// None of these strings are copied from the verifier's probes or the repair
+// brief's example lists.
+// ---------------------------------------------------------------------------
+describe("round-5 semantic-generalization repair", () => {
+  const asTreatment = (text: string) =>
+    manipulationResult({ treatmentCondition: { description: text, whatChanges: text, whatStaysConstant: ["Topic selection"] } });
+  const asPurpose = (text: string) => {
+    const result = manipulationResult();
+    result.content.experiment.decisionLinkage.hypothesisUnderTest = text;
+    return result;
+  };
+  const asJustification = (text: string) => {
+    const result = manipulationResult();
+    result.content.experiment.expectedDirection.justification = text;
+    return result;
+  };
+  const harmful = (text: string) => expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+  const safeTreatment = (text: string) => expect(validate(asTreatment(text))).toEqual([]);
+  const contradicts = (r: ChannelVideoExperimentResult) => expect(codes(r)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+  const doesNotContradict = (r: ChannelVideoExperimentResult) => expect(codes(r)).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+  const incoherent = (text: string) => expect(codes(manipulationResult({ invalidationConditions: [text] }))).toContain("INVALIDATION_CONDITION_INCOHERENT");
+  const coherent = (text: string) => expect(codes(manipulationResult({ invalidationConditions: [text] }))).not.toContain("INVALIDATION_CONDITION_INCOHERENT");
+
+  it("sanity: manipulation base stays deterministically clean", () => {
+    expect(validate(manipulationResult())).toEqual([]);
+  });
+
+  // === Finding 1 -- harmful-treatment semantic bypass ======================
+
+  // A. direct regressions (materially the reported failure classes)
+  it("A1: harmful prolonging / withholding / conflict / deceptive scarcity are rejected", () => {
+    harmful("Fatten the mid-section with repeated recaps so minutes viewed climbs.");
+    harmful("The reveal is deferred to the closing seconds so viewers do not click off.");
+    harmful("Gin up a feud with a rival so the comment section descends into a brawl.");
+    harmful("Say only a couple of seats remain while the room actually seats hundreds.");
+  });
+
+  // B. semantic-equivalence paraphrases -- vary voice / order / inflection /
+  //    nominalisation / coreference; not simple synonym swaps
+  it("B1: harmful prolonging survives voice / nominalisation / clause-order changes", () => {
+    harmful("Padding out the middle keeps average view duration rising.");                       // nominalised subject
+    harmful("So that watch time keeps growing, the explainer is dragged out with re-statements."); // purpose-first, passive
+    harmful("Each answer is made to run noticeably longer, which lifts retention.");              // passive + relative clause
+    harmful("The prolongation of every segment is what pushes session length up.");              // full nominalisation
+  });
+  it("B2: harmful withholding survives coreference and split mechanism/purpose", () => {
+    harmful("The opening names the concrete fix viewers came for. That fix is then held back until the sign-off. The goal is to stop early exits.");
+    harmful("Reserve the assessment. Only reveal it in the last minute. That way the audience stays to the end.");
+    harmful("Metering the guidance out in dribs and drabs toward the finish keeps people watching longer.");
+  });
+  it("B3: harmful conflict survives nominalisation, inflection and villain-casting", () => {
+    harmful("The deliberate escalation of a small disagreement into a scandal is used to farm angry replies.");
+    harmful("Appoint one commenter as the villain so the rest pile on.");
+    harmful("Blowing a trivial caption tweak up into a betrayal of the audience drives reaction.");
+  });
+  it("B4: deceptive scarcity is caught when claim and truth are in separate sentences", () => {
+    harmful("Put a countdown on the end card. Enrolment actually reopens every month with plenty of room.");
+    harmful("Tell viewers the bonus is about to be pulled. It stays online for good.");
+  });
+  it("B5: concessive / double-negation wrappers do not sanitise the harmful clause", () => {
+    harmful("Unless it would mislead anyone, stretch the recap so retention holds.");
+    harmful("Do not neglect to hold the payoff back if it keeps people watching.");
+    harmful("Avoid rage bait, but pad the middle so watch time rises.");
+  });
+
+  // C. safe controls near the harm vocabulary -- must stay clean
+  it("C1: tightening / honesty / truthful-scarcity edits still pass", () => {
+    safeTreatment("Cut the repeated recaps so the lesson reaches the answer faster.");
+    safeTreatment("The explanation is trimmed, not padded, and the payoff moves up front.");
+    safeTreatment("Lead with the concrete fix, then show the supporting detail.");
+    safeTreatment("Describe the enrolment window honestly and give the real closing date once.");
+    safeTreatment("Note where the two experts disagree and summarise both readings fairly.");
+    safeTreatment("Improve pacing in the middle without delaying the promised payoff.");
+  });
+
+  // === Findings 2 & 3 -- decision-purpose immutability vs legitimate ========
+  it("A2: legitimate outcome-conditioned preservation passes (Finding 2)", () => {
+    doesNotContradict(asJustification("Keep the current opening unless the treatment shows a clear, sustained improvement."));
+    doesNotContradict(asJustification("If the result is inconclusive, keep the current opening pending a second run."));
+    doesNotContradict(asJustification("If the reworked opening does not clearly beat the baseline, retain the current opening this cycle."));
+  });
+  it("A3: outcome-independent immutability is rejected across surface forms (Finding 3)", () => {
+    contradicts(asPurpose("Should the challenger come out ahead, the incumbent opening is kept all the same."));
+    contradicts(asPurpose("The run is a formality; the current cut stays in the lineup afterward."));
+    contradicts(asPurpose("The decision was locked before any data arrives, whatever the run turns up."));
+    contradicts(asPurpose("Findings from this comparison have no say over which framing ships."));
+    contradicts(asPurpose("The current opening is in place for keeps; the test just records the challenger's numbers."));
+    contradicts(asPurpose("The reworked hook may prove better, yet it will not be adopted."));
+  });
+  it("B6: immutability paraphrases -- inverted conditionals, concessives, documentation-only", () => {
+    contradicts(asPurpose("Even where the alternate hook wins, we are not moving the present thumbnail."));
+    contradicts(asPurpose("No matter what the comparison shows, the existing framing carries on."));
+    contradicts(asPurpose("Whichever version tests better, the one we have now is not going anywhere."));
+    contradicts(asPurpose("This is a box-ticking exercise; the incumbent opening rides regardless."));
+  });
+  it("C2: provisional and control-arm preservation still pass", () => {
+    doesNotContradict(asJustification("A flat or adverse read would justify holding the current version until we run it again."));
+    doesNotContradict(asJustification("Should satisfaction dip below the guardrail, roll back to the existing opening."));
+    const control = manipulationResult();
+    control.content.experiment.treatmentCondition.description =
+      "The simultaneous control arm keeps the current opening while the treatment reworks the promise.";
+    doesNotContradict(control);
+  });
+
+  // === Finding 4 -- impossible invalidation by construction ================
+  it("A4: domain-contradictory invalidation criteria are rejected", () => {
+    incoherent("Invalidate if average view duration exceeds the video's total length.");
+    incoherent("Invalidate if the completion rate comes in above 100%.");
+    incoherent("Invalidate if the video logs more views than impressions.");
+  });
+  it("B7: contradiction paraphrases -- reversed order, other quantities, mutual exclusion", () => {
+    incoherent("Invalidate if the video's runtime is shorter than its average view duration.");
+    incoherent("Invalidate if percentage viewed lands north of one hundred percent.");
+    incoherent("Invalidate if unique viewers outnumber total views.");
+    incoherent("Invalidate if the primary metric must both rise and fall in the same window.");
+  });
+  it("C3: strong-but-possible and merely-unlikely thresholds still pass", () => {
+    coherent("Invalidate if average view duration is under a tenth of the video length.");
+    coherent("Invalidate if more than 100 spurious impressions are logged from bot traffic.");
+    coherent("Invalidate if retention holds within one percentage point of the baseline the entire window.");
+    coherent("Invalidate if the treatment reaches fewer than a quarter of the planned videos.");
+  });
+
+  // === Finding 5 -- causal-certainty false positive =======================
+  it("A5 / C4: hypothetical 'proves/tests stronger' passes; a real causal claim still fails", () => {
+    for (const text of [
+      "If the reworked opening proves stronger on retention, adopt it.",
+      "Adopt the variant only where it proves better than the control.",
+      "Ship the new hook if it tests stronger than the baseline.",
+    ]) {
+      const r = manipulationResult();
+      r.content.experiment.expectedDirection.justification = text;
+      expect(codes(r)).not.toContain("UNSUPPORTED_CAUSAL_CERTAINTY");
+    }
+    const r = manipulationResult();
+    r.content.experiment.hypothesis = "This comparison will prove that the reworked opening causes the retention gain.";
+    expect(codes(r)).toContain("UNSUPPORTED_CAUSAL_CERTAINTY");
+  });
+
+  // === Metamorphic -- surface form varies, meaning and verdict do not ======
+  it("M1: one harmful intent, five surface forms, all rejected", () => {
+    for (const text of [
+      "Pad the explanation to lift watch time.",
+      "The explanation is padded to lift watch time.",
+      "To lift watch time, pad the explanation.",
+      "Watch time is lifted by padding out the explanation.",
+      "Padding of the explanation is how watch time is lifted.",
+    ]) {
+      harmful(text);
+    }
+  });
+  it("M2: one safe intent, four surface forms, all clean", () => {
+    for (const text of [
+      "Trim the explanation instead of padding it for watch time.",
+      "The explanation is trimmed, not padded, whatever happens to watch time.",
+      "Do not pad the explanation just to lift watch time.",
+      "Rather than pad the explanation for watch time, cut it down.",
+    ]) {
+      expect(codes(asTreatment(text))).not.toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
+  });
+  it("M3: immutability meaning is invariant to conditional inversion", () => {
+    for (const text of [
+      "Whatever the outcome, keep the current opening.",
+      "The current opening is kept whatever the outcome.",
+      "Regardless of how the comparison lands, the current opening is kept.",
+      "Keep the current opening; the comparison does not change that.",
+    ]) {
+      contradicts(asPurpose(text));
+    }
+  });
+});
