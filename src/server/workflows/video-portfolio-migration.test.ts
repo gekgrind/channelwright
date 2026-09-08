@@ -97,6 +97,13 @@ describe("CHANNEL_VIDEO_PORTFOLIO migration", () => {
     expect(migration).toContain("'portfolioCycleKey',v_old_run.input_payload->>'portfolioCycleKey'");
   });
 
+  it("stamps portfolioCycleKey as exactly lower(btrim(cycleLabel)) -- the normalization the executor-side schema re-derives", () => {
+    // videoPortfolioInputSchema refines `portfolioCycleKey === cycleLabel.trim().toLowerCase()`.
+    // If this SQL expression changes, that refine must change with it, so pin it here.
+    expect(migration).toContain("v_portfolio_cycle_key := lower(btrim(p_input->>'cycleLabel'))");
+    expect(migration).toContain("'approvedVideoExperimentReferences',v_experiment_refs,'portfolioCycleKey',v_portfolio_cycle_key");
+  });
+
   it("admits the eleventh paid workflow to accounting on the tighter no-retrieval ceilings", () => {
     expect(migration).toMatch(/v_no_retrieval := v_run\.workflow_type in \([^)]*'CHANNEL_VIDEO_PORTFOLIO'\)/);
     expect(migration).toMatch(/v_tight_ceiling := v_run\.workflow_type in \([^)]*'CHANNEL_VIDEO_PORTFOLIO'\)/);

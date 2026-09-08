@@ -379,3 +379,17 @@ export function videoPortfolioQA(findings: Finding[]): VideoPortfolioQAResult {
 export function parseVideoPortfolioResult(value: unknown) {
   return channelVideoPortfolioResultSchema.parse(value);
 }
+
+/**
+ * The exact object the `final-video-portfolio-qa` step persists through
+ * `complete_workflow_step`. `crossModelReview` is present twice -- once on its
+ * own and once inside `result` -- so this envelope is always strictly larger
+ * than `result`, which is why `maxResultPayloadBytes` alone cannot keep the
+ * persisted step output under the database ceiling.
+ */
+export type VideoPortfolioQaStepEnvelope = { qa: unknown; crossModelReview: unknown; result: unknown };
+
+/** UTF-8 byte size of the serialized QA step envelope -- what Postgres measures as `octet_length(p_output::text)`. */
+export function videoPortfolioQaStepEnvelopeBytes(envelope: VideoPortfolioQaStepEnvelope): number {
+  return Buffer.byteLength(JSON.stringify(envelope), "utf8");
+}

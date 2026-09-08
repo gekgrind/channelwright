@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ApprovedVideoExperimentSet, ChannelVideoPortfolioResult, PortfolioAllocationItem } from "@/domain/production-workflows";
+import { channelVideoPortfolioResultSchema, type ApprovedVideoExperimentSet, type ChannelVideoPortfolioResult, type PortfolioAllocationItem } from "@/domain/production-workflows";
 import {
   committedItems,
   deriveConfoundCollisionGroups,
@@ -14,15 +14,16 @@ import {
   buildPortfolioResult,
   FIXTURE_CYCLE_LABEL,
 } from "./video-portfolio-fixtures.test-helper";
-import { channelVideoPortfolioConfig } from "./video-portfolio-config";
+import { channelVideoPortfolioConfig, WORKFLOW_STEP_OUTPUT_CEILING_BYTES } from "./video-portfolio-config";
 import {
   DETERMINISTIC_VIDEO_PORTFOLIO_RULES,
   deterministicVideoPortfolioValidation,
   videoPortfolioQA,
+  videoPortfolioQaStepEnvelopeBytes,
 } from "./video-portfolio-validation";
 
 /** `complete_workflow_step`'s hard `octet_length(p_output::text)` limit. Not a preference — a database constraint. */
-const DATABASE_STEP_OUTPUT_CEILING = 65_536;
+const DATABASE_STEP_OUTPUT_CEILING = WORKFLOW_STEP_OUTPUT_CEILING_BYTES;
 
 function validate(result: ChannelVideoPortfolioResult, set: ApprovedVideoExperimentSet, slots = 1) {
   return deterministicVideoPortfolioValidation(result, set, deriveVideoPortfolioConstraints(set, FIXTURE_CYCLE_LABEL, slots));
@@ -664,6 +665,44 @@ describe("CHANNEL_VIDEO_PORTFOLIO deterministic validation", () => {
         "decisionArtifactHash", "decisionProvenanceHash", "decisionRunId", "decisionType", "decisionWorkflowId", "experimentEligible",
       ]);
       expect(reference.upstreamVideoDecision).not.toHaveProperty("upstreamVideoDiagnosis");
+    });
+
+    // F2: the persisted QA step output is `{ qa, crossModelReview, result }`, not
+    // `result` alone. `crossModelReview` is serialized twice -- standalone and
+    // inside `result` -- so the envelope can breach the database step-output
+    // ceiling even when `result` passes `maxResultPayloadBytes`.
+    it("measures the QA step envelope, which is always larger than the result it wraps", () => {
+      const set = sixCandidates();
+      const result = buildPortfolioResult(set, 1);
+      const envelope = { qa: videoPortfolioQA(deterministicVideoPortfolioValidation(result, set, deriveVideoPortfolioConstraints(set, FIXTURE_CYCLE_LABEL, 1))), crossModelReview: result.crossModelReview, result };
+      const envelopeBytes = videoPortfolioQaStepEnvelopeBytes(envelope);
+      const resultBytes = Buffer.byteLength(JSON.stringify(result), "utf8");
+      expect(envelopeBytes).toBeGreaterThan(resultBytes + Buffer.byteLength(JSON.stringify(result.crossModelReview), "utf8"));
+      expect(envelopeBytes).toBeLessThanOrEqual(DATABASE_STEP_OUTPUT_CEILING);
+    });
+
+    it("a legal near-limit result plus a legal multi-finding critic review overflows the step-output ceiling", () => {
+      const cfg = channelVideoPortfolioConfig();
+      const set = sixCandidates();
+      const base = buildPortfolioResult(set, 1);
+      const findings = Array.from({ length: 13 }, (_, index) => ({
+        code: `REVIEW_NOTE_${String(index).padStart(3, "0")}`,
+        severity: "warning" as const,
+        affectedField: "content.allocation.items",
+        rationale: `Non-blocking reviewer note ${index}. `.padEnd(900, "x").slice(0, 900),
+        evidenceRefs: [] as string[],
+      }));
+      const oversized = channelVideoPortfolioResultSchema.parse({
+        ...base,
+        crossModelReview: { ...base.crossModelReview, outcome: "CRITIC_RAISED_ISSUE" as const, findings, summary: "s".repeat(2_500) },
+      });
+      const constraints = deriveVideoPortfolioConstraints(set, FIXTURE_CYCLE_LABEL, 1);
+      // The result on its own is still accepted by the deterministic validator...
+      expect(deterministicVideoPortfolioValidation(oversized, set, constraints, cfg.maxResultPayloadBytes).filter((f) => f.severity === "error")).toEqual([]);
+      expect(Buffer.byteLength(JSON.stringify(oversized), "utf8")).toBeLessThanOrEqual(cfg.maxResultPayloadBytes);
+      // ...but the full persisted envelope is over the database ceiling.
+      const envelopeBytes = videoPortfolioQaStepEnvelopeBytes({ qa: videoPortfolioQA([]), crossModelReview: oversized.crossModelReview, result: oversized });
+      expect(envelopeBytes).toBeGreaterThan(DATABASE_STEP_OUTPUT_CEILING);
     });
   });
 

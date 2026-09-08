@@ -26,6 +26,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import pg from "pg";
+import { videoPortfolioInputSchema } from "../src/domain/production-workflows";
 import { canonicalJson } from "../src/server/workflows/canonical-json";
 
 try { process.loadEnvFile(".env.local"); } catch { /* optional */ }
@@ -461,6 +462,11 @@ async function runChecks(db: pg.Client) {
     Array.isArray(refs) && refs.length === 2 && refs[0].experimentRunId === experimentOne.runId && refs[1].experimentRunId === experimentTwo.runId && refs.every((ref) => ref.portfolioEligible === true));
   record("Portfolio start normalises the cycle key for concurrency", persisted.rows[0].input_payload.portfolioCycleKey === cycle.toLowerCase());
   record("Portfolio start accepts no caller artifact body", !("candidate" in persisted.rows[0].input_payload) && !("portfolioScope" in persisted.rows[0].input_payload));
+  // F1 boundary: the row start_workflow actually persisted must parse cleanly
+  // through the STRICT executor-side schema claim_workflow_step hands the worker.
+  const executorParse = videoPortfolioInputSchema.safeParse(persisted.rows[0].input_payload);
+  record("persisted Portfolio input parses through the executor-side schema (SQL <-> TypeScript contract)",
+    executorParse.success, executorParse.success ? "" : JSON.stringify(executorParse.error.issues[0]));
   const replay = await startPortfolio(db, ownerA, portfolioInput(cycle, 2, [experimentOne, experimentTwo]), startKey);
   record("Portfolio start is idempotent", replay.rows[0].result.runId === startedIds.runId && replay.rows[0].result.idempotentReplay === true);
 

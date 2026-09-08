@@ -3337,10 +3337,32 @@ export const videoPortfolioContentSchema = z.object({
   }
 });
 
+/**
+ * The shape the executor actually claims, NOT the shape a caller may POST. Every
+ * field beyond `videoPortfolioRequestInputSchema` is stamped by `start_workflow`
+ * into `input_payload` and handed back by `claim_workflow_step`:
+ *
+ *   caller request  -> videoPortfolioRequestInputSchema (strict; no server fields)
+ *   server normalize -> start_workflow adds approvedVideoExperimentReferences + portfolioCycleKey
+ *   persisted input  -> claim_workflow_step returns it verbatim
+ *   executor         -> videoPortfolioInputSchema.parse(step.input)  <-- here
+ *
+ * `portfolioCycleKey` is `lower(btrim(cycleLabel))`, the normalized same-cycle
+ * concurrency key. It is server-authoritative: it is absent from the request
+ * schema, so a caller can neither supply nor override it, and the refinement
+ * below re-derives it from `cycleLabel` and fails closed if the persisted key is
+ * ever not that exact normalization -- turning silent SQL <-> TypeScript drift
+ * into a loud typed rejection instead of a first-step production failure.
+ */
 export const videoPortfolioInputSchema = videoPortfolioRequestInputSchema.extend({
   approvedVideoExperimentReferences: z.array(approvedVideoExperimentReferenceSchema).min(1).max(6),
+  portfolioCycleKey: z.string().min(1).max(120),
   humanRevisionNote: z.string().trim().min(1).max(2_000).optional(),
-}).strict();
+}).strict().superRefine((input, context) => {
+  if (input.portfolioCycleKey !== input.cycleLabel.trim().toLowerCase()) {
+    context.addIssue({ code: "custom", path: ["portfolioCycleKey"], message: "portfolioCycleKey must be the server normalization lower(btrim(cycleLabel)) of the declared cycle label." });
+  }
+});
 
 export const videoPortfolioDraftSchema = z.object({
   content: videoPortfolioContentSchema,

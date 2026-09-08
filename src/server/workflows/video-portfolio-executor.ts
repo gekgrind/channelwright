@@ -15,7 +15,7 @@ import { assertDistinctRoleProviders, EnvironmentRoleRouter } from "@/server/ai/
 import { SupabaseApprovedExperimentResolver, type ApprovedExperimentResolver } from "./approved-experiment-resolver";
 import type { WorkflowStepExecutor } from "./concept-validation-executor";
 import { SupabaseResearchUsageMeter, type ResearchUsageMeter } from "./research-usage";
-import { channelVideoPortfolioConfig } from "./video-portfolio-config";
+import { channelVideoPortfolioConfig, WORKFLOW_STEP_OUTPUT_CEILING_BYTES } from "./video-portfolio-config";
 import {
   committedItems,
   deriveCapacityUtilization,
@@ -24,7 +24,7 @@ import {
   deriveVideoPortfolioConstraints,
 } from "./video-portfolio-candidates";
 import { RoutedVideoPortfolioModel, type VideoPortfolioModel } from "./video-portfolio-model";
-import { deterministicVideoPortfolioValidation, videoPortfolioQA } from "./video-portfolio-validation";
+import { deterministicVideoPortfolioValidation, videoPortfolioQA, videoPortfolioQaStepEnvelopeBytes } from "./video-portfolio-validation";
 
 export class VideoPortfolioExecutionError extends Error {
   constructor(readonly code: string, readonly retryable: boolean, message: string) { super(message); }
@@ -165,8 +165,20 @@ export class ChannelVideoPortfolioExecutor implements WorkflowStepExecutor {
         modelProvenance: [draft.analyst, critique.critic],
       });
       const qa = videoPortfolioQA(deterministicVideoPortfolioValidation(result, set, constraints, budget.maxResultPayloadBytes));
-      this.log(step, { deterministicOnly: true, passed: qa.passed, score: qa.score, errors: qa.findings.filter((item) => item.severity === "error").map((item) => item.code) });
-      return videoPortfolioQAStepSchema.parse({ qa, crossModelReview, result });
+      const stepOutput = videoPortfolioQAStepSchema.parse({ qa, crossModelReview, result });
+      // The nested `result` already passed `maxResultPayloadBytes`, but the object
+      // actually persisted by `complete_workflow_step` is this whole envelope --
+      // `qa` plus a second serialization of `crossModelReview` on top of `result`.
+      // Measure that exact object against the database's hard step-output ceiling
+      // and fail with a deterministic typed error BEFORE the persistence attempt,
+      // rather than letting a schema-valid allocation die as an opaque
+      // PAYLOAD_TOO_LARGE after QA has already accepted it.
+      const envelopeBytes = videoPortfolioQaStepEnvelopeBytes(stepOutput);
+      if (envelopeBytes > WORKFLOW_STEP_OUTPUT_CEILING_BYTES) {
+        throw new VideoPortfolioExecutionError("VIDEO_PORTFOLIO_STEP_OUTPUT_TOO_LARGE", false, `The final-QA step output serializes to ${envelopeBytes} bytes, above the ${WORKFLOW_STEP_OUTPUT_CEILING_BYTES}-byte workflow-step ceiling; the accepted allocation and its independent critic review do not fit one persisted step envelope.`);
+      }
+      this.log(step, { deterministicOnly: true, passed: qa.passed, score: qa.score, envelopeBytes, errors: qa.findings.filter((item) => item.severity === "error").map((item) => item.code) });
+      return stepOutput;
     }
 
     if (step.stepKey === "finalize-video-portfolio") {
