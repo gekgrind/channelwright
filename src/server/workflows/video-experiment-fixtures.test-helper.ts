@@ -253,8 +253,24 @@ export function videoExperimentContentFixture(overrides: Partial<VideoExperiment
         "The retention curve shows no disproportionate early drop, so the opening-promise concern is not supported.",
       ],
       invalidationConditions: [
-        "YouTube changes retention reporting during the window, making the shape non-comparable to the channel's history.",
+        {
+          statement: "YouTube changes retention reporting during the window, making the shape non-comparable to the channel's history.",
+          check: { kind: "CONFOUNDING_EVENT" },
+        },
       ],
+      semanticIntent: {
+        treatmentMechanism: "MEASUREMENT_ONLY",
+        prolongsContentForRetention: false,
+        addedLengthCarriesProportionalValue: "NOT_APPLICABLE",
+        withholdsPromisedValueForRetention: false,
+        manufacturesAntagonismForEngagement: false,
+        usesScarcityOrUrgencyClaim: false,
+        scarcityBasis: null,
+        evidenceCanChangeShippingDecision: true,
+        adoptionCondition: "NONE_MEASUREMENT_ONLY",
+        preservationCondition: "NONE_MEASUREMENT_ONLY",
+        causalClaimStrength: "NONE",
+      },
       rollbackPlan: null,
       evidenceRequiredToInterpret: [
         "Absolute-audience-retention curve for this exact video at second-level or bucket-level granularity.",

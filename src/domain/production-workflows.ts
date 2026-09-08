@@ -2756,6 +2756,97 @@ export const experimentRollbackPlanSchema = z.object({
   reversibility: z.enum(["EASILY_REVERSIBLE", "MODERATELY_REVERSIBLE"]),
 }).strict();
 
+/**
+ * Structured semantic declaration (ROUND 6). The safety-critical experiment
+ * semantics -- is the treatment a Viewer-Value-harming mechanism, does the run's
+ * evidence bind the shipping decision, is a scarcity claim deceptive, how strong
+ * is the causal claim -- are declared here on CLOSED vocabularies rather than
+ * inferred from unbounded prose. The deterministic validator enforces its
+ * invariants over these enums; prose fields remain human explanation and a
+ * defense-in-depth consistency signal only. The `measurementOnly`-coupled fields
+ * (`adoptionCondition`, `preservationCondition`) are re-derived server-side from
+ * the server-stamped `measurementOnly` flag, so an observational probe cannot
+ * mis-declare them.
+ */
+export const experimentSemanticIntentSchema = z.object({
+  // What the treatment actually is. No Viewer-Value-harming mechanism is even
+  // representable here; a harmful design must instead truthfully set one of the
+  // boolean facts below (or be caught by the prose consistency signal).
+  treatmentMechanism: z.enum([
+    "EDITORIAL_QUALITY",       // tighten / clarify / restructure without adding length
+    "PACING_ADJUSTMENT",       // change pacing (either direction)
+    "PROMISE_FRAMING",         // reword the opening promise / hook framing
+    "FORMAT_OR_STRUCTURE",     // segment order / structure / chapters
+    "THUMBNAIL_OR_TITLE",      // packaging surface
+    "PUBLISH_TIMING",          // when it publishes
+    "CONTENT_SELECTION",       // topic / example selection
+    "MEASUREMENT_ONLY",        // observational probe applies no treatment
+    "OTHER_DISCLOSED",         // anything else, explained in treatmentCondition.whatChanges
+  ]),
+  // Closed-vocabulary facts about deliberate engagement/retention manipulation.
+  // Each is a property of the DESIGN, not a phrase to be recognised.
+  prolongsContentForRetention: z.boolean(),                         // adds material / slows pacing to raise elapsed viewing per viewer
+  addedLengthCarriesProportionalValue: z.enum(["NOT_APPLICABLE", "YES", "NO"]),
+  withholdsPromisedValueForRetention: z.boolean(),                  // delays / buries the payoff viewers were promised, to hold them
+  manufacturesAntagonismForEngagement: z.boolean(),                 // provokes conflict / outrage / polarisation to drive comments
+  usesScarcityOrUrgencyClaim: z.boolean(),                          // the treatment asserts limited availability / a deadline
+  scarcityBasis: z.enum(["REAL_FINITE_AND_SUPPORTED", "NOT_FINITE_OR_UNSUPPORTED"]).nullable(),
+  // Decision linkage: can the run's evidence change what ships?
+  evidenceCanChangeShippingDecision: z.boolean(),
+  adoptionCondition: z.enum([
+    "CHALLENGER_DECISIVELY_WINS_PRIMARY_WITHOUT_GUARDRAIL_BREACH",
+    "CHALLENGER_WINS_PRIMARY",
+    "PREDEFINED_EVIDENCE_THRESHOLD_MET",
+    "NONE_MEASUREMENT_ONLY",
+  ]),
+  preservationCondition: z.enum([
+    "CHALLENGER_FAILS_TO_WIN",
+    "INCONCLUSIVE_OR_NULL_RESULT",
+    "GUARDRAIL_BREACH",
+    "INSUFFICIENT_EVIDENCE_VS_THRESHOLD",
+    "ALWAYS_REGARDLESS_OF_RESULT",
+    "NONE_MEASUREMENT_ONLY",
+  ]),
+  causalClaimStrength: z.enum(["NONE", "ASSOCIATIONAL", "HYPOTHESIZED_CAUSAL", "DEFINITIVE_CAUSAL"]),
+}).strict().superRefine((intent, context) => {
+  if (intent.usesScarcityOrUrgencyClaim && intent.scarcityBasis === null) {
+    context.addIssue({ code: "custom", path: ["scarcityBasis"], message: "A treatment that uses a scarcity/urgency claim must declare its scarcityBasis." });
+  }
+  if (!intent.usesScarcityOrUrgencyClaim && intent.scarcityBasis !== null) {
+    context.addIssue({ code: "custom", path: ["scarcityBasis"], message: "scarcityBasis must be null unless the treatment uses a scarcity/urgency claim." });
+  }
+  if (intent.prolongsContentForRetention && intent.addedLengthCarriesProportionalValue === "NOT_APPLICABLE") {
+    context.addIssue({ code: "custom", path: ["addedLengthCarriesProportionalValue"], message: "When the treatment prolongs content, addedLengthCarriesProportionalValue must be YES or NO." });
+  }
+  if (!intent.prolongsContentForRetention && intent.addedLengthCarriesProportionalValue !== "NOT_APPLICABLE") {
+    context.addIssue({ code: "custom", path: ["addedLengthCarriesProportionalValue"], message: "addedLengthCarriesProportionalValue must be NOT_APPLICABLE unless the treatment prolongs content." });
+  }
+});
+
+/**
+ * A single invalidation criterion (ROUND 6): a human `statement` plus a typed
+ * `check`. Domain-impossible relationships (average view duration exceeding the
+ * video's own length; a percentage of a whole exceeding 100%; unique viewers
+ * exceeding total views; a self-contradictory criterion) are validated over the
+ * typed fields, not over natural-language comparators.
+ */
+export const experimentInvalidationConditionSchema = z.object({
+  statement: z.string().min(1).max(600),
+  check: z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("METRIC_DOMAIN_BOUND"),
+      metric: experimentMetricSchema,
+      relation: z.enum(["EXCEEDS", "BELOW", "EQUALS"]),
+      bound: z.enum(["VIDEO_LENGTH", "IMPRESSIONS_SERVED", "UNIQUE_VIEWERS", "TOTAL_VIEWS", "ONE_HUNDRED_PERCENT", "ZERO", "BASELINE_BAND"]),
+    }).strict(),
+    z.object({ kind: z.literal("DATA_UNAVAILABLE") }).strict(),
+    z.object({ kind: z.literal("CONFOUNDING_EVENT") }).strict(),
+    z.object({ kind: z.literal("DELIVERY_FAILURE") }).strict(),
+    z.object({ kind: z.literal("QUALITATIVE_JUDGMENT") }).strict(),
+    z.object({ kind: z.literal("LOGICALLY_SELF_CONTRADICTORY") }).strict(),
+  ]),
+}).strict();
+
 export const experimentSchema = z.object({
   id: z.string().regex(/^experiment:[a-z0-9][a-z0-9:._-]{0,118}$/),
   experimentType: experimentTypeSchema,
@@ -2784,7 +2875,8 @@ export const experimentSchema = z.object({
   exposureRequirement: experimentExposureRequirementSchema,
   stoppingConditions: z.array(z.string().min(1).max(600)).min(2).max(12),
   failureConditions: z.array(z.string().min(1).max(600)).min(1).max(12),
-  invalidationConditions: z.array(z.string().min(1).max(600)).min(1).max(12),
+  invalidationConditions: z.array(experimentInvalidationConditionSchema).min(1).max(12),
+  semanticIntent: experimentSemanticIntentSchema,
   rollbackPlan: experimentRollbackPlanSchema.nullable(),
   evidenceRequiredToInterpret: z.array(z.string().min(1).max(600)).min(1).max(16),
   interpretationPlan: experimentInterpretationPlanSchema,
@@ -3109,6 +3201,8 @@ export type ExperimentControlKind = z.infer<typeof experimentControlKindSchema>;
 export type ExperimentDisposition = z.infer<typeof experimentDispositionSchema>;
 export type VideoExperimentConstraints = z.infer<typeof videoExperimentConstraintsSchema>;
 export type Experiment = z.infer<typeof experimentSchema>;
+export type ExperimentSemanticIntent = z.infer<typeof experimentSemanticIntentSchema>;
+export type ExperimentInvalidationCondition = z.infer<typeof experimentInvalidationConditionSchema>;
 export type ExperimentAlternative = z.infer<typeof experimentAlternativeSchema>;
 export type ExperimentDecisionDisagreement = z.infer<typeof experimentDecisionDisagreementSchema>;
 export type ExperimentViewerValueSafeguards = z.infer<typeof experimentViewerValueSafeguardsSchema>;

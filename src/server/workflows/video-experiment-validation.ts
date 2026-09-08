@@ -3,6 +3,8 @@ import {
   videoExperimentQAResultSchema,
   type ApprovedVideoDecisionArtifact,
   type ChannelVideoExperimentResult,
+  type ExperimentInvalidationCondition,
+  type ExperimentSemanticIntent,
   type VideoExperimentConstraints,
   type VideoExperimentQAResult,
 } from "@/domain/production-workflows";
@@ -617,7 +619,7 @@ function freeText(result: ChannelVideoExperimentResult): string[] {
     experiment.expectedDirection.justification,
     experiment.observationWindow.description, experiment.observationWindow.rationale, experiment.observationWindow.minimumBeforeReading,
     experiment.exposureRequirement.description, experiment.exposureRequirement.caveat,
-    ...experiment.stoppingConditions, ...experiment.failureConditions, ...experiment.invalidationConditions,
+    ...experiment.stoppingConditions, ...experiment.failureConditions, ...experiment.invalidationConditions.map((item) => item.statement),
     ...(experiment.rollbackPlan ? [experiment.rollbackPlan.trigger, experiment.rollbackPlan.action] : []),
     ...experiment.evidenceRequiredToInterpret,
     experiment.interpretationPlan.ifPrimaryFavorable, experiment.interpretationPlan.ifPrimaryUnfavorable, experiment.interpretationPlan.ifInconclusive,
@@ -646,6 +648,103 @@ function expectedSource(artifact: ApprovedVideoDecisionArtifact) {
     finalTitle: decision.source.finalTitle,
     subjectIdentity: `decision:${artifact.reference.decisionRunId}`,
   };
+}
+
+// ===========================================================================
+// ROUND 6 -- structured semantic authority.
+//
+// The safety-critical experiment semantics are now DECLARED on closed
+// vocabularies in `experiment.semanticIntent` and `experiment.invalidationConditions[].check`,
+// and enforced deterministically over those enums. The Round 1-5 prose
+// detectors (`harmfulTreatmentByFeatures`, `purposeFieldContradicts`,
+// `invalidationDomainContradiction`, `CAUSAL_CERTAINTY`) are retained but
+// DEMOTED: they now only fire as a fail-closed consistency signal when the
+// structured declaration says "safe" while the prose describes the harm.
+// Changing prose wording cannot change an invariant's verdict while the
+// structured declaration is held constant.
+// ===========================================================================
+
+/** Structured: the treatment is a deliberate Viewer-Value-harming mechanism. */
+function semanticIntentDeclaresHarmfulTreatment(intent: ExperimentSemanticIntent): boolean {
+  return (
+    (intent.prolongsContentForRetention && intent.addedLengthCarriesProportionalValue !== "YES") ||
+    intent.withholdsPromisedValueForRetention ||
+    intent.manufacturesAntagonismForEngagement ||
+    (intent.usesScarcityOrUrgencyClaim && intent.scarcityBasis !== "REAL_FINITE_AND_SUPPORTED")
+  );
+}
+
+/** Structured: the declaration positively asserts NONE of the harmful mechanisms. */
+function semanticIntentDeclaresCleanTreatment(intent: ExperimentSemanticIntent): boolean {
+  return (
+    intent.prolongsContentForRetention === false &&
+    intent.withholdsPromisedValueForRetention === false &&
+    intent.manufacturesAntagonismForEngagement === false &&
+    intent.usesScarcityOrUrgencyClaim === false
+  );
+}
+
+/** Structured: the run's evidence is decoupled from what ships (outcome-independent). */
+function semanticIntentDeclaresOutcomeIndependent(experiment: ChannelVideoExperimentResult["content"]["experiment"]): boolean {
+  if (experiment.measurementOnly) return false; // a probe informs a future decision; it has no incumbent/challenger to ship
+  const intent = experiment.semanticIntent;
+  return (
+    intent.evidenceCanChangeShippingDecision === false ||
+    intent.preservationCondition === "ALWAYS_REGARDLESS_OF_RESULT" ||
+    // a comparison whose adoption OR preservation is declared "measurement only"
+    // has no evidence-bound path from result to shipping decision.
+    intent.preservationCondition === "NONE_MEASUREMENT_ONLY" ||
+    intent.adoptionCondition === "NONE_MEASUREMENT_ONLY"
+  );
+}
+
+/** Structured: the linkage explicitly ties adoption and preservation to evidence. */
+function semanticIntentDeclaresEvidenceConditionedLinkage(intent: ExperimentSemanticIntent): boolean {
+  const adoptionIsEvidenceBound =
+    intent.adoptionCondition === "CHALLENGER_DECISIVELY_WINS_PRIMARY_WITHOUT_GUARDRAIL_BREACH" ||
+    intent.adoptionCondition === "CHALLENGER_WINS_PRIMARY" ||
+    intent.adoptionCondition === "PREDEFINED_EVIDENCE_THRESHOLD_MET";
+  const preservationIsEvidenceBound =
+    intent.preservationCondition === "CHALLENGER_FAILS_TO_WIN" ||
+    intent.preservationCondition === "INCONCLUSIVE_OR_NULL_RESULT" ||
+    intent.preservationCondition === "GUARDRAIL_BREACH" ||
+    intent.preservationCondition === "INSUFFICIENT_EVIDENCE_VS_THRESHOLD";
+  return intent.evidenceCanChangeShippingDecision === true && adoptionIsEvidenceBound && preservationIsEvidenceBound;
+}
+
+// Domain-impossible (metric, relation, bound) triples: a criterion whose trigger
+// is one of these can never fire, so it is not a real safeguard. A small closed
+// table over enums -- not a theorem prover, and NOT natural-language comparison.
+// `VIEWS > IMPRESSIONS_SERVED` is deliberately absent: YouTube impressions
+// exclude external / notification / browse-off surfaces, so a view without a
+// counted impression is possible (established by the CHANNEL_VIDEO_PERFORMANCE
+// verification that removed the `views <= impressions` invariant).
+const FRACTION_OF_WHOLE_METRICS = new Set([
+  "AVERAGE_PERCENTAGE_VIEWED",
+  "IMPRESSION_CLICK_THROUGH_RATE",
+  "RETURNING_VIEWERS_RATE",
+  "SEARCH_IMPRESSION_SHARE",
+]);
+const NON_NEGATIVE_METRICS = new Set([
+  "IMPRESSIONS", "IMPRESSION_CLICK_THROUGH_RATE", "VIEWS", "UNIQUE_VIEWERS",
+  "AVERAGE_VIEW_DURATION", "AVERAGE_PERCENTAGE_VIEWED", "WATCH_TIME_HOURS",
+  "RETURNING_VIEWERS_RATE", "SUBSCRIBERS_GAINED", "LIKES_RATE", "COMMENTS_RATE",
+  "SHARES", "SURVEY_SATISFACTION", "SEARCH_IMPRESSION_SHARE",
+]);
+
+function invalidationCheckIsIncoherent(condition: ExperimentInvalidationCondition): boolean {
+  const check = condition.check;
+  if (check.kind === "LOGICALLY_SELF_CONTRADICTORY") return true;
+  if (check.kind !== "METRIC_DOMAIN_BOUND") return false;
+  const { metric, relation, bound } = check;
+  if (relation === "EXCEEDS") {
+    if (metric === "AVERAGE_VIEW_DURATION" && bound === "VIDEO_LENGTH") return true;
+    if (metric === "AVERAGE_PERCENTAGE_VIEWED" && bound === "VIDEO_LENGTH") return true;
+    if (metric === "UNIQUE_VIEWERS" && bound === "TOTAL_VIEWS") return true;
+    if (bound === "ONE_HUNDRED_PERCENT" && FRACTION_OF_WHOLE_METRICS.has(metric)) return true;
+  }
+  if (relation === "BELOW" && bound === "ZERO" && NON_NEGATIVE_METRICS.has(metric)) return true;
+  return false;
 }
 
 const normalize = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
@@ -693,19 +792,27 @@ export const DETERMINISTIC_VIDEO_EXPERIMENT_RULES: ExperimentRule[] = [
   // or defend the current approach is a semantic rewrite of the decision -- even
   // when its id/type are correct. An interpretation-plan OUTCOME of "preserve"
   // stays valid and is not scanned.
+  // ROUND 6: authority is `semanticIntent`'s decision-linkage enums. An
+  // outcome-independent design (evidence cannot change what ships / incumbent
+  // preserved regardless of result / adoption declared measurement-only on a
+  // manipulation) is contradictory regardless of prose wording. Prose is a
+  // fail-closed backup: if the structured linkage is NOT explicitly
+  // evidence-conditioned and the prose still reads as immutability, that
+  // disagreement also blocks.
   rule("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION", "error", ({ result }) => {
     const experiment = result.content.experiment;
+    if (semanticIntentDeclaresOutcomeIndependent(experiment)) {
+      return ["The experiment's structured decision linkage declares its evidence cannot change what ships (or preserves the incumbent regardless of the result); an INVESTIGATE / PRIORITIZE_CHANGE decision is testing a change, not defending it."];
+    }
+    if (experiment.measurementOnly) return [];
+    if (semanticIntentDeclaresEvidenceConditionedLinkage(experiment.semanticIntent)) return []; // explicitly evidence-conditioned -> valid, whatever the prose says
     const purpose = [
       experiment.title, experiment.hypothesis, experiment.decisionLinkage.hypothesisUnderTest,
       experiment.targetVariable, experiment.expectedDirection.justification,
-      ...(experiment.measurementOnly ? [] : [experiment.treatmentCondition.whatChanges, experiment.treatmentCondition.description]),
+      experiment.treatmentCondition.whatChanges, experiment.treatmentCondition.description,
     ];
-    // A status-quo phrase is a legitimate OUTCOME only when the SAME clause ties
-    // the preservation to a measured result / control condition; unconditional
-    // immutability ("keep the current version regardless of the result / even if
-    // it outperforms / permanently") is always contradictory (round-3 smuggling).
     return purpose.some((text) => purposeFieldContradicts(text))
-      ? ["The experiment's stated purpose is to confirm, preserve, or leave unchanged the current approach; an INVESTIGATE / PRIORITIZE_CHANGE decision is testing a change, not defending the current approach or concluding further investigation is unwarranted."]
+      ? ["The structured decision linkage is not explicitly evidence-conditioned and the design prose reads as preserving / confirming the current approach; an INVESTIGATE / PRIORITIZE_CHANGE decision is testing a change."]
       : [];
   }),
   rule("EXPERIMENT_TYPE_NOT_PERMITTED", "error", ({ result, expectedConstraints }) =>
@@ -763,8 +870,18 @@ export const DETERMINISTIC_VIDEO_EXPERIMENT_RULES: ExperimentRule[] = [
   }),
 
   // --- Epistemic safety / fake precision --------------------------------
-  rule("UNSUPPORTED_CAUSAL_CERTAINTY", "error", ({ result }) =>
-    freeText(result).some((text) => CAUSAL_CERTAINTY.test(text)) ? ["The experiment uses causal-certainty wording the contract forbids."] : []),
+  // ROUND 6: authority is `semanticIntent.causalClaimStrength`. This contract is
+  // qualitative with no significance testing, so a DEFINITIVE_CAUSAL claim is
+  // never supportable. Prose regex is a fail-closed backup for a mis-declared
+  // strength.
+  rule("UNSUPPORTED_CAUSAL_CERTAINTY", "error", ({ result }) => {
+    if (result.content.experiment.semanticIntent.causalClaimStrength === "DEFINITIVE_CAUSAL") {
+      return ["semanticIntent.causalClaimStrength is DEFINITIVE_CAUSAL; this qualitative experiment contract cannot support a definitive causal claim."];
+    }
+    return freeText(result).some((text) => CAUSAL_CERTAINTY.test(text))
+      ? ["The design prose asserts causal certainty the contract forbids while semanticIntent.causalClaimStrength is not DEFINITIVE_CAUSAL."]
+      : [];
+  }),
   rule("FABRICATED_QUANTITY_IN_DESIGN", "error", ({ result }) => {
     const messages = new Set<string>();
     for (const text of freeText(result)) {
@@ -884,20 +1001,24 @@ export const DETERMINISTIC_VIDEO_EXPERIMENT_RULES: ExperimentRule[] = [
       ? ["The rollback plan's action continues or preserves the treatment instead of reverting it."]
       : [];
   }),
+  // ROUND 6: authority is the typed `check` on each invalidation condition. A
+  // domain-impossible (metric, relation, bound) triple, or a self-contradictory
+  // criterion, can never fire. The prose `statement` is a fail-closed backup:
+  // if the statement reads as "impossible by construction" while the typed check
+  // does not encode that, the disagreement still blocks.
   rule("INVALIDATION_CONDITION_INCOHERENT", "error", ({ result }) =>
     result.content.experiment.invalidationConditions
-      .filter((text) => {
-        const expanded = text.replace(/\bcan['’]t\b/gi, "can not").replace(/\bwon['’]t\b/gi, "will not").replace(/(\w)n['’]t\b/gi, "$1 not");
-        // Two independent ways a criterion is not a real safeguard: it can never
-        // occur (lexical "impossible by construction" family), OR it asserts a
-        // relationship between known experiment quantities that cannot hold
-        // (average view duration above the video's own length, a percentage of a
-        // whole above 100%, more views than impressions, a criterion required to
-        // be both met and unmet). The second is domain-scoped, not a general
-        // theorem prover: merely unlikely thresholds are left alone.
+      .filter((condition) => {
+        if (invalidationCheckIsIncoherent(condition)) return true;
+        // Prose backup applies ONLY to the unconstrained kinds -- a
+        // METRIC_DOMAIN_BOUND not caught above, or a QUALITATIVE_JUDGMENT. A
+        // check that names a concrete real trigger (DATA_UNAVAILABLE /
+        // CONFOUNDING_EVENT / DELIVERY_FAILURE) is coherent whatever the prose says.
+        if (condition.check.kind !== "QUALITATIVE_JUDGMENT" && condition.check.kind !== "METRIC_DOMAIN_BOUND") return false;
+        const expanded = condition.statement.replace(/\bcan['’]t\b/gi, "can not").replace(/\bwon['’]t\b/gi, "will not").replace(/(\w)n['’]t\b/gi, "$1 not");
         return INCOHERENT_INVALIDATION.test(expanded) || invalidationDomainContradiction(expanded);
       })
-      .map((text) => `Invalidation condition "${text.trim().slice(0, 90)}" can never trigger; it is not a real safeguard.`)),
+      .map((condition) => `Invalidation condition "${condition.statement.trim().slice(0, 90)}" can never trigger; it is not a real safeguard.`)),
 
   // --- Viewer Value (hard constraint) ----------------------------------
   rule("VIEWER_VALUE_STATE_CHANGED", "error", ({ result, expectedConstraints }) =>
@@ -919,15 +1040,26 @@ export const DETERMINISTIC_VIDEO_EXPERIMENT_RULES: ExperimentRule[] = [
   // clause-aware classifier (see `treatmentIntentIsHarmful`) preserves treatments
   // described by what they avoid ("improve pacing without delaying the payoff")
   // and safe interventions that merely mention retention / filler / pacing.
+  // ROUND 6: authority is `semanticIntent`. A treatment that structurally
+  // declares a Viewer-Value-harming mechanism (disproportionate prolonging,
+  // promise withholding, manufactured antagonism, or a scarcity claim without a
+  // real, supported basis) is rejected regardless of prose. The Round 1-5 prose
+  // classifier is retained as a fail-closed disagreement signal: if the
+  // declaration positively asserts a clean treatment while the prose describes a
+  // harmful mechanism, that blocks too.
   rule("VIEWER_VALUE_TREATMENT_HARMFUL", "error", ({ result }) => {
     const experiment = result.content.experiment;
+    const intent = experiment.semanticIntent;
+    if (semanticIntentDeclaresHarmfulTreatment(intent)) {
+      return ["semanticIntent declares a Viewer-Value-harming treatment mechanism (disproportionate prolonging for retention, promise withholding, manufactured antagonism, or an unsupported scarcity claim); an independent guardrail cannot make a harmful intervention acceptable."];
+    }
     const intentFields = [
       experiment.title, experiment.hypothesis, experiment.decisionLinkage.hypothesisUnderTest,
       experiment.targetVariable, experiment.expectedDirection.justification,
       experiment.treatmentCondition.description, experiment.treatmentCondition.whatChanges,
     ];
-    return intentFields.some(treatmentIntentIsHarmful)
-      ? ["The treatment mechanism deliberately harms Viewer Value (artificial watch-time padding, promise withholding, outrage / manipulation, or trust-damaging conversion); an independent guardrail cannot make a harmful intervention acceptable."]
+    return semanticIntentDeclaresCleanTreatment(intent) && intentFields.some(treatmentIntentIsHarmful)
+      ? ["semanticIntent declares a clean treatment, but the design prose describes a Viewer-Value-harming mechanism; the contradiction is resolved fail-closed."]
       : [];
   }),
   // Every primary metric -- not only acquisition-side ones -- can be gamed

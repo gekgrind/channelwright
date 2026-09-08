@@ -48,13 +48,36 @@ function requirePrior<T>(step: ClaimedWorkflowStep, key: string, parse: (value: 
  */
 function stampServerDerivedFields(content: VideoExperimentContent, constraints: VideoExperimentConstraints): VideoExperimentContent {
   const experimentType = content.experiment.experimentType;
+  const measurementOnly = EXPERIMENT_TYPE_MEASUREMENT_ONLY[experimentType];
   const escalationRequired = constraints.viewerValueEscalationRequired || constraints.viewerValueState === "AT_RISK";
+  // ROUND 6: the measurement-only-coupled semantic declarations are NOT a model
+  // input surface -- they are re-derived from the server-stamped measurementOnly
+  // flag (itself derived from experimentType). An observational probe assigns no
+  // treatment and therefore has no adoption/preservation condition; a comparison
+  // experiment keeps the model's declared adoption/preservation criteria for the
+  // deterministic validator to check.
+  const semanticIntent = measurementOnly
+    ? {
+      ...content.experiment.semanticIntent,
+      treatmentMechanism: "MEASUREMENT_ONLY" as const,
+      prolongsContentForRetention: false,
+      addedLengthCarriesProportionalValue: "NOT_APPLICABLE" as const,
+      withholdsPromisedValueForRetention: false,
+      manufacturesAntagonismForEngagement: false,
+      usesScarcityOrUrgencyClaim: false,
+      scarcityBasis: null,
+      evidenceCanChangeShippingDecision: true,
+      adoptionCondition: "NONE_MEASUREMENT_ONLY" as const,
+      preservationCondition: "NONE_MEASUREMENT_ONLY" as const,
+    }
+    : content.experiment.semanticIntent;
   const experiment = {
     ...content.experiment,
     disposition: EXPERIMENT_TYPE_DISPOSITION[experimentType],
-    measurementOnly: EXPERIMENT_TYPE_MEASUREMENT_ONLY[experimentType],
+    measurementOnly,
     evidenceStrength: constraints.evidenceStrength,
     category: constraints.decisionCategory,
+    semanticIntent,
     controlCondition: { ...content.experiment.controlCondition, kind: EXPERIMENT_TYPE_CONTROL_KIND[experimentType] },
     decisionLinkage: {
       ...content.experiment.decisionLinkage,

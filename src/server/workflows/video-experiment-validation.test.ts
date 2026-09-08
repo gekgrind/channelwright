@@ -17,6 +17,28 @@ const constraints = deriveVideoExperimentConstraints(artifact);
 const validate = (result: ChannelVideoExperimentResult) => deterministicVideoExperimentValidation(result, artifact);
 const codes = (result: ChannelVideoExperimentResult) => validate(result).map((item) => item.code);
 
+type SemanticIntent = ChannelVideoExperimentResult["content"]["experiment"]["semanticIntent"];
+type InvalidationCondition = ChannelVideoExperimentResult["content"]["experiment"]["invalidationConditions"][number];
+
+/** A legitimate evidence-conditioned comparison declaration (the manipulationResult default). */
+const legitIntent = (over: Partial<SemanticIntent> = {}): SemanticIntent => ({
+  treatmentMechanism: "PROMISE_FRAMING",
+  prolongsContentForRetention: false,
+  addedLengthCarriesProportionalValue: "NOT_APPLICABLE",
+  withholdsPromisedValueForRetention: false,
+  manufacturesAntagonismForEngagement: false,
+  usesScarcityOrUrgencyClaim: false,
+  scarcityBasis: null,
+  evidenceCanChangeShippingDecision: true,
+  adoptionCondition: "CHALLENGER_DECISIVELY_WINS_PRIMARY_WITHOUT_GUARDRAIL_BREACH",
+  preservationCondition: "CHALLENGER_FAILS_TO_WIN",
+  causalClaimStrength: "HYPOTHESIZED_CAUSAL",
+  ...over,
+});
+
+/** Wrap a prose statement in a neutral (non-incoherent) typed check -- used to exercise the prose backup. */
+const proseInval = (statement: string): InvalidationCondition => ({ statement, check: { kind: "QUALITATIVE_JUDGMENT" } });
+
 /** A deterministically-clean SEQUENTIAL_COMPARISON manipulation experiment, for adversarial mutation. */
 function manipulationResult(overrides: Partial<ChannelVideoExperimentResult["content"]["experiment"]> = {}): ChannelVideoExperimentResult {
   const base = videoExperimentContentFixture();
@@ -31,6 +53,19 @@ function manipulationResult(overrides: Partial<ChannelVideoExperimentResult["con
         controlCondition: { kind: "HISTORICAL_BASELINE", description: "The recent run of videos with the current opening.", comparability: "Same pillar, similar length and topic difficulty, adjacent publish period." },
         unitOfAssignment: "VIDEO",
         treatmentCondition: { description: "The next run of videos opens with the reworked promise framing.", whatChanges: "The opening promise framing.", whatStaysConstant: ["Topic selection", "video length band", "thumbnail style"] },
+        semanticIntent: {
+          treatmentMechanism: "PROMISE_FRAMING",
+          prolongsContentForRetention: false,
+          addedLengthCarriesProportionalValue: "NOT_APPLICABLE",
+          withholdsPromisedValueForRetention: false,
+          manufacturesAntagonismForEngagement: false,
+          usesScarcityOrUrgencyClaim: false,
+          scarcityBasis: null,
+          evidenceCanChangeShippingDecision: true,
+          adoptionCondition: "CHALLENGER_DECISIVELY_WINS_PRIMARY_WITHOUT_GUARDRAIL_BREACH",
+          preservationCondition: "CHALLENGER_FAILS_TO_WIN",
+          causalClaimStrength: "HYPOTHESIZED_CAUSAL",
+        },
         heldConstant: ["Topic difficulty", "video length band", "publish cadence"],
         knownConfounders: [{ confounder: "Seasonal audience shifts between the baseline and treatment periods.", mitigation: "Compare like calendar weeks and note any platform-wide anomalies.", residualRisk: "MEDIUM" }],
         primaryMetric: { metric: "AVERAGE_PERCENTAGE_VIEWED", unit: "PERCENT", direction: "INCREASE", rationale: "Early percentage viewed is the closest signal to whether the reworked opening holds attention." },
@@ -407,433 +442,362 @@ describe("alternatives and model authority", () => {
   });
 });
 
-describe("adversarial matrix — independent-verification regressions", () => {
-  it("sanity: the manipulation base result is deterministically clean", () => {
+
+// ===========================================================================
+// ROUND 6 -- structured semantic authority.
+//
+// The safety-critical experiment semantics live in `experiment.semanticIntent`
+// and the typed `check` on each `invalidationConditions` entry. These tests
+// prove STRUCTURAL INVARIANCE: changing prose wording while holding the
+// structured declaration constant cannot change whether a core invariant is
+// enforced. The Round 1-5 prose classifier is retained as a fail-closed
+// consistency signal and is regression-tested in its own block.
+// ===========================================================================
+
+const asTreatment = (
+  description: string,
+  intentOver: Partial<SemanticIntent> = {},
+  whatChanges = description,
+) => manipulationResult({
+  treatmentCondition: { description, whatChanges, whatStaysConstant: ["Topic selection"] },
+  semanticIntent: legitIntent(intentOver),
+});
+const asPurpose = (hypothesisUnderTest: string, intentOver: Partial<SemanticIntent> = {}) => {
+  const result = manipulationResult({ semanticIntent: legitIntent(intentOver) });
+  result.content.experiment.decisionLinkage.hypothesisUnderTest = hypothesisUnderTest;
+  return result;
+};
+const asInvalidation = (condition: InvalidationCondition) => manipulationResult({ invalidationConditions: [condition] });
+const has = (result: ChannelVideoExperimentResult, code: string) => expect(codes(result)).toContain(code);
+const lacks = (result: ChannelVideoExperimentResult, code: string) => expect(codes(result)).not.toContain(code);
+
+describe("round-6 :: sanity", () => {
+  it("the structured manipulation base is deterministically clean", () => {
     expect(validate(manipulationResult())).toEqual([]);
   });
-
-  // --- Viewer Value harms are metric-family independent, not acquisition-only ---
-  it("flags retention gamed through promise mismatch", () => {
-    const result = manipulationResult();
-    result.content.experiment.primaryMetric = { metric: "AVERAGE_PERCENTAGE_VIEWED", unit: "PERCENT", direction: "INCREASE", rationale: "Retention is the target." };
-    result.content.experiment.viewerValueGuardrails = ["Keep retention healthy across the treatment period."];
-    expect(codes(result)).toContain("METRIC_GAMING_UNGUARDED");
-  });
-  it("flags watch time gamed through padding", () => {
-    const result = manipulationResult();
-    result.content.experiment.primaryMetric = { metric: "WATCH_TIME_HOURS", unit: "HOURS", direction: "INCREASE", rationale: "Watch time is the target." };
-    result.content.experiment.guardrailMetrics = [{ metric: "VIEWS", unit: "COUNT", protects: "Reach.", degradationSignal: "Views fall." }];
-    result.content.experiment.viewerValueGuardrails = ["Watch time should climb over the window."];
-    expect(codes(result)).toEqual(expect.arrayContaining(["NO_INDEPENDENT_VIEWER_BENEFIT_GUARDRAIL", "METRIC_GAMING_UNGUARDED"]));
-  });
-  it("flags engagement gamed through outrage bait", () => {
-    const result = manipulationResult();
-    result.content.experiment.primaryMetric = { metric: "COMMENTS_RATE", unit: "RATIO", direction: "INCREASE", rationale: "Comment rate is the target." };
-    result.content.experiment.viewerValueGuardrails = ["Comment volume should rise without spam."];
-    expect(codes(result)).toContain("METRIC_GAMING_UNGUARDED");
-  });
-  it("flags conversion gamed at the expense of trust", () => {
-    const result = manipulationResult();
-    result.content.experiment.primaryMetric = { metric: "SUBSCRIBERS_GAINED", unit: "COUNT", direction: "INCREASE", rationale: "Subscriber conversion is the target." };
-    result.content.experiment.viewerValueGuardrails = ["Subscriber conversion should improve."];
-    expect(codes(result)).toContain("METRIC_GAMING_UNGUARDED");
-  });
-
-  // --- The approved Decision cannot be semantically rewritten ---
-  it("flags an experiment whose stated purpose is to preserve the existing opening", () => {
-    const result = manipulationResult();
-    result.content.experiment.decisionLinkage.hypothesisUnderTest = "Preserve the existing opening and confirm the current approach is fine.";
-    expect(codes(result)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-  });
-  it("flags a tampered verbatim decision statement in the linkage", () => {
-    const result = manipulationResult();
-    result.content.experiment.decisionLinkage.testsDecisionStatement = "Keep the current opening exactly as it is.";
-    expect(codes(result)).toContain("EXPERIMENT_DECISION_LINKAGE_MISMATCH");
-  });
-
-  // --- Fabricated quantities, spelled out or hyphenated ---
-  it("flags a hyphenated fabricated duration", () => {
-    const result = manipulationResult();
-    result.content.experiment.observationWindow.description = "A 48-hour review window after each treatment upload.";
-    expect(codes(result)).toContain("FABRICATED_QUANTITY_IN_DESIGN");
-  });
-  it("flags a spelled-out fabricated baseline", () => {
-    const result = manipulationResult();
-    result.content.experiment.primaryMetric.rationale = "Baseline retention is thirty percent and we want it higher.";
-    expect(codes(result)).toContain("FABRICATED_QUANTITY_IN_DESIGN");
-  });
-  it("flags a spelled-out fabricated sample size", () => {
-    const result = manipulationResult();
-    result.content.experiment.exposureRequirement.description = "Read the result once a sample of forty viewers has been reached.";
-    expect(codes(result)).toEqual(expect.arrayContaining(["FABRICATED_SAMPLE_SIZE"]));
-  });
-
-  // --- Ordinary label digits must NOT fail closed ---
-  it("accepts bare label digits such as 'thumbnail variant 2' and 'Episode 7'", () => {
-    const result = manipulationResult();
-    result.content.experiment.knownUnknowns = ["Whether thumbnail variant 2 behaves differently on Episode 7 than on the pillar's other videos."];
-    result.content.experiment.heldConstant = ["Topic difficulty", "thumbnail variant 2 styling", "publish cadence"];
-    expect(codes(result)).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
-    expect(validate(result)).toEqual([]);
-  });
-
-  // --- Internal semantic contradictions ---
-  it("flags a confounder that is also held constant", () => {
-    const result = manipulationResult();
-    result.content.experiment.heldConstant = ["Seasonal audience shifts", "video length band"];
-    result.content.experiment.knownConfounders = [{ confounder: "Seasonal audience shifts", mitigation: "Compare like weeks.", residualRisk: "MEDIUM" }];
-    expect(codes(result)).toContain("CONFOUNDER_HELD_CONSTANT_CONTRADICTION");
-  });
-  it("flags a design that continues after a guardrail degrades", () => {
-    const result = manipulationResult();
-    result.content.experiment.stoppingConditions = [
-      "The observation window ends.",
-      "If the satisfaction guardrail degrades, continue the treatment regardless and keep collecting data.",
-    ];
-    expect(codes(result)).toContain("GUARDRAIL_PRECEDENCE_CONTRADICTED_IN_PROSE");
-  });
-  it("flags a rollback plan that continues the treatment instead of reverting it", () => {
-    const result = manipulationResult();
-    result.content.experiment.rollbackPlan = { trigger: "Guardrail breach.", action: "Keep the reworked opening in place and continue the treatment while we investigate.", reversibility: "EASILY_REVERSIBLE" };
-    expect(codes(result)).toContain("ROLLBACK_DOES_NOT_REVERT");
-  });
-  it("flags an invalidation condition that can never trigger", () => {
-    const result = manipulationResult();
-    result.content.experiment.invalidationConditions = ["There is no condition that could invalidate this experiment; it is always interpretable."];
-    expect(codes(result)).toContain("INVALIDATION_CONDITION_INCOHERENT");
+  it("the structured probe base is deterministically clean", () => {
+    expect(validate(channelVideoExperimentResultFixture())).toEqual([]);
   });
 });
 
-describe("adversarial matrix — round-2 independent-verification regressions", () => {
-  it("sanity: the manipulation base result is deterministically clean", () => {
-    expect(validate(manipulationResult())).toEqual([]);
-  });
-
-  // --- P1: Viewer Value treatment-mechanism safety is independent of the guardrail ---
-  const compliantGuard = [
-    "The reworked opening must not pad, stall, or add filler to inflate retention, must not withhold or delay the promised payoff, and must not use outrage bait or deceptive framing.",
+// --- A. STRUCTURAL INVARIANCE ---------------------------------------------
+describe("round-6 :: A. structural invariance (prose varies, struct fixed, verdict fixed)", () => {
+  const RADICALLY_DIFFERENT_PROSE = [
+    "We refine the opening.",
+    "Cephalization of the introductory throughput is modulated per the attached rubric.",
+    "the hook. that is what moves.",
+    "Adjust. Observe. Compare. Nothing more, per protocol seven.",
+    "opening tweak -- see doc",
+    "The treatment reworks how the first stretch establishes the viewer contract, holding everything downstream fixed.",
   ];
-  it("rejects a watch-time-padding treatment even with a compliant viewer-value guardrail", () => {
-    const result = manipulationResult({
-      treatmentCondition: { description: "Pad the video to increase watch time.", whatChanges: "Pad the video with extra recap so minutes viewed rises.", whatStaysConstant: ["Topic selection"] },
-      viewerValueGuardrails: compliantGuard,
-    });
-    expect(codes(result)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+
+  it("A1 harmful prolonging: struct says prolongs-without-proportional-value -> ALWAYS rejected", () => {
+    for (const description of RADICALLY_DIFFERENT_PROSE) {
+      has(asTreatment(description, { prolongsContentForRetention: true, addedLengthCarriesProportionalValue: "NO" }), "VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
   });
-  it("rejects a promise-withholding retention treatment even with a compliant loyalty guardrail", () => {
-    const result = manipulationResult({
-      treatmentCondition: { description: "Withhold the promised answer to keep viewers watching.", whatChanges: "The opening withholds the promised answer until the final third.", whatStaysConstant: ["Topic selection"] },
-      viewerValueGuardrails: compliantGuard,
-    });
-    expect(codes(result)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+  it("A2 harmful withholding: struct says withholds -> ALWAYS rejected", () => {
+    for (const description of RADICALLY_DIFFERENT_PROSE) {
+      has(asTreatment(description, { withholdsPromisedValueForRetention: true }), "VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
   });
-  it("rejects an outrage-bait engagement treatment even with a compliant engagement guardrail", () => {
-    const result = manipulationResult({
-      primaryMetric: { metric: "COMMENTS_RATE", unit: "RATIO", direction: "INCREASE", rationale: "Comment rate is the target." },
-      treatmentCondition: { description: "Use outrage bait in the hook to increase comments.", whatChanges: "The hook uses outrage bait to provoke anger.", whatStaysConstant: ["Topic selection"] },
-      viewerValueGuardrails: ["The hook must not use outrage bait, rage-bait, or manufacture controversy to inflate comment volume."],
-    });
-    expect(codes(result)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+  it("A3 manufactured antagonism: struct says manufactures antagonism -> ALWAYS rejected", () => {
+    for (const description of RADICALLY_DIFFERENT_PROSE) {
+      has(asTreatment(description, { manufacturesAntagonismForEngagement: true }), "VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
   });
-  it("rejects a trust-damaging conversion treatment even with a compliant guardrail", () => {
-    const result = manipulationResult({
-      primaryMetric: { metric: "SUBSCRIBERS_GAINED", unit: "COUNT", direction: "INCREASE", rationale: "Subscriber conversion is the target." },
-      treatmentCondition: { description: "Add fake urgency and a deceptive framing to the end-card to boost subscribes.", whatChanges: "The end-card now uses fake urgency.", whatStaysConstant: ["Topic selection"] },
-      viewerValueGuardrails: ["The conversion prompt must not use fake urgency, deceptive framing, or any trust-damaging tactic."],
-    });
-    expect(codes(result)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+  it("A4 deceptive scarcity: struct says scarcity claim without real supported basis -> ALWAYS rejected", () => {
+    for (const description of RADICALLY_DIFFERENT_PROSE) {
+      has(asTreatment(description, { usesScarcityOrUrgencyClaim: true, scarcityBasis: "NOT_FINITE_OR_UNSUPPORTED" }), "VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
   });
-  it("rejects independent paraphrases of the harm classes not copied from other tests", () => {
-    const stretch = manipulationResult({ treatmentCondition: { description: "Stretch the runtime with filler to increase minutes viewed.", whatChanges: "Runtime is stretched with filler.", whatStaysConstant: ["Topic selection"] } });
-    expect(codes(stretch)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    const delay = manipulationResult({ treatmentCondition: { description: "Delay the answer viewers came for to improve retention.", whatChanges: "The answer is delayed to the final third.", whatStaysConstant: ["Topic selection"] } });
-    expect(codes(delay)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    const manufacture = manipulationResult({ hypothesis: "If we manufacture controversy unrelated to the topic, comment rate rises.", treatmentCondition: { description: "The hook manufactures controversy and whips up anger.", whatChanges: "The hook whips up anger.", whatStaysConstant: ["Topic selection"] } });
-    expect(codes(manufacture)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+  it("A5 legitimate treatment: struct clean -> ALWAYS valid", () => {
+    for (const description of RADICALLY_DIFFERENT_PROSE) {
+      expect(validate(asTreatment(description))).toEqual([]);
+    }
   });
-  it("does not flag safe interventions that merely mention retention / filler / pacing / the payoff", () => {
-    const controls = [
-      { description: "Tighten the opening so the promised value appears sooner.", whatChanges: "The opening is tightened so the promised value appears sooner.", whatStaysConstant: ["Topic selection"] },
-      { description: "Remove low-value filler while measuring retention.", whatChanges: "Low-value filler is removed from the first minute.", whatStaysConstant: ["Topic selection"] },
-      { description: "Clarify the title while monitoring viewer satisfaction.", whatChanges: "The title is clarified for accuracy.", whatStaysConstant: ["Topic selection"] },
-      { description: "Improve pacing without delaying the promised payoff.", whatChanges: "Pacing is improved and the promised payoff is not delayed.", whatStaysConstant: ["Topic selection"] },
-    ];
-    for (const treatmentCondition of controls) {
-      expect(validate(manipulationResult({ treatmentCondition }))).toEqual([]);
+  it("A6 truthful scarcity: struct says scarcity claim on a real supported basis -> ALWAYS valid", () => {
+    for (const description of RADICALLY_DIFFERENT_PROSE) {
+      lacks(asTreatment(description, { usesScarcityOrUrgencyClaim: true, scarcityBasis: "REAL_FINITE_AND_SUPPORTED" }), "VIEWER_VALUE_TREATMENT_HARMFUL");
+    }
+  });
+  it("A7 prolonging WITH proportional added value -> not the treatment-harmful finding", () => {
+    for (const description of RADICALLY_DIFFERENT_PROSE) {
+      lacks(asTreatment(description, { prolongsContentForRetention: true, addedLengthCarriesProportionalValue: "YES" }), "VIEWER_VALUE_TREATMENT_HARMFUL");
     }
   });
 
-  // --- P1: Decision-purpose contradiction is semantic, not phrase-specific ---
-  it("rejects 'should remain unchanged because further investigation is unwarranted' as a purpose", () => {
-    const result = manipulationResult();
-    result.content.experiment.decisionLinkage.hypothesisUnderTest = "The current opening should remain unchanged because further investigation is unwarranted.";
-    expect(codes(result)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-  });
-  it("rejects purpose paraphrases: keep current instead of testing, leave existing unchanged, no further testing", () => {
-    const a = manipulationResult(); a.content.experiment.hypothesis = "Keep the current opening instead of testing the approved change.";
-    expect(codes(a)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-    const b = manipulationResult(); b.content.experiment.title = "Leave the existing opening unchanged.";
-    expect(codes(b)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-    const c = manipulationResult(); c.content.experiment.hypothesis = "Keep the existing opening because no further testing is necessary.";
-    expect(codes(c)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-  });
-  it("does not flag null-result / conditional / control-condition preserve language as a purpose", () => {
-    const a = manipulationResult(); a.content.experiment.expectedDirection.justification = "If the treatment underperforms, preserve the current opening.";
-    expect(codes(a)).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-    const b = manipulationResult(); b.content.experiment.expectedDirection.justification = "A null result would support retaining the current opening.";
-    expect(codes(b)).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-    const c = manipulationResult(); c.content.experiment.treatmentCondition.description = "The control condition preserves the current opening; the treatment reworks the promise framing.";
-    expect(codes(c)).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-    expect(validate(a)).toEqual([]);
-  });
-
-  // --- P2: invalidation incoherence ---
-  it("rejects 'this condition can never occur' and equivalents as an invalidation criterion", () => {
-    for (const text of ["This condition can never occur.", "This invalidation condition cannot happen.", "The criterion is impossible to satisfy."]) {
-      const result = manipulationResult({ invalidationConditions: [text] });
-      expect(codes(result)).toContain("INVALIDATION_CONDITION_INCOHERENT");
+  const RADICALLY_DIFFERENT_PURPOSE_PROSE = [
+    "We test the hook.",
+    "Interrogate the antecedent framing hypothesis against the historical envelope.",
+    "does the new opening hold people? measure it.",
+    "Compare challenger vs incumbent on early retention; act on the read.",
+    "The hypothesis under examination concerns whether the reframed promise sustains the early curve.",
+  ];
+  it("A8 outcome-independent linkage: struct says evidence cannot move the decision -> ALWAYS rejected", () => {
+    for (const prose of RADICALLY_DIFFERENT_PURPOSE_PROSE) {
+      has(asPurpose(prose, { evidenceCanChangeShippingDecision: false }), "EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
     }
   });
-  it("does not flag a legitimate failure condition that merely involves an inability", () => {
-    for (const text of [
-      "Invalidate if the observed metric cannot be measured reliably.",
-      "Invalidate if tracking fails.",
-      "Invalidate if the treatment cannot be delivered consistently.",
+  it("A9 preserve-regardless linkage -> ALWAYS rejected", () => {
+    for (const prose of RADICALLY_DIFFERENT_PURPOSE_PROSE) {
+      has(asPurpose(prose, { preservationCondition: "ALWAYS_REGARDLESS_OF_RESULT" }), "EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    }
+  });
+  it("A10 evidence-conditioned linkage -> ALWAYS valid regardless of prose", () => {
+    for (const prose of [
+      ...RADICALLY_DIFFERENT_PURPOSE_PROSE,
+      "Keep the current opening unless the challenger decisively wins; otherwise the incumbent stays this quarter.",
+      "The incumbent framing remains in place if the reworked hook does not clear the retention bar.",
+      "Should the read be inconclusive, hold the current version pending another run.",
     ]) {
-      const result = manipulationResult({ invalidationConditions: [text] });
-      expect(codes(result)).not.toContain("INVALIDATION_CONDITION_INCOHERENT");
+      lacks(asPurpose(prose, {
+        adoptionCondition: "CHALLENGER_DECISIVELY_WINS_PRIMARY_WITHOUT_GUARDRAIL_BREACH",
+        preservationCondition: "INCONCLUSIVE_OR_NULL_RESULT",
+      }), "EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
     }
   });
-
-  // --- P2: structural numeric label vs measurement ---
-  it("accepts structural counts such as '3-part hook' / '5-section outline'", () => {
-    const a = manipulationResult({ treatmentCondition: { description: "Use a 3-part hook in the opening.", whatChanges: "The opening uses a 3-part hook.", whatStaysConstant: ["Topic selection"] } });
-    expect(codes(a)).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
-    expect(validate(a)).toEqual([]);
-    const b = manipulationResult({ knownUnknowns: ["Whether a 2-part opening reads better than a 3-step structure or a 5-section outline."] });
-    expect(codes(b)).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
-  });
-  it("still rejects measurement-like quantities next to a measurement noun", () => {
-    const a = manipulationResult({ observationWindow: { description: "Run for 3 hours before reading the result.", rationale: "Retention data stabilises after the initial surge.", minimumBeforeReading: "Wait until the curve is stable." } });
-    expect(codes(a)).toContain("FABRICATED_QUANTITY_IN_DESIGN");
-    const b = manipulationResult({ primaryMetric: { metric: "AVERAGE_PERCENTAGE_VIEWED", unit: "PERCENT", direction: "INCREASE", rationale: "Hold the treatment to a 30-percent retention baseline as the bar." } });
-    expect(codes(b)).toContain("FABRICATED_QUANTITY_IN_DESIGN");
-    const c = manipulationResult({ observationWindow: { description: "Review after 3 days.", rationale: "Retention data stabilises after the initial surge.", minimumBeforeReading: "Wait until the curve is stable." } });
-    expect(codes(c)).toContain("FABRICATED_QUANTITY_IN_DESIGN");
-  });
-
-  // --- quality review: further independent paraphrases per semantic rule ---
-  it("rejects further Viewer-Value harm paraphrases (extend runtime, hold back payoff, save answer for the end)", () => {
-    const a = manipulationResult({ treatmentCondition: { description: "Extend the video with recap material to lift minutes viewed.", whatChanges: "Runtime extended with recap.", whatStaysConstant: ["Topic selection"] } });
-    expect(codes(a)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    const b = manipulationResult({ treatmentCondition: { description: "Hold back the payoff until the end to boost retention.", whatChanges: "The payoff is held back.", whatStaysConstant: ["Topic selection"] } });
-    expect(codes(b)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    const c = manipulationResult({ treatmentCondition: { description: "Save the answer for the end so people keep watching.", whatChanges: "The answer is saved for the end.", whatStaysConstant: ["Topic selection"] } });
-    expect(codes(c)).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-  });
-  it("rejects further purpose paraphrases (no need to test further)", () => {
-    const a = manipulationResult(); a.content.experiment.hypothesis = "There is no need to test the opening further; keep the current opening.";
-    expect(codes(a)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-  });
-  it("rejects contracted impossible invalidation criteria (can't ever happen, won't ever occur)", () => {
-    for (const text of ["This criterion can't ever happen.", "This condition won't ever occur.", "It couldn't possibly be met."]) {
-      const result = manipulationResult({ invalidationConditions: [text] });
-      expect(codes(result)).toContain("INVALIDATION_CONDITION_INCOHERENT");
+  it("A11 evidence-conditioned linkage stays valid even with blatantly immutable-sounding prose (Finding 3)", () => {
+    for (const prose of [
+      "Whatever the numbers say, we keep the current opening.",
+      "The incumbent ships regardless of the result; this is a formality.",
+      "The decision was made in advance; the run only documents the challenger.",
+    ]) {
+      lacks(asPurpose(prose, { adoptionCondition: "CHALLENGER_WINS_PRIMARY", preservationCondition: "CHALLENGER_FAILS_TO_WIN" }), "EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
     }
   });
-  it("does not flag an analytical 'cannot' failure condition after contraction handling", () => {
-    const result = manipulationResult({ invalidationConditions: ["Invalidate if the retention export can't be produced by the platform for this video."] });
-    expect(codes(result)).not.toContain("INVALIDATION_CONDITION_INCOHERENT");
+  it("A12 causal claim strength DEFINITIVE_CAUSAL -> ALWAYS rejected", () => {
+    for (const prose of ["The hook change works.", "Deterministic causal proof.", "the opening causes retention. full stop."]) {
+      const r = manipulationResult({ semanticIntent: legitIntent({ causalClaimStrength: "DEFINITIVE_CAUSAL" }) });
+      r.content.experiment.hypothesis = prose;
+      has(r, "UNSUPPORTED_CAUSAL_CERTAINTY");
+    }
+  });
+  it("A13 HYPOTHESIZED_CAUSAL with hypothetical prose -> ALWAYS valid", () => {
+    for (const prose of [
+      "If the reworked opening proves stronger on retention, adopt it.",
+      "Where the variant tests better than control, ship it.",
+      "A decisive win on the primary would support the reframed promise.",
+    ]) {
+      const r = manipulationResult({ semanticIntent: legitIntent({ causalClaimStrength: "HYPOTHESIZED_CAUSAL" }) });
+      r.content.experiment.expectedDirection.justification = prose;
+      lacks(r, "UNSUPPORTED_CAUSAL_CERTAINTY");
+    }
+  });
+  it("A14 invalidation domain impossibility is verdict-invariant to the prose statement", () => {
+    for (const statement of [
+      "Invalidate if average view duration exceeds the video's total length.",
+      "Invalidate if mean elapsed viewing per person is greater than the clip runtime.",
+      "trigger: AVD > length",
+      "This safeguard fires when the retention integral surpasses unity of duration.",
+    ]) {
+      has(asInvalidation({ statement, check: { kind: "METRIC_DOMAIN_BOUND", metric: "AVERAGE_VIEW_DURATION", relation: "EXCEEDS", bound: "VIDEO_LENGTH" } }), "INVALIDATION_CONDITION_INCOHERENT");
+    }
+  });
+  it("A15 a coherent typed invalidation check is verdict-invariant to a scary-sounding statement", () => {
+    for (const statement of [
+      "Invalidate if the retention export cannot be produced.",
+      "This can never be recovered and is impossible to reconstruct if analytics vanish.",
+      "no data, no read",
+    ]) {
+      lacks(asInvalidation({ statement, check: { kind: "DATA_UNAVAILABLE" } }), "INVALIDATION_CONDITION_INCOHERENT");
+    }
   });
 });
 
-describe("adversarial matrix — round-3 independent-verification regressions", () => {
-  it("sanity: the manipulation base result is deterministically clean", () => {
-    expect(validate(manipulationResult())).toEqual([]);
+// --- B. TAMPER: caller/model cannot spoof authoritative semantics ---------
+describe("round-6 :: B. tamper resistance", () => {
+  it("B1 executor re-stamps the measurement-only-coupled semantic enums for an observational probe", async () => {
+    const { ChannelVideoExperimentExecutor } = await import("./video-experiment-executor");
+    const spoofed = channelVideoExperimentResultFixture().content;
+    spoofed.experiment.semanticIntent = {
+      ...spoofed.experiment.semanticIntent,
+      treatmentMechanism: "OTHER_DISCLOSED",
+      withholdsPromisedValueForRetention: true,
+      adoptionCondition: "CHALLENGER_WINS_PRIMARY",
+      preservationCondition: "ALWAYS_REGARDLESS_OF_RESULT",
+    };
+    const executor = new ChannelVideoExperimentExecutor(
+      { resolve: async () => structuredClone(artifact) } as never,
+      {
+        analyze: async () => ({ value: spoofed, usage: { model: "m", inputTokens: 1, outputTokens: 1, totalTokens: 2 }, attribution: { provider: "openai", model: "gpt", role: "GENERATOR", operation: "op", invokedAt: new Date().toISOString() } }),
+        critique: async () => ({ value: { safeToFinalize: true, summary: "ok", findings: [] }, usage: { model: "m", inputTokens: 1, outputTokens: 1, totalTokens: 2 }, attribution: { provider: "anthropic", model: "claude", role: "CRITIC", operation: "op", invokedAt: new Date().toISOString() } }),
+        routing: () => [],
+      } as never,
+      { reserve: async () => ({}), finalize: async () => undefined } as never,
+    );
+    const draft = await executor.execute({
+      workflowType: "CHANNEL_VIDEO_EXPERIMENT", stepKey: "draft-video-experiment",
+      workflowId: "w", runId: "r", ownerId: "o", attemptCount: 1,
+      input: { videoDecisionWorkflowId: crypto.randomUUID(), videoDecisionRunId: crypto.randomUUID(), approvedVideoDecisionReference: artifact.reference },
+      priorOutputs: {
+        "validate-approved-decision": structuredClone(artifact),
+        "derive-experiment-constraints": deriveVideoExperimentConstraints(artifact),
+      },
+    } as never) as { content: ChannelVideoExperimentResult["content"] };
+    const si = draft.content.experiment.semanticIntent;
+    expect(si.treatmentMechanism).toBe("MEASUREMENT_ONLY");
+    expect(si.withholdsPromisedValueForRetention).toBe(false);
+    expect(si.adoptionCondition).toBe("NONE_MEASUREMENT_ONLY");
+    expect(si.preservationCondition).toBe("NONE_MEASUREMENT_ONLY");
   });
 
-  // --- P1: Viewer Value treatment safety survives ordinary paraphrasing ---
-  const asTreatment = (text: string) =>
-    manipulationResult({ treatmentCondition: { description: text, whatChanges: text, whatStaysConstant: ["Topic selection"] } });
-
-  it("rejects all eight round-3 ordinary harmful paraphrases", () => {
-    for (const text of [
-      "Stuff the middle with repetitive recap sections so the audience spends longer on the video.",
-      "Make every explanation deliberately verbose to maximize minutes watched.",
-      "Postpone the useful answer until the closing moments so people stay.",
-      "Hide the key takeaway near the finish to compel continued viewing.",
-      "Frame a harmless disagreement as a scandal so angry viewers argue below.",
-      "Deliberately polarize the audience to provoke more comments.",
-      "Pretend the offer expires tonight to pressure subscriptions.",
-      "Invent a limited supply and imply viewers will miss out unless they subscribe.",
-    ]) {
-      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    }
+  it("B2 a probe that keeps a non-measurement-only adoption enum fails EXPERIMENT_READY_MISMATCH", () => {
+    const result = clone(channelVideoExperimentResultFixture());
+    result.content.experiment.semanticIntent.adoptionCondition = "CHALLENGER_WINS_PRIMARY";
+    has(result, "EXPERIMENT_READY_MISMATCH");
   });
 
-  it("rejects double-negation and cross-clause harm smuggling", () => {
-    for (const text of [
-      "Not only pad the video to increase watch time, keep them from leaving.",
-      "Do not avoid padding the video to inflate watch time.",
-      "Avoid filler; pad the video to increase watch time.",
-    ]) {
-      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    }
+  it("B3 a comparison that flips experimentReady to mask an outcome-independent linkage is still caught by the purpose rule", () => {
+    const result = manipulationResult({ semanticIntent: legitIntent({ evidenceCanChangeShippingDecision: false }) });
+    result.content.experimentReady = false;
+    has(result, "EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    lacks(result, "EXPERIMENT_READY_MISMATCH");
   });
 
-  it("does not flag punctuation-interrupted or clause-scoped safe negation", () => {
-    for (const text of [
-      "Do not—under any circumstances—pad the video to increase watch time.",
-      "Do not pad the video to increase watch time.",
-      "Avoid padding the video; keep the promised payoff up front.",
-    ]) {
-      expect(codes(asTreatment(text))).not.toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-      expect(validate(asTreatment(text))).toEqual([]);
-    }
+  it("B4 declaring causalClaimStrength below the prose does not launder a definitive causal claim", () => {
+    const r = manipulationResult({ semanticIntent: legitIntent({ causalClaimStrength: "ASSOCIATIONAL" }) });
+    r.content.experiment.hypothesis = "The current opening caused the early drop-off and definitively explains the weak retention.";
+    has(r, "UNSUPPORTED_CAUSAL_CERTAINTY");
   });
 
-  it("rejects fresh harmful paraphrases not copied from any other test", () => {
-    for (const text of [
+  it("B5 an incoherent typed invalidation check cannot be hidden behind an innocuous statement", () => {
+    has(asInvalidation({ statement: "Invalidate if completion looks unusually high for the cohort.", check: { kind: "METRIC_DOMAIN_BOUND", metric: "AVERAGE_PERCENTAGE_VIEWED", relation: "EXCEEDS", bound: "ONE_HUNDRED_PERCENT" } }), "INVALIDATION_CONDITION_INCOHERENT");
+    has(asInvalidation({ statement: "Invalidate if the criterion both fires and does not.", check: { kind: "LOGICALLY_SELF_CONTRADICTORY" } }), "INVALIDATION_CONDITION_INCOHERENT");
+  });
+});
+
+// --- C. PROSE / STRUCT DISAGREEMENT -> FAIL CLOSED ----------------------
+describe("round-6 :: C. prose vs struct disagreement (fail closed)", () => {
+  it("C1 clean struct + prose describes padding for retention -> blocked", () => {
+    has(asTreatment("Pad the mid-section with recap so average view duration climbs.", {}), "VIEWER_VALUE_TREATMENT_HARMFUL");
+  });
+  it("C2 clean struct + prose describes withholding the payoff -> blocked", () => {
+    has(asTreatment("Hold the promised answer back until the final minute so viewers stay.", {}), "VIEWER_VALUE_TREATMENT_HARMFUL");
+  });
+  it("C3 clean struct + prose manufactures a feud -> blocked", () => {
+    has(asTreatment("Gin up a feud with a rival channel so the comments fill with anger.", {}), "VIEWER_VALUE_TREATMENT_HARMFUL");
+  });
+  it("C4 a degenerate comparison linkage (preservation declared measurement-only) is structurally outcome-independent", () => {
+    has(asPurpose("Whatever the result, the current opening is kept.", { adoptionCondition: "CHALLENGER_WINS_PRIMARY", preservationCondition: "NONE_MEASUREMENT_ONLY" }), "EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+  });
+  it("C5 statement reads impossible-by-construction while the typed check is neutral -> blocked", () => {
+    has(asInvalidation(proseInval("There is no condition that could ever invalidate this experiment; it is always interpretable.")), "INVALIDATION_CONDITION_INCOHERENT");
+  });
+  it("C6 a fully evidence-conditioned struct is NOT overridden by odd prose (no false disagreement)", () => {
+    lacks(asPurpose("Assuming nothing forces us otherwise, leave the opening as-is.", {
+      adoptionCondition: "CHALLENGER_DECISIVELY_WINS_PRIMARY_WITHOUT_GUARDRAIL_BREACH",
+      preservationCondition: "CHALLENGER_FAILS_TO_WIN",
+    }), "EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+  });
+});
+
+// --- D. ROUND 1-5 PROSE-CLASSIFIER REGRESSION (defense-in-depth) --------
+describe("round-6 :: D. retained prose-classifier regression (clean struct + harmful prose)", () => {
+  const proseHarmful = (description: string) => has(asTreatment(description, {}), "VIEWER_VALUE_TREATMENT_HARMFUL");
+  const proseSafe = (description: string) => expect(validate(asTreatment(description, {}))).toEqual([]);
+
+  it("D1 padding / prolonging paraphrases", () => {
+    [
+      "Pad the video with extra recap so minutes viewed rises.",
+      "Stretch the runtime with filler to increase minutes viewed.",
       "Bloat the intro with redundant summaries so viewers keep watching longer.",
+      "Repeat the same summary after every section to make the episode run longer and lift watch time.",
+      "Let the host ramble through side points so the audience remains watching longer.",
+      "The runtime is progressively padded to hold viewers.",
+    ].forEach(proseHarmful);
+  });
+  it("D2 withholding paraphrases", () => {
+    [
+      "Withhold the promised answer to keep viewers watching.",
+      "Hold back the payoff until the end to boost retention.",
+      "Save the answer for the end so people keep watching.",
       "Sit on the reveal until the last minute so nobody leaves early.",
+      "The opening names the concrete fix. That fix is then held back until the sign-off. The goal is to stop early exits.",
+    ].forEach(proseHarmful);
+  });
+  it("D3 manufactured conflict / outrage paraphrases", () => {
+    [
+      "The hook manufactures controversy and whips up anger.",
       "Cook up a feud with another creator to farm angry comments.",
-      "Fake a countdown timer so people rush to subscribe before it hits zero.",
-      "Drag out the runtime with tangents so average view duration climbs.",
-      "Pack the first minute with throwaway recap material to lift retention.",
-      "Stage a fake controversy in the thumbnail to farm outrage.",
-      "Show a bogus limited-time deadline on the end-card to force subscribes.",
-    ]) {
-      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    }
+      "Frame a harmless disagreement as a scandal so angry viewers argue below.",
+      "Appoint one commenter as the villain so the rest pile on.",
+    ].forEach(proseHarmful);
   });
-
-  it("does not flag fresh safe rewrites that only mention the harm vocabulary", () => {
-    for (const text of [
+  it("D4 deceptive scarcity paraphrases (cross-sentence claim + admitted availability)", () => {
+    [
+      "Pretend the offer expires tonight to pressure subscriptions.",
+      "Tell viewers access vanishes tomorrow even though it will remain available.",
+      "Say only three copies remain even though the inventory is effectively unlimited.",
+      "Put a countdown on the end card. Enrolment actually reopens every month with plenty of room.",
+    ].forEach(proseHarmful);
+  });
+  it("D5 double-negative framing still trips the prose backup", () => {
+    [
+      "Do not fail to withhold the payoff so viewers stay.",
+      "Never skip padding the middle; that is how minutes viewed rise.",
+      "It would be wrong not to defer the payoff if retention improves.",
+    ].forEach(proseHarmful);
+  });
+  it("D6 safe interventions that only mention the harm vocabulary stay clean", () => {
+    [
+      "Tighten the opening so the promised value appears sooner.",
+      "Remove low-value filler while measuring retention.",
+      "Improve pacing without delaying the promised payoff.",
       "Front-load the promised answer and cut the recap entirely.",
-      "Trim tangents so the runtime drops and the payoff arrives sooner.",
-      "Rewrite the hook to describe the video accurately, without any urgency.",
-    ]) {
-      expect(validate(asTreatment(text))).toEqual([]);
-    }
+      "Describe availability honestly without inventing a deadline.",
+      "Summarise both sides of the wording debate fairly.",
+    ].forEach(proseSafe);
   });
-
-  // --- P1: status-quo intent cannot be sanitized by superficial outcome tokens ---
-  it("rejects all five round-3 outcome-token status-quo bypasses", () => {
+  it("D7 decision-linkage is fully structural: immutable-sounding prose over an evidence-conditioned struct never blocks", () => {
     for (const text of [
+      "The current opening should remain unchanged because further investigation is unwarranted.",
+      "Keep the current opening instead of testing the approved change.",
       "No more testing is needed for the current hook.",
-      "If possible, keep the current opening because no testing is needed.",
-      "Unless required, preserve the current opening permanently.",
-      "If the team agrees, no further investigation is warranted.",
-      "Control condition aside, keep the current opening.",
+      "Even if we call this a test, the existing opening should stay.",
     ]) {
-      const result = manipulationResult();
-      result.content.experiment.decisionLinkage.hypothesisUnderTest = text;
-      expect(codes(result)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+      lacks(asPurpose(text, { adoptionCondition: "CHALLENGER_WINS_PRIMARY", preservationCondition: "GUARDRAIL_BREACH" }), "EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
     }
   });
-
-  it("rejects fresh status-quo smuggling behind a bare result/outcome token", () => {
-    for (const text of [
-      "Because the outcome is obvious, keep the current opening.",
-      "Given the result speaks for itself, retain the current opening.",
-      "Assuming leadership signs off, the current hook needs no experiment.",
-      "Since the data already answers this, do not test the current opening.",
-    ]) {
-      const result = manipulationResult();
-      result.content.experiment.hypothesis = text;
-      expect(codes(result)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-    }
-  });
-
-  it("still accepts genuine outcome / control-condition preserve language", () => {
+  it("D8 an outcome-independent struct blocks regardless of reassuring prose", () => {
     for (const text of [
       "If the treatment underperforms, preserve the current opening.",
       "A null result would support retaining the current opening.",
-      "If the guardrail degrades, revert to the current opening.",
+      "We will act decisively on whatever the comparison shows.",
     ]) {
-      const result = manipulationResult();
-      result.content.experiment.expectedDirection.justification = text;
-      expect(codes(result)).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+      has(asPurpose(text, { evidenceCanChangeShippingDecision: false }), "EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
     }
-    const control = manipulationResult();
-    control.content.experiment.treatmentCondition.description = "The control condition preserves the current opening; the treatment reworks the promise framing.";
-    expect(codes(control)).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
   });
-
-  // --- P2: invalidation incoherence beyond phrase-specific forms ---
-  it("rejects all five round-3 invalidation-incoherence bypasses", () => {
+  it("D9 impossible-by-construction invalidation prose still trips the backup with a neutral typed check", () => {
     for (const text of [
+      "This condition can never occur.",
+      "The criterion is impossible to satisfy.",
       "There is no possible scenario for this trigger.",
-      "By definition this cannot trigger.",
-      "This condition is incapable of occurring.",
-      "This safeguard has zero chance of activation.",
-      "There exists no world in which this criterion activates.",
+      "This safeguard is guaranteed never to fire.",
+      "No chain of events can set off this alarm.",
     ]) {
-      expect(codes(manipulationResult({ invalidationConditions: [text] }))).toContain("INVALIDATION_CONDITION_INCOHERENT");
+      has(asInvalidation(proseInval(text)), "INVALIDATION_CONDITION_INCOHERENT");
     }
   });
-
-  it("rejects fresh impossible-by-construction invalidation paraphrases", () => {
-    for (const text of [
-      "No circumstances exist under which this alarm would sound.",
-      "It is flatly impossible for this rule to be triggered.",
-      "This trigger has no realistic possibility of ever firing.",
-      "Under no conceivable circumstances could this criterion be met.",
-    ]) {
-      expect(codes(manipulationResult({ invalidationConditions: [text] }))).toContain("INVALIDATION_CONDITION_INCOHERENT");
-    }
-  });
-
-  it("does not flag the four round-3 legitimate-inability invalidation controls", () => {
+  it("D10 legitimate-inability invalidation prose stays clean with a coherent typed check", () => {
     for (const text of [
       "Invalidate if the metric cannot be measured.",
       "Invalidate if tracking cannot be trusted.",
       "Invalidate if the treatment cannot be delivered consistently.",
-      "Invalidate if data cannot be collected.",
     ]) {
-      expect(codes(manipulationResult({ invalidationConditions: [text] }))).not.toContain("INVALIDATION_CONDITION_INCOHERENT");
+      lacks(asInvalidation({ statement: text, check: { kind: "DELIVERY_FAILURE" } }), "INVALIDATION_CONDITION_INCOHERENT");
     }
   });
-
-  // --- P2: numeric classification edges ---
-  it("accepts a structural module count and does not flag it", () => {
-    const a = manipulationResult({ treatmentCondition: { description: "Use a 3-module sequence.", whatChanges: "The opening uses a 3-module sequence.", whatStaysConstant: ["Topic selection"] } });
-    expect(codes(a)).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
-    expect(validate(a)).toEqual([]);
-    const b = manipulationResult({ knownUnknowns: ["Whether a 2-module structure reads better than a 3-module sequence."] });
-    expect(codes(b)).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
-  });
-
-  it("rejects a percentage that a label noun previously masked", () => {
-    for (const text of [
-      "Variant 2% is the retention threshold.",
-      "Version 3% is the minimum threshold.",
-      "Phase 1% defines acceptable retention.",
-      "Variant 2 percent is the target.",
-      "Version three percent is the baseline.",
-    ]) {
-      expect(codes(manipulationResult({ primaryMetric: { metric: "AVERAGE_PERCENTAGE_VIEWED", unit: "PERCENT", direction: "INCREASE", rationale: text } }))).toContain("FABRICATED_QUANTITY_IN_DESIGN");
-    }
-  });
-
-  it("still accepts bare label identifiers including 'Panel 2' and 'Round 3'", () => {
-    for (const label of ["Variant 2", "Version 3", "Phase 1", "Chapter 4", "Panel 2", "Round 3"]) {
-      const result = manipulationResult({ knownUnknowns: [`Whether ${label} reads better than the pillar's other videos.`] });
-      expect(codes(result)).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
-    }
-  });
-
-  it("retains round-1/round-2 numeric behaviour", () => {
-    expect(codes(manipulationResult({ knownUnknowns: ["Whether thumbnail variant 2 behaves differently on Episode 7."] }))).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
-    expect(codes(manipulationResult({ treatmentCondition: { description: "Use a 3-part hook in the opening.", whatChanges: "The opening uses a 3-part hook.", whatStaysConstant: ["Topic selection"] } }))).not.toContain("FABRICATED_QUANTITY_IN_DESIGN");
-    expect(codes(manipulationResult({ observationWindow: { description: "A 48-hour review window after each treatment upload.", rationale: "Retention data stabilises after the initial surge.", minimumBeforeReading: "Wait until the curve is stable." } }))).toContain("FABRICATED_QUANTITY_IN_DESIGN");
-    expect(codes(manipulationResult({ primaryMetric: { metric: "AVERAGE_PERCENTAGE_VIEWED", unit: "PERCENT", direction: "INCREASE", rationale: "Baseline retention is thirty percent and we want it higher." } }))).toContain("FABRICATED_QUANTITY_IN_DESIGN");
-    expect(codes(manipulationResult({ exposureRequirement: { description: "Read the result once a sample of forty viewers has been reached.", sufficiencyBasis: "OPERATOR_MUST_CONFIRM", caveat: "If the video is still gaining views quickly, the curve is not yet trustworthy." } }))).toEqual(expect.arrayContaining(["FABRICATED_SAMPLE_SIZE"]));
+  it("D11 causal-certainty prose still trips the backup below DEFINITIVE_CAUSAL", () => {
+    const r = manipulationResult({ semanticIntent: legitIntent({ causalClaimStrength: "ASSOCIATIONAL" }) });
+    r.content.experiment.hypothesis = "The current opening caused the early drop-off and definitively explains the weak retention.";
+    has(r, "UNSUPPORTED_CAUSAL_CERTAINTY");
   });
 });
 
-describe("legitimate variety passes", () => {
-  it("accepts a well-formed controlled comparison", () => {
+// --- E. SAFE CONTROLS -------------------------------------------------
+describe("round-6 :: E. legitimate designs remain valid", () => {
+  it("E1 a well-formed controlled comparison validates clean", () => {
     const base = videoExperimentContentFixture();
     const result = channelVideoExperimentResultFixture({
       content: {
@@ -846,6 +810,7 @@ describe("legitimate variety passes", () => {
           unitOfAssignment: "THUMBNAIL_SLOT",
           controlCondition: { kind: "SIMULTANEOUS_CONTROL", description: "The current thumbnail served via native compare tooling.", comparability: "Both variants run on the same video, same window, same audience pool." },
           treatmentCondition: { description: "An alternate thumbnail that leads with the promised outcome.", whatChanges: "The thumbnail composition and lead element.", whatStaysConstant: ["The video", "the title", "the description"] },
+          semanticIntent: legitIntent({ treatmentMechanism: "THUMBNAIL_OR_TITLE" }),
           heldConstant: ["The video content", "the title", "the publish window"],
           knownConfounders: [{ confounder: "Native tooling reallocates impressions unevenly.", mitigation: "Read only once impression share stabilises across arms.", residualRisk: "MEDIUM" }],
           primaryMetric: { metric: "IMPRESSION_CLICK_THROUGH_RATE", unit: "PERCENT", direction: "INCREASE", rationale: "CTR is the direct signal for a thumbnail lead change." },
@@ -863,438 +828,76 @@ describe("legitimate variety passes", () => {
     });
     expect(validate(result)).toEqual([]);
   });
-});
-
-describe("adversarial matrix — round-4 independent-verification regressions", () => {
-  it("sanity: the manipulation base result is deterministically clean", () => {
-    expect(validate(manipulationResult())).toEqual([]);
-  });
-
-  const asTreatment = (text: string) =>
-    manipulationResult({ treatmentCondition: { description: text, whatChanges: text, whatStaysConstant: ["Topic selection"] } });
-  const asPurpose = (text: string) => {
-    const result = manipulationResult();
-    result.content.experiment.decisionLinkage.hypothesisUnderTest = text;
-    return result;
-  };
-  const asJustification = (text: string) => {
-    const result = manipulationResult();
-    result.content.experiment.expectedDirection.justification = text;
-    return result;
-  };
-
-  // --- P1-A: harmful treatment still fails open (fresh paraphrases) ---
-  it("rejects every round-4 fresh harmful-treatment paraphrase", () => {
-    for (const text of [
-      "Repeat the same summary after every section to make the episode run longer and lift watch time.",
-      "Let the host ramble through side points so the audience remains watching longer.",
-      "Insert an unnecessary recap between sections so people spend more time on the video.",
-      "Draw the explanation out with redundant restatements to increase viewing minutes.",
-      "Hold the practical answer back until the final section so viewers keep watching.",
-      "Save the useful guidance for the last minute to stop viewers leaving early.",
-      "Keep the main lesson in reserve until the close so the audience stays.",
-      "Create a needless feud between experts to make viewers fight in the comments.",
-      "Overstate a minor dispute as explosive drama to spark hostile comments.",
-      "Tell viewers access vanishes tomorrow even though it will remain available.",
-      "Claim stock is almost gone although supply is unlimited, pushing viewers to subscribe.",
-      "Bury the actual answer in the closing segment so users remain on the video.",
+  it("E2 an evidence-conditioned sequential comparison with legit editorial prose validates clean", () => {
+    for (const description of [
+      "Tighten the opening so the promised value lands sooner.",
+      "Reorder the opening so the strongest example leads.",
+      "Rewrite the hook to describe the video accurately.",
     ]) {
-      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
+      expect(validate(asTreatment(description, { treatmentMechanism: "EDITORIAL_QUALITY" }))).toEqual([]);
     }
   });
-
-  it("rejects a harmful clause even after a safe prohibition in the same sentence", () => {
-    for (const text of [
-      "Without misleading viewers, manufacture controversy to drive angry comments.",
-      "Never use rage bait, pad the video to raise watch time.",
-      "Avoid deceptive urgency, stretch the video to boost retention.",
-    ]) {
-      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    }
+  it("E3 a measurement-only probe with a legit invalidation check validates clean", () => {
+    const r = channelVideoExperimentResultFixture();
+    r.content.experiment.invalidationConditions = [{ statement: "The platform stops reporting audience retention for this video.", check: { kind: "DATA_UNAVAILABLE" } }];
+    expect(validate(r)).toEqual([]);
   });
-
-  it("preserves the round-4 safe treatment controls", () => {
-    for (const text of [
-      "Remove repeated summaries so the lesson reaches the answer faster.",
-      "Keep the practical answer up front and cut rambling side points.",
-      "Describe availability honestly without inventing a deadline.",
-      "Present disagreement fairly instead of manufacturing conflict.",
-    ]) {
-      expect(codes(asTreatment(text))).not.toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-      expect(validate(asTreatment(text))).toEqual([]);
-    }
-  });
-
-  // --- P1-B: negation / clause handling ---
-  it("keeps working negation controls (PASS) and rejects the round-4 double-negation bypasses", () => {
-    for (const text of ["Never pad the video merely to inflate watch time.", "Don't use filler to keep viewers longer."]) {
-      expect(codes(asTreatment(text))).not.toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    }
-    for (const text of [
-      "Don't avoid filler; instead, stretch the video to raise minutes watched.",
-      "Avoid unnecessary recap, but make the explanations longer so people stay.",
-      "We should not refrain from delaying the answer if it improves retention.",
-      "Do not fail to withhold the payoff so viewers stay.",
-    ]) {
-      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    }
-  });
-
-  // --- P1-C: decision-purpose smuggling ---
-  it("rejects every round-4 fresh contradictory purpose statement", () => {
-    for (const text of [
-      "Even if we call this a test, the existing opening should stay.",
-      "The control can be measured, but there is no reason to change the current opening.",
-      "If leadership permits, skip the experiment and keep what we have.",
-      "Whether or not results arrive, the opening is staying put.",
-      "If the treatment underperforms, or even if it outperforms, preserve the current opening because no more testing is needed.",
-      "If the treatment underperforms, preserve the current opening, but whatever the result, keep the current opening permanently.",
-    ]) {
-      expect(codes(asPurpose(text))).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-    }
-  });
-
-  it("keeps rejecting the semantically-similar phrases and preserves legitimate conditional control preservation", () => {
-    for (const text of [
-      "Whatever the result, retain the current hook.",
-      "Assuming nothing forces us otherwise, leave the opening as-is.",
-      "The experiment may run, yet we intend to leave the hook alone.",
-      "A null result may preserve the opening; regardless, keep the current opening permanently.",
-    ]) {
-      expect(codes(asPurpose(text))).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-    }
-    for (const text of [
-      "If the challenger loses on the primary metric, retain the existing hook.",
-      "The simultaneous control arm keeps the current opening while the treatment changes it.",
-      "An inconclusive outcome would justify preserving the current version pending another test.",
-    ]) {
-      expect(codes(asJustification(text))).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-    }
-  });
-
-  // --- P2: impossible invalidation paraphrases ---
-  it("rejects every round-4 fresh impossible-invalidation paraphrase", () => {
-    for (const text of [
-      "This tripwire is guaranteed to remain dormant.",
-      "Activation lies beyond the realm of possibility.",
-      "No chain of events can set off this alarm.",
-      "The rule is certain to stay inactive forever.",
-    ]) {
-      expect(codes(manipulationResult({ invalidationConditions: [text] }))).toContain("INVALIDATION_CONDITION_INCOHERENT");
-    }
-  });
-
-  it("keeps rejecting the prior impossible forms and preserves legitimate failure conditions", () => {
-    for (const text of [
-      "There is no circumstance where this trigger would fire.",
-      "This criterion has no possibility of ever being met.",
-      "It would be impossible for this safeguard to activate.",
-      "Nothing could ever cause this invalidation rule to trigger.",
-    ]) {
-      expect(codes(manipulationResult({ invalidationConditions: [text] }))).toContain("INVALIDATION_CONDITION_INCOHERENT");
-    }
-    for (const text of [
-      "Analytics unavailable long enough to prevent reliable comparison.",
-      "Baseline cannot be matched to a comparable treatment period.",
-      "Delivery tooling fails to apply the treatment consistently.",
-    ]) {
-      expect(codes(manipulationResult({ invalidationConditions: [text] }))).not.toContain("INVALIDATION_CONDITION_INCOHERENT");
-    }
-  });
-
-  // --- second-order paraphrase matrix (author-generated, not the supplied strings) ---
-  it("second-order: padding via repetition / rambling / redundancy / draw-out", () => {
-    for (const text of [
-      "Loop back to earlier points again and again so the video runs long and retention climbs.",
-      "Have the presenter go off on a tangent about unrelated trivia to pad viewing minutes.",
-      "Restate the thesis at the top of every chapter so the video is longer and retention rises.",
-      "Circle back to the intro claims mid-video so it runs longer and average view duration rises.",
-      "Add a second walkthrough of the same steps to push the runtime up and hold attention.",
-    ]) {
-      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    }
-  });
-
-  it("second-order: delayed payoff / withheld answer", () => {
-    for (const text of [
-      "Push the takeaway into the final third so nobody clicks away early.",
-      "Reserve the actionable step for the very end so viewers watch the whole thing.",
-      "Keep the verdict in your back pocket until the last section so people finish the video.",
-      "Cling to the final recommendation until the sign-off so people finish the whole video.",
-    ]) {
-      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    }
-  });
-
-  it("second-order: manufactured conflict / outrage", () => {
-    for (const text of [
-      "Cook up a rivalry with a competing channel to get commenters arguing.",
-      "Blow a minor wording quibble out of proportion into a scandal to farm angry replies.",
-      "Pit two commenters against each other to keep the comment war going.",
-      "Brand a minor caption fix as an outrageous betrayal of viewers to bait angry replies.",
-    ]) {
-      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    }
-  });
-
-  it("second-order: deceptive scarcity / urgency", () => {
-    for (const text of [
-      "Fake a countdown timer so people rush to subscribe before it hits zero.",
-      "Say only three copies remain even though the inventory is effectively unlimited.",
-      "Post that enrolment shuts tonight while it will in fact stay open all year.",
-      "Suggest fewer than five kits are left when we can ship as many as ordered.",
-    ]) {
-      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    }
-  });
-
-  it("second-order: double negation (not refrain / do not fail to / wrong not to / never skip)", () => {
-    for (const text of [
-      "It would be wrong not to defer the payoff if retention improves.",
-      "Never skip padding the middle; that is how minutes viewed rise.",
-      "Do not neglect to stretch the segment so watch time climbs.",
-      "It would be careless not to hold the answer back for retention.",
-    ]) {
-      expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    }
-  });
-
-  it("second-order: safe controls that only mention the harm vocabulary still pass", () => {
-    for (const text of [
-      "Front-load the promised answer and cut the recap entirely.",
-      "Trim tangents so the runtime drops and the payoff arrives sooner.",
-      "Get to the recommendation fast and keep the video lean.",
-      "State plainly that registration stays open year-round.",
-      "Summarise both sides of the wording debate fairly.",
-    ]) {
-      expect(validate(asTreatment(text))).toEqual([]);
-    }
-  });
-
-  it("second-order: decision-immutability variants", () => {
-    for (const text of [
-      "Even if the treatment wins, the current opening stays.",
-      "No matter how the numbers land, we will keep the existing thumbnail.",
-      "Run it as a box-ticking exercise; the current opening is set in stone.",
-      "The experiment cannot overturn the decision to keep the current version.",
-      "We have no intention of altering the present thumbnail after this run.",
-    ]) {
-      expect(codes(asPurpose(text))).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-    }
-  });
-
-  it("second-order: legitimate outcome-conditioned preservation still passes", () => {
-    for (const text of [
-      "If the reworked hook underperforms the baseline, keep the current opening this quarter.",
-      "Should satisfaction decline, revert to the existing hook.",
-      "A null or adverse read would support keeping the current version pending more data.",
-      "When retention drops under the guardrail, roll back to the existing hook.",
-    ]) {
-      expect(codes(asJustification(text))).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-    }
-  });
-
-  it("second-order: impossible-invalidation variants", () => {
-    for (const text of [
-      "Activation is beyond the realm of possibility.",
-      "This safeguard is guaranteed never to fire.",
-      "Nothing that could happen would ever activate this rule.",
-      "There is no realistic path by which this safeguard ever activates.",
-      "It is inconceivable that anything could trigger this rule.",
-    ]) {
-      expect(codes(manipulationResult({ invalidationConditions: [text] }))).toContain("INVALIDATION_CONDITION_INCOHERENT");
-    }
-  });
-
-  it("second-order: legitimate inability invalidation conditions still pass", () => {
-    for (const text of [
-      "Invalidate if the platform stops reporting audience retention for this video.",
-      "Invalidate if the treatment window coincides with a major algorithm change.",
-      "Invalidate if fewer than half the planned videos receive the treatment.",
-      "Invalidate if an unrelated news spike distorts the treatment period.",
-    ]) {
-      expect(codes(manipulationResult({ invalidationConditions: [text] }))).not.toContain("INVALIDATION_CONDITION_INCOHERENT");
+  it("E4 strong-but-possible invalidation thresholds are not incoherent", () => {
+    for (const condition of [
+      { statement: "Invalidate if average view duration is under a tenth of the video length.", check: { kind: "METRIC_DOMAIN_BOUND", metric: "AVERAGE_VIEW_DURATION", relation: "BELOW", bound: "BASELINE_BAND" } },
+      { statement: "Invalidate if returning-viewer rate drops to the baseline floor.", check: { kind: "METRIC_DOMAIN_BOUND", metric: "RETURNING_VIEWERS_RATE", relation: "EQUALS", bound: "BASELINE_BAND" } },
+      { statement: "Invalidate if fewer than a quarter of planned videos receive the treatment.", check: { kind: "QUALITATIVE_JUDGMENT" } },
+    ] as InvalidationCondition[]) {
+      lacks(asInvalidation(condition), "INVALIDATION_CONDITION_INCOHERENT");
     }
   });
 });
 
-// ---------------------------------------------------------------------------
-// Round 5 -- semantic-generalization repair. The prior detectors fitted known
-// phrasings (36/41 fresh harmful-treatment probes bypassed while 120/120
-// regression tests passed). These exercise the composed-feature layer at three
-// levels: (A) direct regressions for the five verified findings, (B)
-// semantic-equivalence paraphrases that vary voice / clause order / sentence
-// boundaries / inflection / nominalisation / conditional structure / coreference,
-// (C) nearby legitimate language that must still pass, plus a metamorphic table.
-// None of these strings are copied from the verifier's probes or the repair
-// brief's example lists.
-// ---------------------------------------------------------------------------
-describe("round-5 semantic-generalization repair", () => {
-  const asTreatment = (text: string) =>
-    manipulationResult({ treatmentCondition: { description: text, whatChanges: text, whatStaysConstant: ["Topic selection"] } });
-  const asPurpose = (text: string) => {
-    const result = manipulationResult();
-    result.content.experiment.decisionLinkage.hypothesisUnderTest = text;
-    return result;
-  };
-  const asJustification = (text: string) => {
-    const result = manipulationResult();
-    result.content.experiment.expectedDirection.justification = text;
-    return result;
-  };
-  const harmful = (text: string) => expect(codes(asTreatment(text))).toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-  const safeTreatment = (text: string) => expect(validate(asTreatment(text))).toEqual([]);
-  const contradicts = (r: ChannelVideoExperimentResult) => expect(codes(r)).toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-  const doesNotContradict = (r: ChannelVideoExperimentResult) => expect(codes(r)).not.toContain("EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
-  const incoherent = (text: string) => expect(codes(manipulationResult({ invalidationConditions: [text] }))).toContain("INVALIDATION_CONDITION_INCOHERENT");
-  const coherent = (text: string) => expect(codes(manipulationResult({ invalidationConditions: [text] }))).not.toContain("INVALIDATION_CONDITION_INCOHERENT");
-
-  it("sanity: manipulation base stays deterministically clean", () => {
-    expect(validate(manipulationResult())).toEqual([]);
+// --- F. FINDING-BY-FINDING structured resolution ---------------------
+describe("round-6 :: F. finding-by-finding (structured authority)", () => {
+  it("F1 prolonging purpose gate no longer depends on retention-metric vocabulary", () => {
+    has(asTreatment("Deliberately slow the middle so elapsed viewing per impression rises.", { prolongsContentForRetention: true, addedLengthCarriesProportionalValue: "NO" }), "VIEWER_VALUE_TREATMENT_HARMFUL");
+    has(asTreatment("Add unhurried connective material so each viewer's session simply runs longer.", { prolongsContentForRetention: true, addedLengthCarriesProportionalValue: "NO" }), "VIEWER_VALUE_TREATMENT_HARMFUL");
   });
-
-  // === Finding 1 -- harmful-treatment semantic bypass ======================
-
-  // A. direct regressions (materially the reported failure classes)
-  it("A1: harmful prolonging / withholding / conflict / deceptive scarcity are rejected", () => {
-    harmful("Fatten the mid-section with repeated recaps so minutes viewed climbs.");
-    harmful("The reveal is deferred to the closing seconds so viewers do not click off.");
-    harmful("Gin up a feud with a rival so the comment section descends into a brawl.");
-    harmful("Say only a couple of seats remain while the room actually seats hundreds.");
+  it("F2 decision immutability is structurally knowable", () => {
+    has(asPurpose("The comparison is purely informational.", { evidenceCanChangeShippingDecision: false }), "EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
+    has(manipulationResult({ semanticIntent: legitIntent({ adoptionCondition: "NONE_MEASUREMENT_ONLY" }) }), "EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
   });
-
-  // B. semantic-equivalence paraphrases -- vary voice / order / inflection /
-  //    nominalisation / coreference; not simple synonym swaps
-  it("B1: harmful prolonging survives voice / nominalisation / clause-order changes", () => {
-    harmful("Padding out the middle keeps average view duration rising.");                       // nominalised subject
-    harmful("So that watch time keeps growing, the explainer is dragged out with re-statements."); // purpose-first, passive
-    harmful("Each answer is made to run noticeably longer, which lifts retention.");              // passive + relative clause
-    harmful("The prolongation of every segment is what pushes session length up.");              // full nominalisation
+  it("F3 outcome-conditioned preservation via noun-phrase / unfamiliar syntax is valid when the struct says so", () => {
+    lacks(asPurpose("Adoption of the challenger only upon a decisive primary win; otherwise incumbent retention.", {
+      adoptionCondition: "CHALLENGER_DECISIVELY_WINS_PRIMARY_WITHOUT_GUARDRAIL_BREACH",
+      preservationCondition: "CHALLENGER_FAILS_TO_WIN",
+    }), "EXPERIMENT_PURPOSE_CONTRADICTS_DECISION");
   });
-  it("B2: harmful withholding survives coreference and split mechanism/purpose", () => {
-    harmful("The opening names the concrete fix viewers came for. That fix is then held back until the sign-off. The goal is to stop early exits.");
-    harmful("Reserve the assessment. Only reveal it in the last minute. That way the audience stays to the end.");
-    harmful("Metering the guidance out in dribs and drabs toward the finish keeps people watching longer.");
-  });
-  it("B3: harmful conflict survives nominalisation, inflection and villain-casting", () => {
-    harmful("The deliberate escalation of a small disagreement into a scandal is used to farm angry replies.");
-    harmful("Appoint one commenter as the villain so the rest pile on.");
-    harmful("Blowing a trivial caption tweak up into a betrayal of the audience drives reaction.");
-  });
-  it("B4: deceptive scarcity is caught when claim and truth are in separate sentences", () => {
-    harmful("Put a countdown on the end card. Enrolment actually reopens every month with plenty of room.");
-    harmful("Tell viewers the bonus is about to be pulled. It stays online for good.");
-  });
-  it("B5: concessive / double-negation wrappers do not sanitise the harmful clause", () => {
-    harmful("Unless it would mislead anyone, stretch the recap so retention holds.");
-    harmful("Do not neglect to hold the payoff back if it keeps people watching.");
-    harmful("Avoid rage bait, but pad the middle so watch time rises.");
-  });
-
-  // C. safe controls near the harm vocabulary -- must stay clean
-  it("C1: tightening / honesty / truthful-scarcity edits still pass", () => {
-    safeTreatment("Cut the repeated recaps so the lesson reaches the answer faster.");
-    safeTreatment("The explanation is trimmed, not padded, and the payoff moves up front.");
-    safeTreatment("Lead with the concrete fix, then show the supporting detail.");
-    safeTreatment("Describe the enrolment window honestly and give the real closing date once.");
-    safeTreatment("Note where the two experts disagree and summarise both readings fairly.");
-    safeTreatment("Improve pacing in the middle without delaying the promised payoff.");
-  });
-
-  // === Findings 2 & 3 -- decision-purpose immutability vs legitimate ========
-  it("A2: legitimate outcome-conditioned preservation passes (Finding 2)", () => {
-    doesNotContradict(asJustification("Keep the current opening unless the treatment shows a clear, sustained improvement."));
-    doesNotContradict(asJustification("If the result is inconclusive, keep the current opening pending a second run."));
-    doesNotContradict(asJustification("If the reworked opening does not clearly beat the baseline, retain the current opening this cycle."));
-  });
-  it("A3: outcome-independent immutability is rejected across surface forms (Finding 3)", () => {
-    contradicts(asPurpose("Should the challenger come out ahead, the incumbent opening is kept all the same."));
-    contradicts(asPurpose("The run is a formality; the current cut stays in the lineup afterward."));
-    contradicts(asPurpose("The decision was locked before any data arrives, whatever the run turns up."));
-    contradicts(asPurpose("Findings from this comparison have no say over which framing ships."));
-    contradicts(asPurpose("The current opening is in place for keeps; the test just records the challenger's numbers."));
-    contradicts(asPurpose("The reworked hook may prove better, yet it will not be adopted."));
-  });
-  it("B6: immutability paraphrases -- inverted conditionals, concessives, documentation-only", () => {
-    contradicts(asPurpose("Even where the alternate hook wins, we are not moving the present thumbnail."));
-    contradicts(asPurpose("No matter what the comparison shows, the existing framing carries on."));
-    contradicts(asPurpose("Whichever version tests better, the one we have now is not going anywhere."));
-    contradicts(asPurpose("This is a box-ticking exercise; the incumbent opening rides regardless."));
-  });
-  it("C2: provisional and control-arm preservation still pass", () => {
-    doesNotContradict(asJustification("A flat or adverse read would justify holding the current version until we run it again."));
-    doesNotContradict(asJustification("Should satisfaction dip below the guardrail, roll back to the existing opening."));
-    const control = manipulationResult();
-    control.content.experiment.treatmentCondition.description =
-      "The simultaneous control arm keeps the current opening while the treatment reworks the promise.";
-    doesNotContradict(control);
-  });
-
-  // === Finding 4 -- impossible invalidation by construction ================
-  it("A4: domain-contradictory invalidation criteria are rejected", () => {
-    incoherent("Invalidate if average view duration exceeds the video's total length.");
-    incoherent("Invalidate if the completion rate comes in above 100%.");
-    incoherent("Invalidate if the video logs more views than impressions.");
-  });
-  it("B7: contradiction paraphrases -- reversed order, other quantities, mutual exclusion", () => {
-    incoherent("Invalidate if the video's runtime is shorter than its average view duration.");
-    incoherent("Invalidate if percentage viewed lands north of one hundred percent.");
-    incoherent("Invalidate if unique viewers outnumber total views.");
-    incoherent("Invalidate if the primary metric must both rise and fall in the same window.");
-  });
-  it("C3: strong-but-possible and merely-unlikely thresholds still pass", () => {
-    coherent("Invalidate if average view duration is under a tenth of the video length.");
-    coherent("Invalidate if more than 100 spurious impressions are logged from bot traffic.");
-    coherent("Invalidate if retention holds within one percentage point of the baseline the entire window.");
-    coherent("Invalidate if the treatment reaches fewer than a quarter of the planned videos.");
-  });
-
-  // === Finding 5 -- causal-certainty false positive =======================
-  it("A5 / C4: hypothetical 'proves/tests stronger' passes; a real causal claim still fails", () => {
-    for (const text of [
-      "If the reworked opening proves stronger on retention, adopt it.",
-      "Adopt the variant only where it proves better than the control.",
-      "Ship the new hook if it tests stronger than the baseline.",
+  it("F4 deceptive scarcity resolved by scarcityBasis, not a scarcity thesaurus", () => {
+    for (const description of [
+      "The offer is reissued weekly.",
+      "The item is made to order.",
+      "The cart reopens every Monday.",
+      "We can produce arbitrary quantities on demand.",
     ]) {
-      const r = manipulationResult();
-      r.content.experiment.expectedDirection.justification = text;
-      expect(codes(r)).not.toContain("UNSUPPORTED_CAUSAL_CERTAINTY");
-    }
-    const r = manipulationResult();
-    r.content.experiment.hypothesis = "This comparison will prove that the reworked opening causes the retention gain.";
-    expect(codes(r)).toContain("UNSUPPORTED_CAUSAL_CERTAINTY");
-  });
-
-  // === Metamorphic -- surface form varies, meaning and verdict do not ======
-  it("M1: one harmful intent, five surface forms, all rejected", () => {
-    for (const text of [
-      "Pad the explanation to lift watch time.",
-      "The explanation is padded to lift watch time.",
-      "To lift watch time, pad the explanation.",
-      "Watch time is lifted by padding out the explanation.",
-      "Padding of the explanation is how watch time is lifted.",
-    ]) {
-      harmful(text);
+      has(asTreatment(description, { usesScarcityOrUrgencyClaim: true, scarcityBasis: "NOT_FINITE_OR_UNSUPPORTED" }), "VIEWER_VALUE_TREATMENT_HARMFUL");
+      lacks(asTreatment(description, { usesScarcityOrUrgencyClaim: false }), "VIEWER_VALUE_TREATMENT_HARMFUL");
     }
   });
-  it("M2: one safe intent, four surface forms, all clean", () => {
-    for (const text of [
-      "Trim the explanation instead of padding it for watch time.",
-      "The explanation is trimmed, not padded, whatever happens to watch time.",
-      "Do not pad the explanation just to lift watch time.",
-      "Rather than pad the explanation for watch time, cut it down.",
-    ]) {
-      expect(codes(asTreatment(text))).not.toContain("VIEWER_VALUE_TREATMENT_HARMFUL");
-    }
+  it("F5 negation is no longer the safety boundary -- the struct is", () => {
+    // Double-negative harmful framing: the struct settles it, whatever the negation arithmetic.
+    has(asTreatment("We will never skip the opportunity to hold the payoff back for retention.", { withholdsPromisedValueForRetention: true }), "VIEWER_VALUE_TREATMENT_HARMFUL");
+    // Struct clean + genuinely clean prose -> clean (the prose backup only fires on a real prose/struct disagreement).
+    lacks(asTreatment("We deliver the payoff up front and never hold it back.", { withholdsPromisedValueForRetention: false }), "VIEWER_VALUE_TREATMENT_HARMFUL");
   });
-  it("M3: immutability meaning is invariant to conditional inversion", () => {
-    for (const text of [
-      "Whatever the outcome, keep the current opening.",
-      "The current opening is kept whatever the outcome.",
-      "Regardless of how the comparison lands, the current opening is kept.",
-      "Keep the current opening; the comparison does not change that.",
-    ]) {
-      contradicts(asPurpose(text));
-    }
+  it("F6 coreference across an intervening rationale sentence no longer matters -- the struct is", () => {
+    const prose = "The opening promises a concrete fix. Viewers deserve that certainty early, which is a real tension. We keep it for the finale instead so the session holds.";
+    has(asTreatment(prose, { withholdsPromisedValueForRetention: true }), "VIEWER_VALUE_TREATMENT_HARMFUL");
+    lacks(asTreatment("The opening promises a concrete fix. We deliver it immediately.", { withholdsPromisedValueForRetention: false }), "VIEWER_VALUE_TREATMENT_HARMFUL");
+  });
+  it("F7 causal-certainty uses the authoritative claim-strength enum", () => {
+    const r = manipulationResult({ semanticIntent: legitIntent({ causalClaimStrength: "DEFINITIVE_CAUSAL" }) });
+    r.content.experiment.hypothesis = "The test definitively demonstrates a causal relationship between the hook change and watch time.";
+    has(r, "UNSUPPORTED_CAUSAL_CERTAINTY");
+  });
+  it("F8 invalidation coherence validated over typed metric/relation/bound", () => {
+    has(asInvalidation({ statement: "unique viewers over total views", check: { kind: "METRIC_DOMAIN_BOUND", metric: "UNIQUE_VIEWERS", relation: "EXCEEDS", bound: "TOTAL_VIEWS" } }), "INVALIDATION_CONDITION_INCOHERENT");
+    has(asInvalidation({ statement: "click-through above one hundred percent", check: { kind: "METRIC_DOMAIN_BOUND", metric: "IMPRESSION_CLICK_THROUGH_RATE", relation: "EXCEEDS", bound: "ONE_HUNDRED_PERCENT" } }), "INVALIDATION_CONDITION_INCOHERENT");
   });
 });

@@ -91,6 +91,16 @@ export const SATISFACTION_METRICS: ReadonlySet<ExperimentMetric> = new Set<Exper
  * it is retained as an explicit downstream signal and a tamper-detection anchor.
  */
 export function deriveExperimentReady(experiment: Experiment, viewerValueState: VideoExperimentConstraints["viewerValueState"]): boolean {
+  const intent = experiment.semanticIntent;
+  // ROUND 6: an outcome-independent design is not ready. A comparison experiment
+  // is ready only when its evidence can change the shipping decision and it does
+  // not preserve the incumbent regardless of the result; an observational probe
+  // is ready only when it is explicitly represented as measurement-only.
+  const decisionLinkageReady = experiment.measurementOnly
+    ? (intent.adoptionCondition === "NONE_MEASUREMENT_ONLY" && intent.preservationCondition === "NONE_MEASUREMENT_ONLY")
+    : (intent.evidenceCanChangeShippingDecision === true
+      && intent.preservationCondition !== "ALWAYS_REGARDLESS_OF_RESULT"
+      && intent.adoptionCondition !== "NONE_MEASUREMENT_ONLY");
   return experiment.viewerValueGuardrails.length >= 1
     && experiment.guardrailMetrics.length >= 1
     && experiment.stoppingConditions.length >= 2
@@ -98,7 +108,8 @@ export function deriveExperimentReady(experiment: Experiment, viewerValueState: 
     && experiment.interpretationPlan.guardrailPrecedence === true
     && (experiment.measurementOnly || experiment.rollbackPlan !== null)
     && (experiment.measurementOnly || experiment.knownConfounders.length >= 1)
-    && (viewerValueState !== "AT_RISK" || experiment.requiresHumanJudgment);
+    && (viewerValueState !== "AT_RISK" || experiment.requiresHumanJudgment)
+    && decisionLinkageReady;
 }
 
 /**
