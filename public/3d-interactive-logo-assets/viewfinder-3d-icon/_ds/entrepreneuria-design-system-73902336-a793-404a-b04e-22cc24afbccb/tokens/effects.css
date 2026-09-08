@@ -1,0 +1,30 @@
+:root{
+/* Radii */
+--radius-none:0px;
+--radius-sm:12px;
+--radius-md:16px;
+--radius-pill:3355px;
+
+/* Cyan-glow elevation system — never neutral drop-shadows */
+--shadow-none:none;
+--shadow-sm:0 0 0 1px rgba(0,212,255,.32) inset,0 1px 0 rgba(255,229,33,.1) inset;
+--shadow-sm-hover:0 0 0 1px rgba(0,212,255,.5) inset;
+--shadow-md:0 0 10px 0 rgba(0,212,255,.65);
+--shadow-md-hover:0 0 8px 0 rgba(0,212,255,.8);
+--shadow-lg:0 0 10px 0 rgba(0,212,255,.7);
+--shadow-xl:0 0 8px 0 rgba(0,212,255,.8);
+--shadow-button:0 0 0 1px var(--brand-accent-soft),0 8px 24px var(--brand-accent-glow);
+--shadow-focus:0 0 0 3px rgba(0,212,255,.3);
+--shadow-focus-error:0 0 0 3px rgba(228,0,20,.3);
+
+/* Blur */
+--blur-header:12px;
+--blur-card:12px;
+--blur-dock:14px;
+
+/* Motion */
+--ease-out:cubic-bezier(.22,1,.36,1); /* @kind other */
+--duration-fast:.2s; /* @kind other */
+--duration-base:.3s; /* @kind other */
+--duration-slow:.7s; /* @kind other */
+}
