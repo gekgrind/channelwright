@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { originalContributionKindSchema, viewerNeedKindSchema, viewerValueAssessmentSchema, viewerValueProvenanceSchema } from "./viewer-value";
 
-export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING", "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE", "CHANNEL_VIDEO_DIAGNOSIS", "CHANNEL_VIDEO_DECISION", "CHANNEL_VIDEO_EXPERIMENT"]);
+export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING", "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE", "CHANNEL_VIDEO_DIAGNOSIS", "CHANNEL_VIDEO_DECISION", "CHANNEL_VIDEO_EXPERIMENT", "CHANNEL_VIDEO_PORTFOLIO"]);
 export type ProductionWorkflowType = z.infer<typeof workflowTypeSchema>;
 
 export const workflowStatusSchema = z.enum(["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL", "BLOCKED", "COMPLETED", "FAILED", "CANCELED"]);
@@ -2768,21 +2768,27 @@ export const experimentRollbackPlanSchema = z.object({
  * the server-stamped `measurementOnly` flag, so an observational probe cannot
  * mis-declare them.
  */
+/**
+ * What the treatment actually is. No Viewer-Value-harming mechanism is even
+ * representable here; a harmful design must instead truthfully set one of the
+ * boolean facts on `experimentSemanticIntentSchema` (or be caught by the prose
+ * consistency signal). Named separately so CHANNEL_VIDEO_PORTFOLIO can carry the
+ * same closed vocabulary in its candidate projection without redeclaring it.
+ */
+export const experimentTreatmentMechanismSchema = z.enum([
+  "EDITORIAL_QUALITY",       // tighten / clarify / restructure without adding length
+  "PACING_ADJUSTMENT",       // change pacing (either direction)
+  "PROMISE_FRAMING",         // reword the opening promise / hook framing
+  "FORMAT_OR_STRUCTURE",     // segment order / structure / chapters
+  "THUMBNAIL_OR_TITLE",      // packaging surface
+  "PUBLISH_TIMING",          // when it publishes
+  "CONTENT_SELECTION",       // topic / example selection
+  "MEASUREMENT_ONLY",        // observational probe applies no treatment
+  "OTHER_DISCLOSED",         // anything else, explained in treatmentCondition.whatChanges
+]);
+
 export const experimentSemanticIntentSchema = z.object({
-  // What the treatment actually is. No Viewer-Value-harming mechanism is even
-  // representable here; a harmful design must instead truthfully set one of the
-  // boolean facts below (or be caught by the prose consistency signal).
-  treatmentMechanism: z.enum([
-    "EDITORIAL_QUALITY",       // tighten / clarify / restructure without adding length
-    "PACING_ADJUSTMENT",       // change pacing (either direction)
-    "PROMISE_FRAMING",         // reword the opening promise / hook framing
-    "FORMAT_OR_STRUCTURE",     // segment order / structure / chapters
-    "THUMBNAIL_OR_TITLE",      // packaging surface
-    "PUBLISH_TIMING",          // when it publishes
-    "CONTENT_SELECTION",       // topic / example selection
-    "MEASUREMENT_ONLY",        // observational probe applies no treatment
-    "OTHER_DISCLOSED",         // anything else, explained in treatmentCondition.whatChanges
-  ]),
+  treatmentMechanism: experimentTreatmentMechanismSchema,
   // Closed-vocabulary facts about deliberate engagement/retention manipulation.
   // Each is a property of the DESIGN, not a phrase to be recognised.
   prolongsContentForRetention: z.boolean(),                         // adds material / slows pacing to raise elapsed viewing per viewer
@@ -3011,6 +3017,398 @@ export const channelVideoExperimentResultSchema = z.object({
   modelProvenance: z.array(modelAttributionSchema).length(2),
 }).strict();
 
+// ---------------------------------------------------------------------------
+// CHANNEL_VIDEO_PORTFOLIO
+//
+// The capacity-allocation boundary after CHANNEL_VIDEO_EXPERIMENT. Experiment
+// deliberately reserved exactly two downstream-facing contracts for this
+// vertical -- `experimentReady` and `portfolioEligible` -- and deterministically
+// rejects, as `PORTFOLIO_RESPONSIBILITY_LEAKED`, the work this workflow owns:
+// allocating finite operator capacity across experiments, prioritising which
+// experiments run next, and sequencing a slate.
+//
+// Portfolio consumes one to six exact approved, portfolio-eligible
+// CHANNEL_VIDEO_EXPERIMENT artifacts plus the operator's declared cycle capacity
+// and produces a single human-approved, immutable ALLOCATION OF RECORD: which
+// experiments are committed to this cycle, which are deferred, which are
+// excluded, in what order, and why.
+//
+// It never redesigns an experiment, never revisits a Decision, never re-runs a
+// Diagnosis, never rewrites channel strategy, and never executes anything (no
+// publish, upload, schedule, notification, ad spend, or provider call). It
+// carries no experiment execution / outcome / analytics state -- only the
+// allocation artifact and its own approval lifecycle.
+//
+// The safety-critical property: the model never sees an experiment's mutable
+// prose body. The database resolver projects each candidate down to a bounded
+// set of server-extracted scalars (plus its 200-char title), so a portfolio run
+// is structurally incapable of restating, weakening, or rewriting an approved
+// experiment design.
+// ---------------------------------------------------------------------------
+
+export const portfolioLineageWorkflowTypeSchema = z.enum([
+  "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE",
+  "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING",
+  "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE", "CHANNEL_VIDEO_DIAGNOSIS",
+  "CHANNEL_VIDEO_DECISION", "CHANNEL_VIDEO_EXPERIMENT",
+]);
+
+export const portfolioArtifactIdentitySchema = z.object({
+  workflowType: portfolioLineageWorkflowTypeSchema,
+  runId: z.string().uuid(),
+  artifactHash: sha256Schema,
+  schemaVersion: z.number().int().positive(),
+}).strict();
+
+/** A candidate id is derived server-side from the experiment run, never chosen by the model. */
+export const portfolioCandidateIdSchema = z.string().regex(/^cand:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+
+export const approvedVideoExperimentReferenceSchema = z.object({
+  experimentWorkflowId: z.string().uuid(),
+  experimentRunId: z.string().uuid(),
+  workflowDefinitionVersion: z.number().int().positive(),
+  outputSchemaVersion: z.literal(1),
+  approvalId: z.string().uuid(),
+  approvedBy: z.string().uuid(),
+  approvedAt: z.string().datetime(),
+  finalQaState: z.enum(["accept", "human_review_required"]),
+  finalQaScore: z.number().int().min(0).max(100),
+  experimentArtifactHash: sha256Schema,
+  experimentProvenanceHash: sha256Schema,
+  parentRunId: z.string().uuid().nullable(),
+  rootRunId: z.string().uuid(),
+  experimentType: experimentTypeSchema,
+  portfolioEligible: z.literal(true),
+  /**
+   * A FLAT upstream summary, deliberately not the nested
+   * `approvedVideoDecisionReference`. Every sibling reference nests its whole
+   * ancestry, which is affordable when exactly one artifact is carried; a
+   * portfolio carries up to six, and six copies of a ten-deep chain exceeds the
+   * database's 64 KiB step-output ceiling on its own. Nothing is lost: the
+   * decision identity and both hashes are here, the run-by-run lineage is on
+   * `portfolioCandidateSchema.lineage`, and every artifact hash in the chain is
+   * in the candidate's eleven-artifact scope entry.
+   */
+  upstreamVideoDecision: z.object({
+    decisionWorkflowId: z.string().uuid(),
+    decisionRunId: z.string().uuid(),
+    decisionArtifactHash: sha256Schema,
+    decisionProvenanceHash: sha256Schema,
+    decisionType: decisionTypeSchema,
+    experimentEligible: z.literal(true),
+  }).strict(),
+}).strict();
+
+/**
+ * The bounded, server-extracted projection of one approved experiment. Every
+ * field except `title` is a closed-vocabulary scalar lifted out of the immutable
+ * experiment artifact by the database resolver. This -- not the experiment
+ * itself -- is what the allocation model reasons over.
+ */
+export const portfolioCandidateSchema = z.object({
+  candidateId: portfolioCandidateIdSchema,
+  experimentWorkflowId: z.string().uuid(),
+  experimentRunId: z.string().uuid(),
+  experimentId: z.string().regex(/^experiment:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  title: z.string().min(1).max(200),
+  experimentType: experimentTypeSchema,
+  disposition: experimentDispositionSchema,
+  measurementOnly: z.boolean(),
+  controlKind: experimentControlKindSchema,
+  category: diagnosisCategorySchema,
+  unitOfAssignment: z.enum(["VIDEO", "THUMBNAIL_SLOT", "PUBLISH_WINDOW", "CHANNEL_SEGMENT", "TRAFFIC_SURFACE", "NONE_OBSERVATIONAL"]),
+  treatmentMechanism: experimentTreatmentMechanismSchema,
+  primaryMetric: experimentMetricSchema,
+  primaryMetricDirection: z.enum(["INCREASE", "DECREASE", "CHANGE"]),
+  evidenceStrength: decisionEvidenceStrengthSchema,
+  confidenceInDesign: z.enum(["high", "medium", "low"]),
+  requiresHumanJudgment: z.boolean(),
+  experimentReady: z.boolean(),
+  viewerValueState: z.enum(["PRESERVED", "AT_RISK", "UNKNOWN"]),
+  promiseIntegrityRisk: z.enum(["NONE", "POSSIBLE", "LIKELY"]),
+  escalationRequired: z.boolean(),
+  evidenceCanChangeShippingDecision: z.boolean(),
+  decisionId: z.string().regex(/^decision:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  decisionType: decisionTypeSchema,
+  viewerValueContractHash: sha256Schema,
+  lineage: z.object({
+    decisionRunId: z.string().uuid(),
+    diagnosisRunId: z.string().uuid(),
+    performanceRunId: z.string().uuid(),
+    releaseRunId: z.string().uuid(),
+    topicId: topicIdSchema,
+    pillarId: pillarIdSchema,
+    finalTitle: z.string().min(1).max(100),
+  }).strict(),
+}).strict();
+
+export const videoPortfolioScopeSchema = z.object({
+  candidates: z.array(z.object({
+    candidateId: portfolioCandidateIdSchema,
+    experimentRunId: z.string().uuid(),
+    artifacts: z.array(portfolioArtifactIdentitySchema).min(11).max(11),
+  }).strict()).min(1).max(6),
+  facts: z.array(z.object({
+    key: z.string().regex(/^fact:[a-z0-9][a-z0-9:._-]{0,118}$/),
+    value: z.union([z.string().max(2_000), z.number(), z.boolean(), z.null()]),
+    sourceRef: z.string().min(1).max(300),
+  }).strict()).min(1).max(96),
+}).strict().superRefine((scope, context) => {
+  const requiredArtifactTypes = new Set(portfolioLineageWorkflowTypeSchema.options);
+  const candidateIds = new Set<string>();
+  const experimentRunIds = new Set<string>();
+  for (const [index, candidate] of scope.candidates.entries()) {
+    if (candidateIds.has(candidate.candidateId)) context.addIssue({ code: "custom", path: ["candidates", index, "candidateId"], message: "Candidate ids must be unique." });
+    candidateIds.add(candidate.candidateId);
+    if (experimentRunIds.has(candidate.experimentRunId)) context.addIssue({ code: "custom", path: ["candidates", index, "experimentRunId"], message: "The same experiment run cannot appear twice in one portfolio." });
+    experimentRunIds.add(candidate.experimentRunId);
+    const artifactTypes = new Set(candidate.artifacts.map((artifact) => artifact.workflowType));
+    if (artifactTypes.size !== requiredArtifactTypes.size || [...requiredArtifactTypes].some((type) => !artifactTypes.has(type))) {
+      context.addIssue({ code: "custom", path: ["candidates", index, "artifacts"], message: "Each candidate must carry exactly one artifact from every approved lineage workflow, including Experiment." });
+    }
+    if (!candidate.artifacts.some((artifact) => artifact.workflowType === "CHANNEL_VIDEO_EXPERIMENT" && artifact.runId === candidate.experimentRunId)) {
+      context.addIssue({ code: "custom", path: ["candidates", index, "artifacts"], message: "The Experiment artifact must identify the candidate's own experiment run." });
+    }
+  }
+  const factKeys = new Set<string>();
+  for (const [index, fact] of scope.facts.entries()) {
+    if (factKeys.has(fact.key)) context.addIssue({ code: "custom", path: ["facts", index, "key"], message: "Fact keys must be unique." });
+    factKeys.add(fact.key);
+  }
+});
+
+export const portfolioExperimentSelectionSchema = z.object({
+  experimentWorkflowId: z.string().uuid(),
+  experimentRunId: z.string().uuid(),
+}).strict();
+
+export const videoPortfolioRequestInputSchema = z.object({
+  cycleLabel: z.string().trim().min(1).max(120),
+  concurrentExperimentSlots: z.number().int().min(1).max(6),
+  experimentSelections: z.array(portfolioExperimentSelectionSchema).min(1).max(6),
+}).strict().superRefine((input, context) => {
+  const runIds = new Set<string>();
+  for (const [index, selection] of input.experimentSelections.entries()) {
+    if (runIds.has(selection.experimentRunId)) context.addIssue({ code: "custom", path: ["experimentSelections", index, "experimentRunId"], message: "The same experiment run cannot be selected twice." });
+    runIds.add(selection.experimentRunId);
+  }
+});
+
+export const approvedVideoExperimentArtifactSchema = z.object({
+  reference: approvedVideoExperimentReferenceSchema,
+  candidate: portfolioCandidateSchema,
+  artifacts: z.array(portfolioArtifactIdentitySchema).min(11).max(11),
+}).strict();
+
+export const approvedVideoExperimentSetSchema = z.object({
+  artifacts: z.array(approvedVideoExperimentArtifactSchema).min(1).max(6),
+  portfolioScope: videoPortfolioScopeSchema,
+}).strict();
+
+/**
+ * Server-derived allocation constraints. The model never decides how many slots
+ * exist, which candidates are at risk, which candidates would confound each
+ * other, or what the confidence ceiling is -- those are derived here from the
+ * immutable candidate projections and re-derived at final QA.
+ */
+export const videoPortfolioConstraintsSchema = z.object({
+  cycleLabel: z.string().min(1).max(120),
+  concurrentExperimentSlots: z.number().int().min(1).max(6),
+  candidates: z.array(portfolioCandidateSchema).min(1).max(6),
+  citableCandidateIds: z.array(portfolioCandidateIdSchema).min(1).max(6),
+  atRiskCandidateIds: z.array(portfolioCandidateIdSchema).max(6),
+  humanJudgmentCandidateIds: z.array(portfolioCandidateIdSchema).max(6),
+  notReadyCandidateIds: z.array(portfolioCandidateIdSchema).max(6),
+  /** Candidate groups that manipulate the same assignment surface on the same subject; committing two of one group confounds both. */
+  confoundCollisionGroups: z.array(z.object({
+    key: z.string().min(1).max(200),
+    candidateIds: z.array(portfolioCandidateIdSchema).min(2).max(6),
+  }).strict()).max(6),
+  globalConfidenceCeiling: z.enum(["high", "medium", "low"]),
+  viewerValueEscalationRequired: z.boolean(),
+}).strict();
+
+export const portfolioDispositionSchema = z.enum(["COMMITTED", "DEFERRED", "EXCLUDED"]);
+
+/**
+ * Why an item landed where it did, on a closed vocabulary. Growth/metric upside
+ * is deliberately NOT a member: an allocation that can only be justified by
+ * predicted metric gain must declare that on `justifiedByPredictedGrowthAlone`,
+ * where the deterministic validator rejects it for a committed item.
+ */
+export const portfolioSelectionBasisSchema = z.enum([
+  "DECISION_BOUND_EVIDENCE_GAP",
+  "HIGHEST_UNCERTAINTY_REDUCTION",
+  "VIEWER_VALUE_PROTECTION",
+  "CHEAPEST_INTERPRETABLE_TEST",
+  "BLOCKS_DOWNSTREAM_DECISIONS",
+  "SEQUENCING_DEPENDENCY",
+  "CAPACITY_EXHAUSTED",
+  "CONFOUND_COLLISION",
+  "VIEWER_VALUE_RISK",
+  "NOT_READY",
+  "REDUNDANT_WITH_COMMITTED",
+  "OTHER_DISCLOSED",
+]);
+
+export const portfolioViewerValueDispositionSchema = z.enum([
+  "PRESERVED_NO_ACTION_NEEDED",
+  "ESCALATED_FOR_HUMAN_JUDGMENT",
+  "EXCLUDED_FOR_VIEWER_VALUE_RISK",
+  "UNKNOWN_REQUIRES_EVIDENCE",
+]);
+
+export const portfolioAllocationItemSchema = z.object({
+  candidateId: portfolioCandidateIdSchema,
+  disposition: portfolioDispositionSchema,
+  /** Dense 1..committedCount for committed items; null for everything else. */
+  rank: z.number().int().min(1).max(6).nullable(),
+  selectionBasis: portfolioSelectionBasisSchema,
+  rationale: z.string().min(1).max(1_200),
+  viewerValueDisposition: portfolioViewerValueDispositionSchema,
+  /** Honest declaration: is predicted metric gain the only thing supporting this placement? */
+  justifiedByPredictedGrowthAlone: z.boolean(),
+  /** Required for DEFERRED and for EXCLUDED items that could ever return. */
+  revisitCondition: z.string().min(1).max(800).nullable(),
+  citedCandidateIds: z.array(portfolioCandidateIdSchema).max(5),
+}).strict();
+
+export const portfolioRiskSchema = z.object({
+  risk: z.string().min(1).max(600),
+  mitigation: z.string().min(1).max(800),
+  residualRisk: z.enum(["LOW", "MEDIUM", "HIGH"]),
+}).strict();
+
+export const portfolioAllocationSchema = z.object({
+  id: z.string().regex(/^portfolio:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  cycleLabel: z.string().min(1).max(120),
+  objective: z.string().min(1).max(1_200),
+  allocationHypothesis: z.string().min(1).max(1_600),
+  items: z.array(portfolioAllocationItemSchema).min(1).max(6),
+  committedCount: z.number().int().min(0).max(6),
+  deferredCount: z.number().int().min(0).max(6),
+  excludedCount: z.number().int().min(0).max(6),
+  capacityUtilization: z.enum(["UNDER_CAPACITY", "AT_CAPACITY"]),
+  sequencingNotes: z.string().min(1).max(1_600),
+  portfolioRisks: z.array(portfolioRiskSchema).min(1).max(8),
+  viewerValueGuardrails: z.array(z.string().min(1).max(600)).min(1).max(12),
+  reviewTrigger: z.string().min(1).max(800),
+  knownUnknowns: z.array(z.string().min(1).max(600)).max(12),
+  requiresHumanJudgment: z.boolean(),
+  executionDeferred: z.literal(true),
+}).strict().superRefine((allocation, context) => {
+  const seen = new Set<string>();
+  for (const [index, item] of allocation.items.entries()) {
+    if (seen.has(item.candidateId)) context.addIssue({ code: "custom", path: ["items", index, "candidateId"], message: "A candidate can be allocated only once." });
+    seen.add(item.candidateId);
+    if (item.disposition === "COMMITTED" && item.rank === null) context.addIssue({ code: "custom", path: ["items", index, "rank"], message: "A committed item requires a rank." });
+    if (item.disposition !== "COMMITTED" && item.rank !== null) context.addIssue({ code: "custom", path: ["items", index, "rank"], message: "Only a committed item carries a rank." });
+    if (item.disposition === "DEFERRED" && item.revisitCondition === null) context.addIssue({ code: "custom", path: ["items", index, "revisitCondition"], message: "A deferred item requires the condition under which it is revisited." });
+    if (item.citedCandidateIds.includes(item.candidateId)) context.addIssue({ code: "custom", path: ["items", index, "citedCandidateIds"], message: "An item cannot cite itself." });
+  }
+});
+
+export const portfolioAlternativeSchema = z.object({
+  id: z.string().regex(/^alt:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  statement: z.string().min(1).max(1_200),
+  committedCandidateIds: z.array(portfolioCandidateIdSchema).max(6),
+  notSelectedBecause: z.enum(["LOWER_LEARNING_VALUE", "HIGHER_VIEWER_VALUE_RISK", "CONFOUNDED", "EXCEEDS_CAPACITY", "BLOCKED_BY_DEPENDENCY", "REDUNDANT", "PREMATURE", "OTHER"]),
+  notSelectedReason: z.string().min(1).max(800),
+}).strict();
+
+export const portfolioViewerValueSafeguardsSchema = z.object({
+  anyCandidateAtRisk: z.boolean(),
+  committedAtRiskCandidateIds: z.array(portfolioCandidateIdSchema).max(6),
+  metricGamingRisk: z.string().min(1).max(1_200),
+  guardedMetricGaming: z.string().min(1).max(1_200),
+  escalationRequired: z.boolean(),
+}).strict();
+
+export const videoPortfolioContentSchema = z.object({
+  allocation: portfolioAllocationSchema,
+  alternatives: z.array(portfolioAlternativeSchema).min(1).max(6),
+  viewerValueSafeguards: portfolioViewerValueSafeguardsSchema,
+  portfolioReady: z.boolean(),
+}).strict().superRefine((content, context) => {
+  const ids = new Set<string>([content.allocation.id]);
+  for (const [index, alternative] of content.alternatives.entries()) {
+    if (ids.has(alternative.id)) context.addIssue({ code: "custom", path: ["alternatives", index, "id"], message: "Allocation and alternative IDs must be unique." });
+    ids.add(alternative.id);
+  }
+});
+
+/**
+ * The shape the executor actually claims, NOT the shape a caller may POST. Every
+ * field beyond `videoPortfolioRequestInputSchema` is stamped by `start_workflow`
+ * into `input_payload` and handed back by `claim_workflow_step`:
+ *
+ *   caller request  -> videoPortfolioRequestInputSchema (strict; no server fields)
+ *   server normalize -> start_workflow adds approvedVideoExperimentReferences + portfolioCycleKey
+ *   persisted input  -> claim_workflow_step returns it verbatim
+ *   executor         -> videoPortfolioInputSchema.parse(step.input)  <-- here
+ *
+ * `portfolioCycleKey` is `lower(btrim(cycleLabel))`, the normalized same-cycle
+ * concurrency key. It is server-authoritative: it is absent from the request
+ * schema, so a caller can neither supply nor override it, and the refinement
+ * below re-derives it from `cycleLabel` and fails closed if the persisted key is
+ * ever not that exact normalization -- turning silent SQL <-> TypeScript drift
+ * into a loud typed rejection instead of a first-step production failure.
+ */
+export const videoPortfolioInputSchema = videoPortfolioRequestInputSchema.extend({
+  approvedVideoExperimentReferences: z.array(approvedVideoExperimentReferenceSchema).min(1).max(6),
+  portfolioCycleKey: z.string().min(1).max(120),
+  humanRevisionNote: z.string().trim().min(1).max(2_000).optional(),
+}).strict().superRefine((input, context) => {
+  if (input.portfolioCycleKey !== input.cycleLabel.trim().toLowerCase()) {
+    context.addIssue({ code: "custom", path: ["portfolioCycleKey"], message: "portfolioCycleKey must be the server normalization lower(btrim(cycleLabel)) of the declared cycle label." });
+  }
+});
+
+export const videoPortfolioDraftSchema = z.object({
+  content: videoPortfolioContentSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+  analyst: modelAttributionSchema,
+}).strict();
+
+export const videoPortfolioCrossModelReviewSchema = videoExperimentCrossModelReviewSchema;
+
+export const videoPortfolioCritiqueSchema = z.object({
+  safeToFinalize: z.boolean(),
+  summary: z.string().min(1).max(2_500),
+  findings: videoPortfolioCrossModelReviewSchema.shape.findings,
+}).strict();
+
+export const videoPortfolioCritiqueStepSchema = z.object({
+  critique: videoPortfolioCritiqueSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+  critic: modelAttributionSchema,
+}).strict();
+
+export const videoPortfolioQAResultSchema = researchQAResultSchema;
+export const videoPortfolioQAStepSchema = z.object({
+  qa: videoPortfolioQAResultSchema,
+  crossModelReview: videoPortfolioCrossModelReviewSchema,
+  result: z.unknown(),
+}).strict();
+
+export const channelVideoPortfolioResultSchema = z.object({
+  schemaVersion: z.literal(1),
+  workflowType: z.literal("CHANNEL_VIDEO_PORTFOLIO"),
+  allocatedAt: z.string().datetime(),
+  source: z.object({
+    cycleLabel: z.string().min(1).max(120),
+    candidateCount: z.number().int().min(1).max(6),
+    experimentRunIds: z.array(z.string().uuid()).min(1).max(6),
+    subjectIdentity: z.string().min(1).max(300),
+  }).strict(),
+  approvedVideoExperimentReferences: z.array(approvedVideoExperimentReferenceSchema).min(1).max(6),
+  portfolioScope: videoPortfolioScopeSchema,
+  portfolioConstraints: videoPortfolioConstraintsSchema,
+  content: videoPortfolioContentSchema,
+  crossModelReview: videoPortfolioCrossModelReviewSchema,
+  modelProvenance: z.array(modelAttributionSchema).length(2),
+}).strict();
+
 export const channelConceptValidationInputSchema = z.object({
   proposedConcept: z.string().trim().min(20).max(2_000),
   audienceContext: z.string().trim().min(3).max(2_000).optional(),
@@ -3035,7 +3433,8 @@ export const workflowStartRequestSchema = z.object({
                   : request.workflowType === "CHANNEL_VIDEO_DIAGNOSIS" ? videoDiagnosisRequestInputSchema
                     : request.workflowType === "CHANNEL_VIDEO_DECISION" ? videoDecisionRequestInputSchema
                       : request.workflowType === "CHANNEL_VIDEO_EXPERIMENT" ? videoExperimentRequestInputSchema
-                        : channelConceptValidationInputSchema;
+                        : request.workflowType === "CHANNEL_VIDEO_PORTFOLIO" ? videoPortfolioRequestInputSchema
+                          : channelConceptValidationInputSchema;
   const parsed = schema.safeParse(request.input);
   if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue, path: ["input", ...issue.path] });
 }).transform((request) => request as
@@ -3050,7 +3449,8 @@ export const workflowStartRequestSchema = z.object({
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_PERFORMANCE"; definitionVersion: 1; input: VideoPerformanceRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_DIAGNOSIS"; definitionVersion: 1; input: VideoDiagnosisRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_DECISION"; definitionVersion: 1; input: VideoDecisionRequestInput }
-  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_EXPERIMENT"; definitionVersion: 1; input: VideoExperimentRequestInput });
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_EXPERIMENT"; definitionVersion: 1; input: VideoExperimentRequestInput }
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_PORTFOLIO"; definitionVersion: 1; input: VideoPortfolioRequestInput });
 
 export const workflowApprovalDecisionSchema = z.object({
   decision: z.enum(["APPROVE", "REJECT", "REQUEST_REVISION"]),
@@ -3210,6 +3610,29 @@ export type VideoExperimentContent = z.infer<typeof videoExperimentContentSchema
 export type VideoExperimentCritique = z.infer<typeof videoExperimentCritiqueSchema>;
 export type VideoExperimentQAResult = z.infer<typeof videoExperimentQAResultSchema>;
 export type ChannelVideoExperimentResult = z.infer<typeof channelVideoExperimentResultSchema>;
+export type ExperimentTreatmentMechanism = z.infer<typeof experimentTreatmentMechanismSchema>;
+export type PortfolioExperimentSelection = z.infer<typeof portfolioExperimentSelectionSchema>;
+export type VideoPortfolioRequestInput = z.infer<typeof videoPortfolioRequestInputSchema>;
+export type VideoPortfolioInput = z.infer<typeof videoPortfolioInputSchema>;
+export type VideoPortfolioScope = z.infer<typeof videoPortfolioScopeSchema>;
+export type PortfolioArtifactIdentity = z.infer<typeof portfolioArtifactIdentitySchema>;
+export type PortfolioLineageWorkflowType = z.infer<typeof portfolioLineageWorkflowTypeSchema>;
+export type ApprovedVideoExperimentReference = z.infer<typeof approvedVideoExperimentReferenceSchema>;
+export type ApprovedVideoExperimentArtifact = z.infer<typeof approvedVideoExperimentArtifactSchema>;
+export type ApprovedVideoExperimentSet = z.infer<typeof approvedVideoExperimentSetSchema>;
+export type PortfolioCandidate = z.infer<typeof portfolioCandidateSchema>;
+export type VideoPortfolioConstraints = z.infer<typeof videoPortfolioConstraintsSchema>;
+export type PortfolioDisposition = z.infer<typeof portfolioDispositionSchema>;
+export type PortfolioSelectionBasis = z.infer<typeof portfolioSelectionBasisSchema>;
+export type PortfolioViewerValueDisposition = z.infer<typeof portfolioViewerValueDispositionSchema>;
+export type PortfolioAllocationItem = z.infer<typeof portfolioAllocationItemSchema>;
+export type PortfolioAllocation = z.infer<typeof portfolioAllocationSchema>;
+export type PortfolioAlternative = z.infer<typeof portfolioAlternativeSchema>;
+export type PortfolioViewerValueSafeguards = z.infer<typeof portfolioViewerValueSafeguardsSchema>;
+export type VideoPortfolioContent = z.infer<typeof videoPortfolioContentSchema>;
+export type VideoPortfolioCritique = z.infer<typeof videoPortfolioCritiqueSchema>;
+export type VideoPortfolioQAResult = z.infer<typeof videoPortfolioQAResultSchema>;
+export type ChannelVideoPortfolioResult = z.infer<typeof channelVideoPortfolioResultSchema>;
 export type WorkflowStartRequest = z.infer<typeof workflowStartRequestSchema>;
 export type WorkflowApprovalDecision = z.infer<typeof workflowApprovalDecisionSchema>;
 
@@ -3437,6 +3860,23 @@ const channelVideoExperimentDefinition: WorkflowDefinition<VideoExperimentReques
   ],
 };
 
+const channelVideoPortfolioDefinition: WorkflowDefinition<VideoPortfolioRequestInput, ChannelVideoPortfolioResult> = {
+  type: "CHANNEL_VIDEO_PORTFOLIO",
+  version: 1,
+  objective: "Allocate one operator-declared cycle capacity across one to six exact approved, portfolio-eligible CHANNEL_VIDEO_EXPERIMENT designs into a single independently critiqued, human-approved allocation of record without redesigning an experiment, revisiting a decision, or executing anything",
+  inputSchema: videoPortfolioRequestInputSchema,
+  outputSchema: channelVideoPortfolioResultSchema,
+  steps: [
+    { key: "validate-approved-experiments", kind: "WORKER", capability: "approved-experiment-validation", dependsOn: [], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "derive-portfolio-constraints", kind: "WORKER", capability: "deterministic-portfolio-constraints", dependsOn: ["validate-approved-experiments"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "draft-video-portfolio", kind: "WORKER", capability: "video-portfolio-allocation", dependsOn: ["derive-portfolio-constraints"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "critique-video-portfolio", kind: "WORKER", capability: "independent-video-portfolio-critique", dependsOn: ["draft-video-portfolio"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "final-video-portfolio-qa", kind: "WORKER", capability: "deterministic-video-portfolio-qa", dependsOn: ["critique-video-portfolio"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "finalize-video-portfolio", kind: "WORKER", capability: "video-portfolio-finalizer", dependsOn: ["final-video-portfolio-qa"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "review-video-portfolio", kind: "APPROVAL", capability: "human", dependsOn: ["finalize-video-portfolio"], maxAttempts: 1, retryBaseSeconds: 0 },
+  ],
+};
+
 const registry = new Map<string, WorkflowDefinition>([
   [`${channelConceptValidationDefinition.type}:${channelConceptValidationDefinition.version}`, channelConceptValidationDefinition],
   [`${channelResearchDefinition.type}:${channelResearchDefinition.version}`, channelResearchDefinition],
@@ -3450,6 +3890,7 @@ const registry = new Map<string, WorkflowDefinition>([
   [`${channelVideoDiagnosisDefinition.type}:${channelVideoDiagnosisDefinition.version}`, channelVideoDiagnosisDefinition],
   [`${channelVideoDecisionDefinition.type}:${channelVideoDecisionDefinition.version}`, channelVideoDecisionDefinition],
   [`${channelVideoExperimentDefinition.type}:${channelVideoExperimentDefinition.version}`, channelVideoExperimentDefinition],
+  [`${channelVideoPortfolioDefinition.type}:${channelVideoPortfolioDefinition.version}`, channelVideoPortfolioDefinition],
 ]);
 
 /** Canonical finalizer per workflow type; its output becomes the run's durable `output_payload`. */
@@ -3466,6 +3907,7 @@ export const WORKFLOW_FINALIZER_STEP: Record<ProductionWorkflowType, string> = {
   CHANNEL_VIDEO_DIAGNOSIS: "finalize-video-diagnosis",
   CHANNEL_VIDEO_DECISION: "finalize-video-decision",
   CHANNEL_VIDEO_EXPERIMENT: "finalize-video-experiment",
+  CHANNEL_VIDEO_PORTFOLIO: "finalize-video-portfolio",
 };
 
 export function getWorkflowDefinition(type: ProductionWorkflowType, version: number) {
