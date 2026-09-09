@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { originalContributionKindSchema, viewerNeedKindSchema, viewerValueAssessmentSchema, viewerValueProvenanceSchema } from "./viewer-value";
 
-export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING", "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE", "CHANNEL_VIDEO_DIAGNOSIS", "CHANNEL_VIDEO_DECISION", "CHANNEL_VIDEO_EXPERIMENT", "CHANNEL_VIDEO_PORTFOLIO"]);
+export const workflowTypeSchema = z.enum(["CHANNEL_CONCEPT_VALIDATION", "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_PACKAGING", "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE", "CHANNEL_VIDEO_DIAGNOSIS", "CHANNEL_VIDEO_DECISION", "CHANNEL_VIDEO_EXPERIMENT", "CHANNEL_VIDEO_PORTFOLIO", "CHANNEL_VIDEO_INTELLIGENCE"]);
 export type ProductionWorkflowType = z.infer<typeof workflowTypeSchema>;
 
 export const workflowStatusSchema = z.enum(["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL", "BLOCKED", "COMPLETED", "FAILED", "CANCELED"]);
@@ -3409,6 +3409,493 @@ export const channelVideoPortfolioResultSchema = z.object({
   modelProvenance: z.array(modelAttributionSchema).length(2),
 }).strict();
 
+// ---------------------------------------------------------------------------
+// CHANNEL_VIDEO_INTELLIGENCE
+//
+// The channel-level meta-learning boundary above CHANNEL_VIDEO_PORTFOLIO, and
+// the twelfth paid workflow on the production spine.
+//
+// The contract was RECOVERED, not invented. Two existing verticals already
+// reserved this workflow by name and enumerated what it owns:
+//
+//   - `video-experiment-validation.ts` INTELLIGENCE_RESPONSIBILITY_LEAKED --
+//     "channel-wide strategy / meta-learning work reserved for
+//     CHANNEL_VIDEO_INTELLIGENCE", matching channel strategy, strategic pivots,
+//     channel-wide learning / pattern / insight / takeaway, "meta-analysis of
+//     all|every", and "across the entire channel history".
+//   - `video-portfolio-validation.ts` INTELLIGENCE_RESPONSIBILITY_LEAKED --
+//     "channel-strategy work reserved for CHANNEL_VIDEO_INTELLIGENCE", matching
+//     rewriting/revising channel strategy or positioning, and redefining the
+//     audience, niche, or pillars.
+//   - `docs/video-portfolio.md` -- Portfolio does not own "channel strategy (a
+//     future Intelligence vertical)".
+//
+// Intelligence consumes TWO TO FOUR exact approved, intelligence-eligible
+// CHANNEL_VIDEO_PORTFOLIO allocation records that all descend from ONE
+// CHANNEL_STRATEGY run, and produces a single human-approved, immutable CHANNEL
+// LEARNING RECORD: what this channel has actually learned across those cycles,
+// what it still does not know, and whether the anchored strategy should be
+// reviewed.
+//
+// It is the SIGNAL, never the author. It names which strategy elements the
+// accumulated evidence contradicts; it never writes replacement positioning,
+// audience, pillars, promise, or KPIs -- that is CHANNEL_STRATEGY's artifact.
+// It never produces a topic backlog or a next-video recommendation -- that is
+// CHANNEL_CONTENT_INTELLIGENCE, a PROSPECTIVE workflow that reads one approved
+// Strategy and retrieves live discovery evidence. Intelligence is RETROSPECTIVE,
+// reads only immutable prior artifacts, and performs zero external retrieval.
+// Neither supersedes the other, and no migration plan in this repository asks
+// for CONTENT_INTELLIGENCE to be renamed or removed.
+//
+// It never allocates capacity (Portfolio), redesigns an experiment (Experiment),
+// re-decides (Decision), re-diagnoses (Diagnosis), rewrites analytics evidence
+// (Performance), authors production content (Brief / Script / Packaging), or
+// executes anything.
+//
+// The safety-critical structural property, inherited and extended from
+// Portfolio: the model never sees an allocation's prose body. The database
+// resolver projects each approved allocation down to a bounded set of
+// server-extracted, closed-vocabulary scalars -- counts, capacity state,
+// Viewer Value state, and the committed experiments' closed-vocabulary
+// classification. Rationales, hypotheses, sequencing notes, guardrail prose and
+// alternatives are never projected, so an Intelligence run is structurally
+// incapable of restating or relitigating an approved allocation.
+// ---------------------------------------------------------------------------
+
+export const intelligenceLineageWorkflowTypeSchema = z.enum([
+  "CHANNEL_RESEARCH", "CHANNEL_STRATEGY", "CHANNEL_VIDEO_PORTFOLIO",
+]);
+
+export const intelligenceArtifactIdentitySchema = z.object({
+  workflowType: intelligenceLineageWorkflowTypeSchema,
+  runId: z.string().uuid(),
+  artifactHash: sha256Schema,
+  schemaVersion: z.number().int().positive(),
+}).strict();
+
+/** A cycle id is derived server-side from the portfolio run, never chosen by the model. */
+export const intelligenceCycleIdSchema = z.string().regex(/^cycle:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+export const channelLearningIdSchema = z.string().regex(/^learning:[a-z0-9][a-z0-9:._-]{0,118}$/);
+
+export const approvedVideoPortfolioReferenceSchema = z.object({
+  portfolioWorkflowId: z.string().uuid(),
+  portfolioRunId: z.string().uuid(),
+  workflowDefinitionVersion: z.number().int().positive(),
+  outputSchemaVersion: z.literal(1),
+  approvalId: z.string().uuid(),
+  approvedBy: z.string().uuid(),
+  approvedAt: z.string().datetime(),
+  finalQaState: z.enum(["accept", "human_review_required"]),
+  finalQaScore: z.number().int().min(0).max(100),
+  portfolioArtifactHash: sha256Schema,
+  portfolioProvenanceHash: sha256Schema,
+  parentRunId: z.string().uuid().nullable(),
+  rootRunId: z.string().uuid(),
+  /** Portfolio's own downstream-facing readiness contract; an unready allocation can never reach Intelligence. */
+  portfolioReady: z.literal(true),
+  /**
+   * The FLAT channel anchors, deliberately not a nested reference chain.
+   * Intelligence carries up to four cycles and each portfolio nests up to six
+   * eleven-artifact candidate chains; re-nesting those would exceed the 64 KiB
+   * step-output ceiling many times over. The anchors are what makes this a
+   * CHANNEL-level record: every cycle must descend from the same strategy.
+   */
+  strategyAnchor: z.object({
+    strategyRunId: z.string().uuid(),
+    strategyArtifactHash: sha256Schema,
+  }).strict(),
+  researchAnchor: z.object({
+    researchRunId: z.string().uuid(),
+    researchArtifactHash: sha256Schema,
+  }).strict(),
+}).strict();
+
+/**
+ * One committed experiment inside a cycle, reduced to closed-vocabulary
+ * classification only. This is what makes cross-cycle pattern detection possible
+ * without exposing any allocation or experiment prose.
+ */
+export const intelligenceCommitmentSchema = z.object({
+  candidateId: portfolioCandidateIdSchema,
+  experimentType: experimentTypeSchema,
+  category: diagnosisCategorySchema,
+  treatmentMechanism: experimentTreatmentMechanismSchema,
+  primaryMetric: experimentMetricSchema,
+  primaryMetricDirection: z.enum(["INCREASE", "DECREASE", "CHANGE"]),
+  selectionBasis: portfolioSelectionBasisSchema,
+  viewerValueDisposition: portfolioViewerValueDispositionSchema,
+  viewerValueState: z.enum(["PRESERVED", "AT_RISK", "UNKNOWN"]),
+  promiseIntegrityRisk: z.enum(["NONE", "POSSIBLE", "LIKELY"]),
+  decisionType: decisionTypeSchema,
+  pillarId: pillarIdSchema,
+}).strict();
+
+/**
+ * The bounded, server-extracted projection of one approved allocation record.
+ * Every field is a scalar or closed-vocabulary value lifted out of the immutable
+ * portfolio artifact by the database resolver. This -- not the allocation --
+ * is what the learning model reasons over.
+ */
+export const intelligenceCycleSchema = z.object({
+  cycleId: intelligenceCycleIdSchema,
+  portfolioWorkflowId: z.string().uuid(),
+  portfolioRunId: z.string().uuid(),
+  cycleLabel: z.string().min(1).max(120),
+  allocatedAt: z.string().datetime(),
+  concurrentExperimentSlots: z.number().int().min(1).max(6),
+  candidateCount: z.number().int().min(1).max(6),
+  committedCount: z.number().int().min(0).max(6),
+  deferredCount: z.number().int().min(0).max(6),
+  excludedCount: z.number().int().min(0).max(6),
+  capacityUtilization: z.enum(["UNDER_CAPACITY", "AT_CAPACITY"]),
+  globalConfidenceCeiling: z.enum(["high", "medium", "low"]),
+  requiresHumanJudgment: z.boolean(),
+  anyCandidateAtRisk: z.boolean(),
+  committedAtRiskCount: z.number().int().min(0).max(6),
+  commitments: z.array(intelligenceCommitmentSchema).max(6),
+  strategyRunId: z.string().uuid(),
+}).strict().superRefine((cycle, context) => {
+  if (cycle.commitments.length !== cycle.committedCount) {
+    context.addIssue({ code: "custom", path: ["commitments"], message: "The projected commitments must cover exactly the allocation's committed items." });
+  }
+});
+
+export const videoIntelligenceScopeSchema = z.object({
+  cycles: z.array(z.object({
+    cycleId: intelligenceCycleIdSchema,
+    portfolioRunId: z.string().uuid(),
+    artifacts: z.array(intelligenceArtifactIdentitySchema).min(3).max(3),
+  }).strict()).min(2).max(4),
+  facts: z.array(z.object({
+    key: z.string().regex(/^fact:[a-z0-9][a-z0-9:._-]{0,118}$/),
+    value: z.union([z.string().max(2_000), z.number(), z.boolean(), z.null()]),
+    sourceRef: z.string().min(1).max(300),
+  }).strict()).min(1).max(64),
+}).strict().superRefine((scope, context) => {
+  const requiredArtifactTypes = new Set(intelligenceLineageWorkflowTypeSchema.options);
+  const cycleIds = new Set<string>();
+  const portfolioRunIds = new Set<string>();
+  for (const [index, cycle] of scope.cycles.entries()) {
+    if (cycleIds.has(cycle.cycleId)) context.addIssue({ code: "custom", path: ["cycles", index, "cycleId"], message: "Cycle ids must be unique." });
+    cycleIds.add(cycle.cycleId);
+    if (portfolioRunIds.has(cycle.portfolioRunId)) context.addIssue({ code: "custom", path: ["cycles", index, "portfolioRunId"], message: "The same portfolio run cannot appear twice in one intelligence record." });
+    portfolioRunIds.add(cycle.portfolioRunId);
+    const artifactTypes = new Set(cycle.artifacts.map((artifact) => artifact.workflowType));
+    if (artifactTypes.size !== requiredArtifactTypes.size || [...requiredArtifactTypes].some((type) => !artifactTypes.has(type))) {
+      context.addIssue({ code: "custom", path: ["cycles", index, "artifacts"], message: "Each cycle must carry exactly one Research, one Strategy, and one Portfolio artifact identity." });
+    }
+    if (!cycle.artifacts.some((artifact) => artifact.workflowType === "CHANNEL_VIDEO_PORTFOLIO" && artifact.runId === cycle.portfolioRunId)) {
+      context.addIssue({ code: "custom", path: ["cycles", index, "artifacts"], message: "The Portfolio artifact must identify the cycle's own portfolio run." });
+    }
+  }
+  const strategyRunIds = new Set(scope.cycles.flatMap((cycle) => cycle.artifacts.filter((artifact) => artifact.workflowType === "CHANNEL_STRATEGY").map((artifact) => artifact.runId)));
+  if (strategyRunIds.size > 1) {
+    context.addIssue({ code: "custom", path: ["cycles"], message: "Every cycle in a channel learning record must descend from the same approved CHANNEL_STRATEGY run." });
+  }
+  const factKeys = new Set<string>();
+  for (const [index, fact] of scope.facts.entries()) {
+    if (factKeys.has(fact.key)) context.addIssue({ code: "custom", path: ["facts", index, "key"], message: "Fact keys must be unique." });
+    factKeys.add(fact.key);
+  }
+});
+
+export const intelligencePortfolioSelectionSchema = z.object({
+  portfolioWorkflowId: z.string().uuid(),
+  portfolioRunId: z.string().uuid(),
+}).strict();
+
+export const videoIntelligenceRequestInputSchema = z.object({
+  horizonLabel: z.string().trim().min(1).max(120),
+  portfolioSelections: z.array(intelligencePortfolioSelectionSchema).min(2).max(4),
+}).strict().superRefine((input, context) => {
+  const runIds = new Set<string>();
+  for (const [index, selection] of input.portfolioSelections.entries()) {
+    if (runIds.has(selection.portfolioRunId)) context.addIssue({ code: "custom", path: ["portfolioSelections", index, "portfolioRunId"], message: "The same portfolio run cannot be selected twice." });
+    runIds.add(selection.portfolioRunId);
+  }
+});
+
+export const approvedVideoPortfolioArtifactSchema = z.object({
+  reference: approvedVideoPortfolioReferenceSchema,
+  cycle: intelligenceCycleSchema,
+  artifacts: z.array(intelligenceArtifactIdentitySchema).min(3).max(3),
+}).strict();
+
+export const approvedVideoPortfolioSetSchema = z.object({
+  artifacts: z.array(approvedVideoPortfolioArtifactSchema).min(2).max(4),
+  intelligenceScope: videoIntelligenceScopeSchema,
+}).strict();
+
+export const intelligenceViewerValueTrendSchema = z.enum(["IMPROVING", "STABLE", "DETERIORATING", "INSUFFICIENT_SIGNAL"]);
+
+/**
+ * Server-derived learning constraints. The model never decides which cycles
+ * exist, in what order they happened, which vocabulary they actually observed,
+ * how the channel's Viewer Value exposure moved, or what the evidence ceiling
+ * is -- those are derived here from the immutable cycle projections and
+ * re-derived at final QA.
+ */
+export const videoIntelligenceConstraintsSchema = z.object({
+  horizonLabel: z.string().min(1).max(120),
+  anchoredStrategyRunId: z.string().uuid(),
+  anchoredStrategyArtifactHash: sha256Schema,
+  cycles: z.array(intelligenceCycleSchema).min(2).max(4),
+  citableCycleIds: z.array(intelligenceCycleIdSchema).min(2).max(4),
+  /** Cycle ids in allocation chronological order; the only ordering the model may reason with. */
+  chronology: z.array(intelligenceCycleIdSchema).min(2).max(4),
+  cyclesWithCommittedAtRiskIds: z.array(intelligenceCycleIdSchema).max(4),
+  observedCategories: z.array(diagnosisCategorySchema).max(24),
+  observedTreatmentMechanisms: z.array(experimentTreatmentMechanismSchema).max(24),
+  observedPillarIds: z.array(pillarIdSchema).max(24),
+  totalCommittedExperiments: z.number().int().min(0).max(24),
+  viewerValueTrend: intelligenceViewerValueTrendSchema,
+  escalationRequired: z.boolean(),
+  /** The lowest per-cycle confidence ceiling; no learning may claim more confidence than the channel's weakest cycle. */
+  evidenceCeiling: z.enum(["high", "medium", "low"]),
+}).strict();
+
+/**
+ * What kind of channel-level pattern a learning is, on a closed vocabulary.
+ * "What grows the channel" is deliberately NOT a member: a durable channel
+ * lesson must be about evidence, uncertainty, viewer response, capability, or
+ * measurement quality. A learning that can only be justified by audience growth
+ * must declare that on `justifiedByAudienceGrowthAlone`, where deterministic
+ * validation caps its confidence and bars it from supporting a strategy signal.
+ */
+export const intelligencePatternClassSchema = z.enum([
+  "RECURRING_DIAGNOSIS_CATEGORY",
+  "TREATMENT_MECHANISM_REPEATEDLY_SELECTED",
+  "EVIDENCE_GAP_PERSISTS_ACROSS_CYCLES",
+  "CAPACITY_CONSTRAINT_SHAPES_LEARNING",
+  "CONFOUNDING_LIMITS_INTERPRETATION",
+  "VIEWER_VALUE_RISK_RECURS",
+  "PILLAR_CONCENTRATION",
+  "MEASUREMENT_QUALITY_LIMIT",
+  "STRATEGY_ASSUMPTION_UNTESTED",
+  "OTHER_DISCLOSED",
+]);
+
+export const intelligenceViewerValueImplicationSchema = z.enum([
+  "PROTECTS_VIEWER_EXPERIENCE",
+  "NEUTRAL",
+  "UNKNOWN_REQUIRES_EVIDENCE",
+  "DEGRADES_VIEWER_EXPERIENCE",
+]);
+
+export const intelligenceAdoptionStanceSchema = z.enum([
+  "ADOPT_AS_CHANNEL_PRACTICE",
+  "TREAT_AS_PROVISIONAL",
+  "REQUIRES_MORE_EVIDENCE",
+  "REJECT_AS_HARMFUL",
+]);
+
+export const channelLearningSchema = z.object({
+  id: channelLearningIdSchema,
+  patternClass: intelligencePatternClassSchema,
+  statement: z.string().min(1).max(700),
+  evidenceBasis: z.string().min(1).max(1_000),
+  /** At least two cycles: a pattern observed in one cycle is not channel-level learning. */
+  supportingCycleIds: z.array(intelligenceCycleIdSchema).min(2).max(4),
+  contradictingCycleIds: z.array(intelligenceCycleIdSchema).max(4),
+  confidence: z.enum(["high", "medium", "low"]),
+  viewerValueImplication: intelligenceViewerValueImplicationSchema,
+  adoptionStance: intelligenceAdoptionStanceSchema,
+  /** Honest declaration: is predicted audience growth the only thing supporting this lesson? */
+  justifiedByAudienceGrowthAlone: z.boolean(),
+  whatWouldFalsifyThis: z.string().min(1).max(600),
+}).strict().superRefine((learning, context) => {
+  if (learning.contradictingCycleIds.some((id) => learning.supportingCycleIds.includes(id))) {
+    context.addIssue({ code: "custom", path: ["contradictingCycleIds"], message: "A cycle cannot both support and contradict one learning." });
+  }
+});
+
+/** The elements of an approved CHANNEL_STRATEGY artifact Intelligence may name as contradicted. It never authors a replacement for any of them. */
+export const strategyElementSchema = z.enum([
+  "STRATEGIC_THESIS",
+  "PRIMARY_AUDIENCE",
+  "POSITIONING",
+  "CHANNEL_PROMISE",
+  "VALUE_PROPOSITION",
+  "CONTENT_PILLARS",
+  "MONETIZATION_ARCHITECTURE",
+  "OBJECTIVES",
+  "KPI_FRAMEWORK",
+]);
+
+/**
+ * The single channel-level conclusion Intelligence owns. It is a SIGNAL: it says
+ * whether the anchored strategy warrants review and names which of its elements
+ * the accumulated evidence contradicts. `revisionAuthoredElsewhere` and
+ * `humanDecisionRequired` are literal `true` so the contract itself cannot
+ * express "and here is the new strategy" or "and I have started the revision".
+ */
+export const strategyReviewSignalSchema = z.object({
+  signal: z.enum(["REVISE_RECOMMENDED", "HOLD", "INSUFFICIENT_EVIDENCE"]),
+  anchoredStrategyRunId: z.string().uuid(),
+  contradictedElements: z.array(z.object({
+    element: strategyElementSchema,
+    contradictionSummary: z.string().min(1).max(700),
+    supportingLearningIds: z.array(channelLearningIdSchema).min(1).max(6),
+  }).strict()).max(6),
+  rationale: z.string().min(1).max(1_400),
+  humanDecisionRequired: z.literal(true),
+  revisionAuthoredElsewhere: z.literal(true),
+}).strict().superRefine((signal, context) => {
+  const elements = new Set<string>();
+  for (const [index, entry] of signal.contradictedElements.entries()) {
+    if (elements.has(entry.element)) context.addIssue({ code: "custom", path: ["contradictedElements", index, "element"], message: "Each strategy element may be named at most once." });
+    elements.add(entry.element);
+  }
+  if (signal.signal === "REVISE_RECOMMENDED" && signal.contradictedElements.length === 0) {
+    context.addIssue({ code: "custom", path: ["contradictedElements"], message: "A strategy review recommendation must name at least one contradicted strategy element." });
+  }
+  if (signal.signal !== "REVISE_RECOMMENDED" && signal.contradictedElements.length > 0) {
+    context.addIssue({ code: "custom", path: ["contradictedElements"], message: "Only a REVISE_RECOMMENDED signal may name contradicted strategy elements." });
+  }
+});
+
+export const channelOpenQuestionSchema = z.object({
+  id: z.string().regex(/^question:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  question: z.string().min(1).max(500),
+  whyItMatters: z.string().min(1).max(600),
+  howItCouldBeAnswered: z.string().min(1).max(600),
+}).strict();
+
+export const channelLearningRecordSchema = z.object({
+  id: z.string().regex(/^intelligence:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  horizonLabel: z.string().min(1).max(120),
+  objective: z.string().min(1).max(900),
+  learnings: z.array(channelLearningSchema).min(1).max(6),
+  strategyReviewSignal: strategyReviewSignalSchema,
+  openQuestions: z.array(channelOpenQuestionSchema).min(1).max(6),
+  channelRisks: z.array(portfolioRiskSchema).min(1).max(6),
+  viewerValueGuardrails: z.array(z.string().min(1).max(500)).min(1).max(8),
+  reviewTrigger: z.string().min(1).max(600),
+  learningCount: z.number().int().min(1).max(6),
+  cyclesConsidered: z.number().int().min(2).max(4),
+  viewerValueTrend: intelligenceViewerValueTrendSchema,
+  requiresHumanJudgment: z.boolean(),
+  executionDeferred: z.literal(true),
+}).strict().superRefine((record, context) => {
+  const learningIds = new Set<string>();
+  for (const [index, learning] of record.learnings.entries()) {
+    if (learningIds.has(learning.id)) context.addIssue({ code: "custom", path: ["learnings", index, "id"], message: "Learning ids must be unique." });
+    learningIds.add(learning.id);
+  }
+  const questionIds = new Set<string>();
+  for (const [index, question] of record.openQuestions.entries()) {
+    if (questionIds.has(question.id)) context.addIssue({ code: "custom", path: ["openQuestions", index, "id"], message: "Open-question ids must be unique." });
+    questionIds.add(question.id);
+  }
+  for (const [index, entry] of record.strategyReviewSignal.contradictedElements.entries()) {
+    for (const id of entry.supportingLearningIds) {
+      if (!learningIds.has(id)) context.addIssue({ code: "custom", path: ["strategyReviewSignal", "contradictedElements", index, "supportingLearningIds"], message: "A contradicted strategy element must cite learnings recorded here." });
+    }
+  }
+});
+
+export const intelligenceAlternativeSchema = z.object({
+  id: z.string().regex(/^alt:[a-z0-9][a-z0-9:._-]{0,118}$/),
+  statement: z.string().min(1).max(900),
+  signal: z.enum(["REVISE_RECOMMENDED", "HOLD", "INSUFFICIENT_EVIDENCE"]),
+  notSelectedBecause: z.enum(["WEAKER_EVIDENCE", "SINGLE_CYCLE_ONLY", "CONFOUNDED", "PREMATURE", "HIGHER_VIEWER_VALUE_RISK", "REDUNDANT", "OTHER"]),
+  notSelectedReason: z.string().min(1).max(700),
+}).strict();
+
+export const intelligenceViewerValueSafeguardsSchema = z.object({
+  trend: intelligenceViewerValueTrendSchema,
+  cyclesWithCommittedAtRiskIds: z.array(intelligenceCycleIdSchema).max(4),
+  metricGamingRisk: z.string().min(1).max(1_000),
+  guardedMetricGaming: z.string().min(1).max(1_000),
+  escalationRequired: z.boolean(),
+}).strict();
+
+export const videoIntelligenceContentSchema = z.object({
+  record: channelLearningRecordSchema,
+  alternatives: z.array(intelligenceAlternativeSchema).min(1).max(4),
+  viewerValueSafeguards: intelligenceViewerValueSafeguardsSchema,
+  intelligenceReady: z.boolean(),
+}).strict().superRefine((content, context) => {
+  const ids = new Set<string>([content.record.id]);
+  for (const [index, alternative] of content.alternatives.entries()) {
+    if (ids.has(alternative.id)) context.addIssue({ code: "custom", path: ["alternatives", index, "id"], message: "Record and alternative IDs must be unique." });
+    ids.add(alternative.id);
+  }
+});
+
+/**
+ * The shape the executor actually claims, NOT the shape a caller may POST. Every
+ * field beyond `videoIntelligenceRequestInputSchema` is stamped by
+ * `start_workflow` into `input_payload` and handed back by `claim_workflow_step`:
+ *
+ *   caller request   -> videoIntelligenceRequestInputSchema (strict; no server fields)
+ *   server normalize -> start_workflow adds approvedVideoPortfolioReferences + intelligenceHorizonKey
+ *   persisted input  -> claim_workflow_step returns it verbatim
+ *   executor         -> videoIntelligenceInputSchema.parse(step.input)  <-- here
+ *
+ * `intelligenceHorizonKey` is `lower(btrim(horizonLabel))`, the normalized
+ * same-horizon concurrency key. It is server-authoritative: it is absent from the
+ * request schema, so a caller can neither supply nor override it, and the
+ * refinement below re-derives it and fails closed if the persisted key is ever
+ * not that exact normalization -- turning silent SQL <-> TypeScript drift into a
+ * loud typed rejection instead of a first-step production failure.
+ */
+export const videoIntelligenceInputSchema = videoIntelligenceRequestInputSchema.extend({
+  approvedVideoPortfolioReferences: z.array(approvedVideoPortfolioReferenceSchema).min(2).max(4),
+  intelligenceHorizonKey: z.string().min(1).max(120),
+  humanRevisionNote: z.string().trim().min(1).max(2_000).optional(),
+}).strict().superRefine((input, context) => {
+  if (input.intelligenceHorizonKey !== input.horizonLabel.trim().toLowerCase()) {
+    context.addIssue({ code: "custom", path: ["intelligenceHorizonKey"], message: "intelligenceHorizonKey must be the server normalization lower(btrim(horizonLabel)) of the declared horizon label." });
+  }
+});
+
+export const videoIntelligenceDraftSchema = z.object({
+  content: videoIntelligenceContentSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+  analyst: modelAttributionSchema,
+}).strict();
+
+export const videoIntelligenceCrossModelReviewSchema = videoExperimentCrossModelReviewSchema;
+
+export const videoIntelligenceCritiqueSchema = z.object({
+  safeToFinalize: z.boolean(),
+  summary: z.string().min(1).max(2_500),
+  findings: videoIntelligenceCrossModelReviewSchema.shape.findings,
+}).strict();
+
+export const videoIntelligenceCritiqueStepSchema = z.object({
+  critique: videoIntelligenceCritiqueSchema,
+  modelUsage: researchDraftSchema.shape.modelUsage,
+  critic: modelAttributionSchema,
+}).strict();
+
+export const videoIntelligenceQAResultSchema = researchQAResultSchema;
+export const videoIntelligenceQAStepSchema = z.object({
+  qa: videoIntelligenceQAResultSchema,
+  crossModelReview: videoIntelligenceCrossModelReviewSchema,
+  result: z.unknown(),
+}).strict();
+
+export const channelVideoIntelligenceResultSchema = z.object({
+  schemaVersion: z.literal(1),
+  workflowType: z.literal("CHANNEL_VIDEO_INTELLIGENCE"),
+  synthesizedAt: z.string().datetime(),
+  source: z.object({
+    horizonLabel: z.string().min(1).max(120),
+    cycleCount: z.number().int().min(2).max(4),
+    portfolioRunIds: z.array(z.string().uuid()).min(2).max(4),
+    anchoredStrategyRunId: z.string().uuid(),
+    subjectIdentity: z.string().min(1).max(300),
+  }).strict(),
+  approvedVideoPortfolioReferences: z.array(approvedVideoPortfolioReferenceSchema).min(2).max(4),
+  intelligenceScope: videoIntelligenceScopeSchema,
+  intelligenceConstraints: videoIntelligenceConstraintsSchema,
+  content: videoIntelligenceContentSchema,
+  crossModelReview: videoIntelligenceCrossModelReviewSchema,
+  modelProvenance: z.array(modelAttributionSchema).length(2),
+}).strict();
+
 export const channelConceptValidationInputSchema = z.object({
   proposedConcept: z.string().trim().min(20).max(2_000),
   audienceContext: z.string().trim().min(3).max(2_000).optional(),
@@ -3434,7 +3921,8 @@ export const workflowStartRequestSchema = z.object({
                     : request.workflowType === "CHANNEL_VIDEO_DECISION" ? videoDecisionRequestInputSchema
                       : request.workflowType === "CHANNEL_VIDEO_EXPERIMENT" ? videoExperimentRequestInputSchema
                         : request.workflowType === "CHANNEL_VIDEO_PORTFOLIO" ? videoPortfolioRequestInputSchema
-                          : channelConceptValidationInputSchema;
+                          : request.workflowType === "CHANNEL_VIDEO_INTELLIGENCE" ? videoIntelligenceRequestInputSchema
+                            : channelConceptValidationInputSchema;
   const parsed = schema.safeParse(request.input);
   if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue, path: ["input", ...issue.path] });
 }).transform((request) => request as
@@ -3450,7 +3938,8 @@ export const workflowStartRequestSchema = z.object({
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_DIAGNOSIS"; definitionVersion: 1; input: VideoDiagnosisRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_DECISION"; definitionVersion: 1; input: VideoDecisionRequestInput }
   | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_EXPERIMENT"; definitionVersion: 1; input: VideoExperimentRequestInput }
-  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_PORTFOLIO"; definitionVersion: 1; input: VideoPortfolioRequestInput });
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_PORTFOLIO"; definitionVersion: 1; input: VideoPortfolioRequestInput }
+  | { operation: "START_WORKFLOW"; workflowType: "CHANNEL_VIDEO_INTELLIGENCE"; definitionVersion: 1; input: VideoIntelligenceRequestInput });
 
 export const workflowApprovalDecisionSchema = z.object({
   decision: z.enum(["APPROVE", "REJECT", "REQUEST_REVISION"]),
@@ -3633,6 +4122,30 @@ export type VideoPortfolioContent = z.infer<typeof videoPortfolioContentSchema>;
 export type VideoPortfolioCritique = z.infer<typeof videoPortfolioCritiqueSchema>;
 export type VideoPortfolioQAResult = z.infer<typeof videoPortfolioQAResultSchema>;
 export type ChannelVideoPortfolioResult = z.infer<typeof channelVideoPortfolioResultSchema>;
+export type IntelligencePortfolioSelection = z.infer<typeof intelligencePortfolioSelectionSchema>;
+export type VideoIntelligenceRequestInput = z.infer<typeof videoIntelligenceRequestInputSchema>;
+export type VideoIntelligenceInput = z.infer<typeof videoIntelligenceInputSchema>;
+export type VideoIntelligenceScope = z.infer<typeof videoIntelligenceScopeSchema>;
+export type IntelligenceArtifactIdentity = z.infer<typeof intelligenceArtifactIdentitySchema>;
+export type ApprovedVideoPortfolioReference = z.infer<typeof approvedVideoPortfolioReferenceSchema>;
+export type ApprovedVideoPortfolioArtifact = z.infer<typeof approvedVideoPortfolioArtifactSchema>;
+export type ApprovedVideoPortfolioSet = z.infer<typeof approvedVideoPortfolioSetSchema>;
+export type IntelligenceCommitment = z.infer<typeof intelligenceCommitmentSchema>;
+export type IntelligenceCycle = z.infer<typeof intelligenceCycleSchema>;
+export type VideoIntelligenceConstraints = z.infer<typeof videoIntelligenceConstraintsSchema>;
+export type IntelligencePatternClass = z.infer<typeof intelligencePatternClassSchema>;
+export type IntelligenceViewerValueImplication = z.infer<typeof intelligenceViewerValueImplicationSchema>;
+export type IntelligenceAdoptionStance = z.infer<typeof intelligenceAdoptionStanceSchema>;
+export type IntelligenceViewerValueTrend = z.infer<typeof intelligenceViewerValueTrendSchema>;
+export type ChannelLearning = z.infer<typeof channelLearningSchema>;
+export type StrategyElement = z.infer<typeof strategyElementSchema>;
+export type StrategyReviewSignal = z.infer<typeof strategyReviewSignalSchema>;
+export type ChannelLearningRecord = z.infer<typeof channelLearningRecordSchema>;
+export type IntelligenceAlternative = z.infer<typeof intelligenceAlternativeSchema>;
+export type VideoIntelligenceContent = z.infer<typeof videoIntelligenceContentSchema>;
+export type VideoIntelligenceCritique = z.infer<typeof videoIntelligenceCritiqueSchema>;
+export type VideoIntelligenceQAResult = z.infer<typeof videoIntelligenceQAResultSchema>;
+export type ChannelVideoIntelligenceResult = z.infer<typeof channelVideoIntelligenceResultSchema>;
 export type WorkflowStartRequest = z.infer<typeof workflowStartRequestSchema>;
 export type WorkflowApprovalDecision = z.infer<typeof workflowApprovalDecisionSchema>;
 
@@ -3877,6 +4390,23 @@ const channelVideoPortfolioDefinition: WorkflowDefinition<VideoPortfolioRequestI
   ],
 };
 
+const channelVideoIntelligenceDefinition: WorkflowDefinition<VideoIntelligenceRequestInput, ChannelVideoIntelligenceResult> = {
+  type: "CHANNEL_VIDEO_INTELLIGENCE",
+  version: 1,
+  objective: "Synthesize two to four exact approved, intelligence-eligible CHANNEL_VIDEO_PORTFOLIO allocation records sharing one anchored CHANNEL_STRATEGY into a single independently critiqued, human-approved channel learning record and strategy review signal without authoring strategy, allocating capacity, or executing anything",
+  inputSchema: videoIntelligenceRequestInputSchema,
+  outputSchema: channelVideoIntelligenceResultSchema,
+  steps: [
+    { key: "validate-approved-portfolios", kind: "WORKER", capability: "approved-portfolio-validation", dependsOn: [], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "derive-intelligence-constraints", kind: "WORKER", capability: "deterministic-intelligence-constraints", dependsOn: ["validate-approved-portfolios"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "draft-video-intelligence", kind: "WORKER", capability: "video-intelligence-synthesis", dependsOn: ["derive-intelligence-constraints"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "critique-video-intelligence", kind: "WORKER", capability: "independent-video-intelligence-critique", dependsOn: ["draft-video-intelligence"], maxAttempts: 2, retryBaseSeconds: 10 },
+    { key: "final-video-intelligence-qa", kind: "WORKER", capability: "deterministic-video-intelligence-qa", dependsOn: ["critique-video-intelligence"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "finalize-video-intelligence", kind: "WORKER", capability: "video-intelligence-finalizer", dependsOn: ["final-video-intelligence-qa"], maxAttempts: 1, retryBaseSeconds: 0 },
+    { key: "review-video-intelligence", kind: "APPROVAL", capability: "human", dependsOn: ["finalize-video-intelligence"], maxAttempts: 1, retryBaseSeconds: 0 },
+  ],
+};
+
 const registry = new Map<string, WorkflowDefinition>([
   [`${channelConceptValidationDefinition.type}:${channelConceptValidationDefinition.version}`, channelConceptValidationDefinition],
   [`${channelResearchDefinition.type}:${channelResearchDefinition.version}`, channelResearchDefinition],
@@ -3891,6 +4421,7 @@ const registry = new Map<string, WorkflowDefinition>([
   [`${channelVideoDecisionDefinition.type}:${channelVideoDecisionDefinition.version}`, channelVideoDecisionDefinition],
   [`${channelVideoExperimentDefinition.type}:${channelVideoExperimentDefinition.version}`, channelVideoExperimentDefinition],
   [`${channelVideoPortfolioDefinition.type}:${channelVideoPortfolioDefinition.version}`, channelVideoPortfolioDefinition],
+  [`${channelVideoIntelligenceDefinition.type}:${channelVideoIntelligenceDefinition.version}`, channelVideoIntelligenceDefinition],
 ]);
 
 /** Canonical finalizer per workflow type; its output becomes the run's durable `output_payload`. */
@@ -3908,6 +4439,7 @@ export const WORKFLOW_FINALIZER_STEP: Record<ProductionWorkflowType, string> = {
   CHANNEL_VIDEO_DECISION: "finalize-video-decision",
   CHANNEL_VIDEO_EXPERIMENT: "finalize-video-experiment",
   CHANNEL_VIDEO_PORTFOLIO: "finalize-video-portfolio",
+  CHANNEL_VIDEO_INTELLIGENCE: "finalize-video-intelligence",
 };
 
 export function getWorkflowDefinition(type: ProductionWorkflowType, version: number) {
