@@ -5,6 +5,7 @@ import { HallFar, HallMid, HallNear } from "./facility";
 import { registerScene } from "./scroll-engine";
 import { LANDMARK, SEAM, cameraVariables, lightVariables } from "./beats";
 import { ArtifactPlate } from "./artifact-plate";
+import { CrtWall, ThresholdStage } from "./plates";
 import { WORLD } from "./copy";
 import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL } from "./capabilities";
 
@@ -54,9 +55,12 @@ function Sign({ at, index, name }: { at: number; index: string; name: string }) 
  * Channelwright ingests no analytics today. The camera closes on it and the
  * building runs out.
  */
-function Threshold({ at, mark, label, kind }: { at: number; mark: string; label: string; kind?: "seam" }) {
+function Threshold({ at, mark, label, kind, stage }: { at: number; mark: string; label: string; kind?: "seam"; stage?: boolean }) {
   return (
-    <div className="cw-prop cw-threshold" data-kind={kind} style={prop(at)}>
+    <div className="cw-prop cw-threshold" data-kind={kind} data-stage={stage ? "" : undefined} style={prop(at)}>
+      {/* Before the frame in DOM order, so the jamb reveal, the lit spill and
+          the lintel all paint over the room beyond rather than under it. */}
+      {stage ? <ThresholdStage /> : null}
       <span className="cw-threshold__frame" />
       {/* The building names itself on its own lintel. The cold open used to
           resolve out of an unlabelled rectangle in the dark, which read as
@@ -178,6 +182,10 @@ export function StudiosWorld({ scope }: { scope: string }) {
       {/* Depth planes, slowest first. */}
       <div className="cw-plane cw-plane--far"><HallFar /></div>
 
+      {/* SPIKE — the research wall, photographed. Mounted before the drawn
+          fixture so the blueprint cell grid reads across the glass, and given
+          the same landmark so both are the same wall at the same distance. */}
+      <CrtWall at={LANDMARK.dept01} />
       <Fixture at={LANDMARK.dept01} kind="research" />
       <Fixture at={LANDMARK.dept02} kind="decision" />
       <Fixture at={LANDMARK.dept03} kind="writers" />
@@ -205,7 +213,7 @@ export function StudiosWorld({ scope }: { scope: string }) {
       <Partition at={LANDMARK.partition03to04} />
       <Partition at={LANDMARK.partition04to05} />
       <div className="cw-plane cw-plane--near"><HallNear /></div>
-      <Threshold at={LANDMARK.threshold} mark={WORLD.facility} label={WORLD.thresholdLabel} />
+      <Threshold at={LANDMARK.threshold} mark={WORLD.facility} label={WORLD.thresholdLabel} stage />
       {/* Beat 9. Named off `./capabilities.ts` rather than restated here, so
           the door on the wall and the row in the register can never disagree
           about what is built. */}

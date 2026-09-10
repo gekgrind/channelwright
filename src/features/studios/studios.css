@@ -2626,6 +2626,157 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
 }
 
 /* ============================================================================
+   SPIKE — PHYSICAL PLATES
+   ----------------------------------------------------------------------------
+   Two photographic interventions inside the world layer. Everything here is
+   additive: removing this block and the two `<CrtWall>` / `<ThresholdStage>`
+   mounts in `world.tsx` returns the experience to exactly what it was.
+
+   Both plates ride `--cam` through `.cw-prop`'s `--d`, never `--j`. A plate is
+   a *place*: keyed to the timeline it would sit still while the building
+   travelled during Beat 8's return, which reads as a photograph pinned to the
+   screen rather than a wall standing in a room.
+   ============================================================================ */
+
+.cw-plate { pointer-events: none; }
+.cw-plate img { display: block; width: 100%; height: auto; }
+
+/* --- Beat 3 — the research wall, photographed (Pattern A) ---------------- */
+
+/* Wide plate, left-masked. The mask is what protects the reading column, not a
+   low global opacity: dimming the whole plate scales highlights and mid-tones
+   by the same factor, so the speculars that describe curved glass and a
+   knurled knob disappear at the same rate as the object's bulk and the wall
+   collapses into an undifferentiated mass. Contrast is raised instead, which
+   pushes mid-tones toward black while leaving the lit edges intact. */
+.cw-plate--crt {
+  /* The drawn fixture's rate, deliberately. Both are the same wall — one in
+     linework, one photographed — and any mismatch slides the blueprint grid
+     across the glass, which destroys the one effect this direction is for. */
+  --rate: 96;
+  top: 11%;
+  width: 112vw;
+  transform:
+    translate3d(calc(var(--d) * var(--rate) * 1vw + 9vw), 0, 0)
+    scale(calc(1.05 - var(--ad) * .35));
+  /* Gated on the same fixtures ramp as the drawn wall, and reaching only as
+     far as its own department.
+     The reach is deliberately tighter than `.cw-fixture`'s .24, and the scroll
+     test is why. The drawn fixture is small and capped at .3, so a long tail
+     costs nothing; a 112vw plate at .48 inherits that tail as most of the
+     frame. Measured during Beat 8 the wall was still at 85% of full strength
+     while the camera stood in Department 02 — Department 01's equipment
+     filling the Return, which is the one beat that must stay quiet. At .155
+     the wall is spent before the neighbouring room and gone entirely by 02. */
+  opacity: calc(var(--fixtures-on) * clamp(0, calc((.155 - var(--ad)) * 11), 1) * .48);
+  filter: saturate(.8) contrast(1.18) brightness(.96);
+  mix-blend-mode: screen;
+  mask-image:
+    linear-gradient(to right, transparent 0, #000 45%),
+    linear-gradient(to top, transparent 0, #000 20%);
+  mask-composite: intersect;
+  -webkit-mask-composite: source-in;
+}
+
+/* Activation, without a second photograph.
+   ---------------------------------------------------------------------------
+   The quads are children of the plate and positioned in its own percentage
+   space, so registration through drift, scale and the return traverse is
+   structural rather than maintained — they move because they are inside the
+   thing that moves. Nothing can fall out of sync.
+
+   Illumination is clipped to the glass by `::after`, inset to the artwork's
+   own screen aperture. A lit rectangle standing proud of its bezel is exactly
+   what makes this read as a webpage overlay instead of a switched-on set. */
+.cw-plate__screens { position: absolute; inset: 0; }
+
+.cw-screen {
+  position: absolute;
+  /* Wakes when the department's own light ramp passes this screen's place in
+     the sequence, so the wall comes on in order rather than all at once. */
+  opacity: clamp(0, calc((var(--l1) - var(--seq)) * 6), 1);
+}
+.cw-screen::after {
+  content: "";
+  position: absolute;
+  /* The glass, not the bezel: matches the artwork's screen aperture. */
+  left: 10%;
+  top: 11%;
+  width: 72%;
+  height: 70%;
+  border-radius: 12% / 16%;
+  background:
+    /* Scanlines first, so the glow is read through a raster rather than as a
+       flat fill — a plain gradient reads as a coloured rectangle. */
+    repeating-linear-gradient(to bottom, rgba(0, 0, 0, .42) 0 1px, transparent 1px 3px),
+    radial-gradient(74% 64% at 44% 36%, rgba(198, 214, 232, .46), rgba(138, 164, 190, .13) 56%, transparent 80%);
+  /* Contained. The falloff belongs inside the tube, so the light stops at the
+     glass instead of blooming onto the bezel and the wall behind it. */
+  mask-image: radial-gradient(78% 74% at 50% 48%, #000 42%, transparent 92%);
+}
+/* One screen carries the signal. Instrumentation, not decoration: it is the
+   room resolving to a single answer, and it is the only acid on the wall. */
+.cw-screen[data-signal]::after {
+  background:
+    repeating-linear-gradient(to bottom, rgba(0, 0, 0, .42) 0 1px, transparent 1px 3px),
+    radial-gradient(74% 64% at 44% 36%, rgba(216, 255, 62, .34), rgba(216, 255, 62, .08) 56%, transparent 80%);
+}
+
+/* --- Beat 2 — the soundstage, through the threshold (Pattern B) ---------- */
+
+/* No mask: the aperture is the mask. The plate is a child of the doorway, so
+   it inherits the approach scale and is carried through the crossing — the
+   payoff is a place the camera enters, not a picture hung inside a frame. */
+.cw-plate--stage {
+  position: absolute;
+  inset: 8px 8px 0;
+  overflow: hidden;
+  /* Raised from the harness's .5 after the scroll test: inside the aperture
+     the plate is competing with the frame's own light spill rather than with
+     an empty page, and at .62 the stage read as haze rather than as a room
+     with a camera standing in it. */
+  opacity: calc(var(--reveal, 0) * .82);
+  filter: saturate(.8) contrast(1.16) brightness(1.02);
+  mix-blend-mode: screen;
+}
+.cw-plate--stage img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Weighted low: the camera and the deck are the subject, and the plate's own
+     unlit top band lines up with the lintel. */
+  object-position: 50% 62%;
+}
+/* The doorway's light wash is held back where a room now exists behind it.
+   At full strength it greys the stage into the same blue haze it paints on
+   nothing, which is the difference between a lit opening and a way through. */
+.cw-threshold[data-stage] .cw-threshold__frame::after {
+  opacity: calc((1 - var(--close) * .82) * .46);
+}
+
+/* --- Mobile ------------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  /* OMITTED on mobile, and the 390x844 capture is the reason rather than a
+     performance guess. The drawn fixtures are already dropped at this width,
+     so the photographic wall has no linework to sit behind — the one effect it
+     exists for cannot happen here. Pushed far enough right to leave the 390px
+     reading column alone and masked hard enough not to fight the copy, what
+     survived was a faint smudge in the top-right corner: no CRT legible, no
+     blueprint interaction, still costing a decode and a composited layer.
+     Omission is preferable to a compromised composition, and this is the
+     composition that settles it.
+
+     The alternative is a purpose-made tight crop — four to six televisions,
+     nearer, lower-right — which is a new asset rather than a tuning of this
+     one. Recorded as the follow-up; not faked with a scaled desktop plate. */
+  .cw-plate--crt { display: none; }
+  /* The aperture is most of Beat 2 on a phone, so the room beyond it matters
+     more here, not less. Held slightly stronger against a smaller opening. */
+  .cw-plate--stage { opacity: calc(var(--reveal, 0) * .7); }
+}
+
+/* ============================================================================
    THE AUDIENCE — the last act, and the handoff into the footer
    ----------------------------------------------------------------------------
    The visitor has watched the building make one video. This is the room it was
