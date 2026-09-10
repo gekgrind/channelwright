@@ -6,6 +6,7 @@ import { ColdOpen, IntelligenceRoom, IntelligenceCapabilities, StrategyRoom, Wri
 import { StudiosWorld } from "./world";
 import { HallFar, HallNear } from "./facility";
 import { useReducedMotion } from "./scene";
+import { AudienceFooter, AudienceFooterStatic } from "./audience-footer";
 import { refreshScenes } from "./scroll-engine";
 import { useSmoothScroll } from "./smooth-scroll";
 import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL, type CapabilityStatus } from "./capabilities";
@@ -424,12 +425,21 @@ export default function StudiosExperience() {
           <div className="cw-archive">
             <ArchiveHall />
             <CapabilityRegister />
+            {/* The last act. The register is the building's own account of
+                itself; the audience is who the account is for, and the footer
+                arrives out of the far side of it rather than after it. */}
+            <AudienceFooter />
             <Footer />
           </div>
         )}
       </main>
 
-      {reduced ? <Footer /> : null}
+      {reduced ? (
+        <>
+          <AudienceFooterStatic />
+          <Footer />
+        </>
+      ) : null}
       <span className="cw-preview-flag">Preview · /studios-preview</span>
     </div>
   );
