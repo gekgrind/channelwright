@@ -34,7 +34,10 @@
     "gate:videorelease:disposable-pg": "tsx scripts/channel-video-release-disposable-pg.ts",
     "gate:videoperformance:disposable-pg": "tsx scripts/channel-video-performance-disposable-pg.ts",
     "gate:videodiagnosis:disposable-pg": "tsx scripts/channel-video-diagnosis-disposable-pg.ts",
-    "gate:videodecision:disposable-pg": "tsx scripts/channel-video-decision-disposable-pg.ts"
+    "gate:videodecision:disposable-pg": "tsx scripts/channel-video-decision-disposable-pg.ts",
+    "gate:videoexperiment:disposable-pg": "tsx scripts/channel-video-experiment-disposable-pg.ts",
+    "gate:videoportfolio:disposable-pg": "tsx scripts/channel-video-portfolio-disposable-pg.ts",
+    "gate:videointelligence:disposable-pg": "tsx scripts/channel-video-intelligence-disposable-pg.ts"
   },
   "dependencies": {
     "@remotion/bundler": "4.0.500",
