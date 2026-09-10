@@ -2659,6 +2659,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
      the dark the archive hall already ends in, and gives its bottom edge back
      to the footer's ground rather than ruling a line across the page. */
   mask-image: linear-gradient(to bottom, transparent 0, #000 9%, #000 93%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 9%, #000 93%, transparent 100%);
 }
 
 /* A real 16:9 box, sized to cover the stage.
@@ -2726,7 +2727,6 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   -webkit-mask-image: var(--mask);
   mask-composite: add;
   -webkit-mask-composite: source-over;
-  will-change: opacity;
 }
 
 /* The shadow that covers the swap.
@@ -2744,8 +2744,20 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   -webkit-mask-image: var(--mask);
   mask-composite: add;
   -webkit-mask-composite: source-over;
-  will-change: opacity;
 }
+
+/* Promotion is rented, not owned.
+   ---------------------------------------------------------------------------
+   Eight swap layers and eight shadows is sixteen full-frame compositor layers,
+   and hinting them unconditionally kept every one of them promoted for the
+   whole page — tens of megabytes of GPU backing store held while the audience
+   was nowhere near the viewport. The engine already writes `data-on-stage` on
+   the scene as it crosses the viewport, so the hint costs nothing until the
+   room is actually on screen, which is exactly when these layers animate.
+   Narrowing further, to only the passes near the current progress, would mean
+   per-pass state in JavaScript: more machinery than the remaining win. */
+[data-cw-scene][data-on-stage="true"] .cw-aud__plate--swap,
+[data-cw-scene][data-on-stage="true"] .cw-aud__dim { will-change: opacity; }
 
 /* Vignette and floor. Restrained on purpose: the artwork is already aged, and
    the brief for it was to stay imperfect rather than be corrected. */
@@ -2786,6 +2798,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
     height: 70svh;
     transform: translate3d(0, -50%, 0);
     mask-image: linear-gradient(to bottom, transparent 0, #000 10%, #000 90%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10%, #000 90%, transparent 100%);
   }
   .cw-aud__frame {
     width: max(100%, calc(70svh * 16 / 9));

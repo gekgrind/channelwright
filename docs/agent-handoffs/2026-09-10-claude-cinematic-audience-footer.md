@@ -36,8 +36,10 @@ Four plates, committed to this branch before implementation began, 2560x1440:
 
 Sources are never modified. `scripts/build-footer-assets.py` derives the WebP
 variants that are actually served (`{1..4}-1920.webp`, `{1..4}-1100.webp`).
-Quality 88 was chosen by measuring high-pass energy against the sources: grain
-retention is 95-108%, so the deliberate analog texture survives.
+Desktop uses quality 88, chosen by measuring high-pass energy against the
+sources: grain retention is 95-108%, so the deliberate analog texture survives.
+Phones use 86, also measured — at 1100px, 86 and 88 retain grain identically
+(6.72 vs 6.73, 8.37 vs 8.37) while 88 costs 17% more bytes.
 
 ## Measurements that drove the design
 
