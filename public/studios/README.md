@@ -1,31 +1,25 @@
-# Studios plates — SPIKE ARTWORK, NOT FINAL
+# Studios plates — FINAL Magnific artwork
 
-`crt-wall-a.jpg` and `soundstage-threshold.jpg` in this directory are
-**geometry- and tone-matched stand-ins generated locally**, not the Magnific
-renders. The session that built the integration could not fetch the real
-assets: the environment's egress policy denies the asset CDN (403 at the
-proxy), verified via curl, a Playwright request context and the `png16`
-delivery profile.
+`crt-wall.jpg` and `soundstage-threshold.jpg` in this directory are the final
+Magnific plates, copied from `public/design-assets/` (the untouched source of
+truth) for delivery. They replace the geometry- and tone-matched synthetic
+stand-ins used during the structural spike.
 
-They carry the real assets' aspect ratio, exposure band, subject placement and
-— for the CRT wall — scanlines, so masking, drift registration, `--cam`
-behaviour, typography protection, mobile behaviour, moiré and the CSS
-activation technique are all genuinely exercised by them. What they cannot
-settle is photographic character.
-
-## Swapping in the real plates
-
-Replace both files, keeping the filenames and aspect ratios:
-
-| File | Aspect | Source render |
+| File | Dimensions | Aspect |
 |---|---|---|
-| `crt-wall-a.jpg` | 21:9 | CRT wall, dormant, variant 1 (seed 318661, 3024×1296) |
-| `soundstage-threshold.jpg` | 3:4 | soundstage through the threshold |
+| `crt-wall.jpg` | 3024×1296 | 21:9 |
+| `soundstage-threshold.jpg` | 1728×2304 | 3:4 |
 
-Production should ship AVIF/WebP; `next/image` already emits both from these
-JPEGs, so no code change is needed for that.
+Both match the stand-ins' aspect ratios exactly, so the plate-level CSS in
+`src/features/studios/studios.css` (position, drift rate, mask, scale,
+opacity) needed no change for the swap itself.
 
-**One thing a swap does not carry over:** the screen quads in
-`src/features/studios/plates.tsx` (`SCREENS`) are percentages measured against
-the stand-in artwork. They must be re-derived against the real plate or the
-activation will light the wrong parts of the wall.
+`next/image` emits AVIF/WebP and a responsive srcset from these JPEGs
+automatically — no code change needed for that.
+
+## Screen quads
+
+The CRT screen quads in `src/features/studios/plates.tsx` (`SCREENS`) were
+re-derived against the real photograph's visible glass apertures (measured as
+percentages of the 3024×1296 frame). The stand-in coordinates they replaced
+are in git history if needed for comparison.

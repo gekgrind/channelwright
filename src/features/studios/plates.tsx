@@ -33,14 +33,13 @@ import { CSSProperties } from "react";
  */
 
 /* NOTE ON THE ARTWORK IN THIS SPIKE.
-   `public/studios/*.jpg` are geometry- and tone-matched STAND-INS generated
-   locally, not the Magnific renders: this environment's egress policy denies
-   the asset CDN, so the real plates could not be fetched. They carry the real
-   assets' aspect, exposure band, subject placement and — for the CRT wall —
-   scanlines, so masking, registration, drift, typography protection, mobile
-   behaviour and the activation technique are all genuinely exercised. What
-   they cannot settle is photographic character. Swap the two files; no code
-   changes. */
+   `public/studios/*.jpg` are the final Magnific plates (copied from
+   `public/design-assets/`, which stays untouched as the source of truth).
+   Aspect ratios match the stand-ins they replaced — 21:9 for the CRT wall
+   (3024×1296), 3:4 for the soundstage (1728×2304) — so the plate-level CSS
+   (position, drift rate, mask, scale) needed no change. The screen quads
+   below are re-derived against the real photograph; see the git history for
+   the stand-in coordinates they replaced. */
 
 /** Screen quads as percentages of the CRT plate's own box.
  *
@@ -49,14 +48,17 @@ import { CSSProperties } from "react";
  *  quads translate, scale and drift with the artwork because they are inside
  *  it. Nothing has to stay in sync.
  *
- *  These match the stand-in artwork. Re-derive them against the real plate —
- *  they are the one thing a swap does not carry over. */
+ *  Measured directly off `crt-wall.jpg`'s visible glass apertures (percentage
+ *  of the 3024×1296 frame), left to right / top to bottom then down to the
+ *  tally screen: a small screen just past the left mask edge, the large
+ *  foreground monitor top right, the wide static screen mid-right, a small
+ *  screen lower-mid, and the tally screen at the bottom. */
 const SCREENS: readonly { x: number; y: number; w: number; h: number; seq: number; signal?: boolean }[] = [
-  { x: 57.0, y: 27.0, w: 12.5, h: 17.0, seq: 0.06 },
-  { x: 70.0, y: 43.5, w: 13.5, h: 18.5, seq: 0.20 },
-  { x: 45.0, y: 63.5, w: 10.5, h: 14.5, seq: 0.34 },
-  { x: 79.0, y: 28.5, w: 11.0, h: 15.0, seq: 0.48 },
-  { x: 62.0, y: 82.5, w: 11.0, h: 15.0, seq: 0.62, signal: true },
+  { x: 44.9, y: 22.8, w: 3.1, h: 11.0, seq: 0.06 },
+  { x: 84.7, y: 21.3, w: 9.7, h: 15.5, seq: 0.20 },
+  { x: 69.8, y: 54.7, w: 8.4, h: 11.7, seq: 0.34 },
+  { x: 57.6, y: 66.7, w: 4.8, h: 11.3, seq: 0.48 },
+  { x: 58.0, y: 89.3, w: 4.4, h: 11.1, seq: 0.62, signal: true },
 ];
 
 /**
@@ -74,10 +76,10 @@ export function CrtWall({ at }: { at: number }) {
           responsive srcset, which is the whole of the performance plan for
           these plates. Decorative, so the alt is empty and it is lazy. */}
       <Image
-        src="/studios/crt-wall-a.jpg"
+        src="/studios/crt-wall.jpg"
         alt=""
-        width={1920}
-        height={823}
+        width={3024}
+        height={1296}
         sizes="112vw"
         loading="lazy"
         style={{ width: "100%", height: "auto" }}
@@ -119,8 +121,8 @@ export function ThresholdStage() {
       <Image
         src="/studios/soundstage-threshold.jpg"
         alt=""
-        width={1152}
-        height={1536}
+        width={1728}
+        height={2304}
         sizes="34vw"
         priority
         style={{ width: "100%", height: "100%", objectFit: "cover" }}
