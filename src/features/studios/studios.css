@@ -2775,3 +2775,200 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
      more here, not less. Held slightly stronger against a smaller opening. */
   .cw-plate--stage { opacity: calc(var(--reveal, 0) * .7); }
 }
+
+/* ============================================================================
+   THE AUDIENCE — the last act, and the handoff into the footer
+   ----------------------------------------------------------------------------
+   The visitor has watched the building make one video. This is the room it was
+   made for: a cinema audience in cardboard 3D glasses who are, at first, not
+   looking at them.
+
+   Four photographic plates live in `public/footer/`. They are never blended
+   into each other — see the note in `audience-footer.tsx` for the measurements
+   that ruled a crossfade out — so every change here is a swap performed under
+   a shadow deep enough that the crossover is not visible.
+
+   Nothing in this section runs in JavaScript. The shared scroll engine writes
+   `--p`, `Cue` narrows it to `--t`, and the rest is opacity.
+   ============================================================================ */
+
+.cw-scene--audience { position: relative; z-index: 1; }
+/* The records-room hall is pinned behind the whole archive, including this
+   scene, so it was showing through wherever the audience masks itself off at
+   the top and bottom edges — a ghost floor line and a gutter-width tonal band
+   crossing the photograph. The stage carries its own opaque ground instead, so
+   the plate fades into the theatre's own darkness rather than into the room
+   the visitor has already left. */
+.cw-scene--audience .cw-stage { background: var(--void); }
+
+.cw-aud {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--void);
+  /* The audience is not a slab pasted under the register: it resolves out of
+     the dark the archive hall already ends in, and gives its bottom edge back
+     to the footer's ground rather than ruling a line across the page. */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 9%, #000 93%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 9%, #000 93%, transparent 100%);
+}
+
+/* A real 16:9 box, sized to cover the stage.
+   ---------------------------------------------------------------------------
+   This is what keeps the masks on the faces. With `background-size: cover` the
+   crop — and therefore every person's position inside the element — changes
+   with the viewport's aspect ratio, so mask percentages would drift off the
+   heads on any screen that was not exactly 16:9. Sizing a genuine 16:9 frame
+   to cover the stage instead means plate space and mask space are the same
+   space at every viewport, and the artwork can be re-aimed for narrow screens
+   by moving this one box. */
+.cw-aud__frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, calc(100svh * 16 / 9));
+  aspect-ratio: 16 / 9;
+  transform: translate3d(-50%, -50%, 0);
+}
+
+.cw-aud__plate, .cw-aud__paint, .cw-aud__dim, .cw-aud__grade {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.cw-aud__plate, .cw-aud__paint {
+  background-repeat: no-repeat;
+  background-position: center;
+  /* The frame is already the plate's own aspect ratio, so the artwork fills it
+     exactly: no second crop, and no resampling difference between layers. */
+  background-size: 100% 100%;
+}
+
+/* CSS owns the plate URLs so the delivered resolution can change with the
+   viewport without the component knowing. Sources are WebP derivatives built
+   by `scripts/build-footer-assets.py`; the 2560x1440 originals stay in the
+   repository untouched as production truth. */
+[data-plate="1"] { background-image: url("/footer/1-1920.webp"); }
+[data-plate="2"] { background-image: url("/footer/2-1920.webp"); }
+[data-plate="3"] { background-image: url("/footer/3-1920.webp"); }
+[data-plate="4"] { background-image: url("/footer/4-1920.webp"); }
+
+/* A swapped region.
+   ---------------------------------------------------------------------------
+   The ramp is steep and centred, and it is timed to sit entirely inside the
+   deepest part of the shadow above it: by the time this layer is at 15% the
+   region is already at ~7% luminance, and it is back under cover until well
+   past 85%. That is the whole trick — the two poses do overlap, but never
+   anywhere the eye can read them. */
+.cw-studios[data-ready="true"] .cw-aud__plate--swap {
+  /* Effectively a step. The window in which both poses are on screen at all
+     is 0.6% of the pass — a dozen pixels of scroll — and it sits at the exact
+     centre of the shadow, where the plate is painting at 1% luminance. A
+     gentler ramp was measured first and left a readable second pair of glasses
+     in the dark; this does not. */
+  opacity: clamp(0, calc((var(--t) - .497) / .006), 1);
+}
+.cw-aud__plate--swap {
+  /* Held at the finished state until the engine confirms it is driving, so a
+     visitor who lands with JavaScript still starting sees the settled room
+     rather than an empty one. */
+  opacity: 1;
+  mask-image: var(--mask);
+  -webkit-mask-image: var(--mask);
+  mask-composite: add;
+  -webkit-mask-composite: source-over;
+}
+
+/* The shadow that covers the swap.
+   ---------------------------------------------------------------------------
+   `--tw` is the symmetric window the cue vocabulary already provides: nothing
+   at the edges, one at the centre. Peaked just under full and shaped a little
+   wider than the mask beneath it, it reads as the unseen film going dark for a
+   moment across part of the room — which is the only light source the scene
+   has, so it is also the only honest way for it to change. */
+.cw-studios[data-ready="true"] .cw-aud__dim { opacity: calc(var(--tw) * .99); }
+.cw-aud__dim {
+  opacity: 0;
+  background: #000;
+  mask-image: var(--mask);
+  -webkit-mask-image: var(--mask);
+  mask-composite: add;
+  -webkit-mask-composite: source-over;
+}
+
+/* Promotion is rented, not owned.
+   ---------------------------------------------------------------------------
+   Eight swap layers and eight shadows is sixteen full-frame compositor layers,
+   and hinting them unconditionally kept every one of them promoted for the
+   whole page — tens of megabytes of GPU backing store held while the audience
+   was nowhere near the viewport. The engine already writes `data-on-stage` on
+   the scene as it crosses the viewport, so the hint costs nothing until the
+   room is actually on screen, which is exactly when these layers animate.
+   Narrowing further, to only the passes near the current progress, would mean
+   per-pass state in JavaScript: more machinery than the remaining win. */
+[data-cw-scene][data-on-stage="true"] .cw-aud__plate--swap,
+[data-cw-scene][data-on-stage="true"] .cw-aud__dim { will-change: opacity; }
+
+/* Vignette and floor. Restrained on purpose: the artwork is already aged, and
+   the brief for it was to stay imperfect rather than be corrected. */
+.cw-aud__grade {
+  pointer-events: none;
+  background:
+    radial-gradient(118% 84% at 50% 42%, transparent 46%, rgba(5, 6, 7, .5) 100%),
+    linear-gradient(to bottom, rgba(5, 6, 7, .34) 0, transparent 18%);
+}
+
+/* Reduced motion gets the plate the sequence was heading for, held still. */
+.cw-aud--static { position: relative; height: min(74svh, 66vw); inset: auto; }
+
+/* ---------------------------------------------------------------- wide desks */
+/* Past 16:9 the frame is driven by width, so very wide monitors simply see
+   more room rather than a taller crop. No rule needed — noted so the next
+   person does not go looking for one. */
+
+/* -------------------------------------------------------------------- phones */
+@media (max-width: 720px) {
+  /* Not the desktop composition shrunk, and not full-bleed either.
+     ------------------------------------------------------------------------
+     A 16:9 plate tall enough to cover a portrait viewport has to be about four
+     screens wide, which leaves a phone showing roughly a quarter of one row of
+     strangers — and the first version of this rule got even that wrong, sizing
+     the frame from a height it then failed to cover, so the artwork sat in a
+     letterbox it had not asked for.
+
+     So the phone gets a composition of its own: a deliberate widescreen band,
+     which is what a film still looks like anyway, aimed left-of-centre at the
+     people whose heads actually move. Everything that carries a beat is inside
+     the crop — the two men who notice first and finish the sequence, the woman
+     between them, two of the rear row, and the out-of-focus head that turns
+     last — instead of fifteen faces too small to read. */
+  .cw-aud {
+    top: 50%;
+    bottom: auto;
+    height: 70svh;
+    transform: translate3d(0, -50%, 0);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 10%, #000 90%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10%, #000 90%, transparent 100%);
+  }
+  .cw-aud__frame {
+    width: max(100%, calc(70svh * 16 / 9));
+    left: 56%;
+  }
+
+  [data-plate="1"] { background-image: url("/footer/1-1100.webp"); }
+  [data-plate="2"] { background-image: url("/footer/2-1100.webp"); }
+  [data-plate="3"] { background-image: url("/footer/3-1100.webp"); }
+  [data-plate="4"] { background-image: url("/footer/4-1100.webp"); }
+
+  .cw-aud--static { height: min(58svh, 120vw); }
+  .cw-aud--static.cw-aud { top: auto; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Belt and braces: the static component is what actually renders in reduced
+     motion, but if a scene ever reaches this mode the plates hold their
+     finished state rather than scrubbing. */
+  .cw-studios .cw-aud__plate--swap { opacity: 1; }
+  .cw-studios .cw-aud__dim { opacity: 0; }
+}
