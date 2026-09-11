@@ -196,7 +196,14 @@ export function ThresholdStage() {
  * framed the way the soundstage threshold is (Pattern B: no mask needed
  * because the plate's own edges do the work), so it does not depend on a
  * blueprint grid it will never have. CSS toggles which element paints; both
- * are mounted so nothing pops in unlazied on resize.
+ * are mounted so a breakpoint change never has to swap in a whole element
+ * that was not there before. Both stay `loading="lazy"`, matching every
+ * other decorative plate on this page — the one this hides at the current
+ * breakpoint has no layout box, so it does not prefetch until CSS reveals
+ * it, meaning a visitor who resizes across the breakpoint can see one
+ * on-demand fetch for the newly-shown crop. Accepted: a mid-visit resize
+ * across this specific breakpoint is rare, and eager-loading either crop
+ * up front would cost every visitor who never resizes at all.
  */
 export function ProductionGate({ at }: { at: number }) {
   return (
