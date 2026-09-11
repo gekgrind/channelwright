@@ -1,7 +1,8 @@
 "use client";
 
-import { CSSProperties } from "react";
+import { CSSProperties, useEffect, useRef } from "react";
 import { Cue, Scene } from "./scene";
+import { registerScene } from "./scroll-engine";
 
 /**
  * The cinematic audience footer — the last act of the Studios journey.
@@ -103,7 +104,7 @@ type Region = {
  * the shadow exists to prevent. A region has to be able to hide where someone
  * *was*, not just paint where they are.
  */
-const CAST = {
+export const CAST = {
   curlyMan: { x: 66.4, y: 42.5, rx: 13, ry: 27 },
   centreMan: { x: 50.4, y: 45, rx: 12, ry: 26 },
   darkHairWoman: { x: 36.7, y: 46, rx: 12, ry: 26 },
@@ -170,7 +171,21 @@ function shadowFor(regions: readonly Region[]) {
          the same multiplier put half the picture in darkness at once. The halo
          therefore shrinks as the region grows. */
       const spread = Math.max(1.16, 1.45 - Math.max(0, r.rx - 9) * 0.02);
-      return `radial-gradient(ellipse ${r.rx * spread}% ${r.ry * (spread - 0.14)}% at ${r.x}% ${r.y + 1}%, #000 24%, rgba(0,0,0,.94) 46%, rgba(0,0,0,.5) 70%, transparent 100%)`;
+      /* The gradient stops used to reach full strength at 46% of this ellipse's
+         own radius and fall to half-strength by 70% — measured live, that is
+         well inside where the *swap's own paint* still reaches (a swap mask
+         sits at 1/spread of this radius, e.g. ~69% for the smallest rear-row
+         regions), so the concealment was already fading out before the thing
+         it exists to hide had finished painting. That is what a "doubled
+         glasses" report during natural scrolling traced back to here rather
+         than to timing: mask-image attenuates backdrop-filter's own strength
+         at each pixel exactly like it attenuates opacity, so a 50%-alpha ring
+         only ever blends half-blurred with the sharp frame under it, however
+         large the blur radius gets — no amount of extra blur fixes a coverage
+         gap. Stops moved out so full strength holds to 60% and near-full to
+         85%, past every swap's own edge with margin for a neighbouring pass's
+         region sitting close by, which is common by design (see PASSES). */
+      return `radial-gradient(ellipse ${r.rx * spread}% ${r.ry * (spread - 0.14)}% at ${r.x}% ${r.y + 1}%, #000 60%, rgba(0,0,0,.92) 85%, transparent 100%)`;
     })
     .join(", ");
 }
@@ -206,7 +221,7 @@ type Pass = {
  * the changes: they are what lets a visitor stop scrolling and find a coherent
  * photograph rather than a half-finished blend.
  */
-const PASSES: readonly Pass[] = [
+export const PASSES: readonly Pass[] = [
   {
     id: "notice",
     plate: 2,
@@ -250,28 +265,36 @@ const PASSES: readonly Pass[] = [
   /* The three foreground heads are the largest masks in the set, so they get a
      beat each rather than sharing one. Run together they darkened the bottom
      half of the frame at a stroke, which stopped reading as a room and started
-     reading as the page dimming. Apart, they are three people turning. */
+     reading as the page dimming. Apart, they are three people turning.
+
+     Widened from an original 0.10-of-scene width to 0.14: measured under CPU
+     throttling, a single dropped-frame stall during a fast scroll can skip a
+     span of scene progress wider than 0.10 outright, landing the visitor on
+     the "before" and "after" of a pass with nothing painted in between — an
+     unexplained pop rather than a turn. A wider window doesn't make any one
+     frame more likely to render; it makes it harder for a single stall to
+     clear the whole span without landing on at least one of them. */
   {
     id: "near-left",
     plate: 4,
-    from: 0.64,
-    to: 0.74,
+    from: 0.63,
+    to: 0.77,
     regions: [CAST.foregroundLeft],
     note: "The foreground begins at the far left, away from everything that has moved so far.",
   },
   {
     id: "near-right",
     plate: 4,
-    from: 0.7,
-    to: 0.8,
+    from: 0.69,
+    to: 0.83,
     regions: [CAST.foregroundRight],
     note: "Then the opposite corner.",
   },
   {
     id: "nearest",
     plate: 4,
-    from: 0.76,
-    to: 0.86,
+    from: 0.75,
+    to: 0.89,
     regions: [CAST.foregroundCentre],
     note: "Last: the out-of-focus head nearest the visitor, dead centre and closest to the lens. The nearest person in the room is the final one to look up, and the sequence ends on them.",
   },
@@ -283,7 +306,69 @@ const PASSES: readonly Pass[] = [
  * identity matters more than using every plate for every person.
  */
 
+/**
+ * How far (in scene progress) a pass reaches before/after its own [from, to]
+ * before its swap and shadow layers are worth promoting to the GPU.
+ *
+ * Sized to roughly half a pass's own width: enough head start that the
+ * compositor layer exists before the effect needs it (a promotion that
+ * happens on the pass's first active frame is itself a stutter risk), not so
+ * wide that neighbouring passes stay promoted together for no reason.
+ */
+const NEAR_MARGIN = 0.05;
+
+/**
+ * Scopes `will-change` to the one or two passes actually near the current
+ * scroll position, instead of promoting all sixteen swap/shadow layers for
+ * the audience scene's entire five-viewport travel.
+ *
+ * `backdrop-filter` is the expensive half of this footer, and sixteen
+ * simultaneously-promoted full-frame layers is real GPU backing store held
+ * for a stretch of scroll where at most two or three are ever doing
+ * anything. It also turned out not to be *only* a performance nicety:
+ * measured under CPU throttling, the extra compositing cost was enough to
+ * drop frames during a fast scroll, and a dropped frame can land the visitor
+ * on a rendered state from squarely inside a pass's blur window without ever
+ * having painted the smoother frames on either side of it — which is what a
+ * "doubled glasses" report during natural scrolling turned out to trace
+ * back to, not a flaw in the swap timing itself.
+ *
+ * Reuses the existing shared scroll engine (`registerScene`) rather than a
+ * second listener: this is one more subscriber in the same rAF pass every
+ * other scene already pays for, not a new one.
+ */
+function useNearPassPromotion(rootRef: React.RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const root = rootRef.current;
+    const element = document.getElementById("audience");
+    if (!root || !element) return;
+
+    const swapNodes = Array.from(root.querySelectorAll<HTMLElement>(".cw-aud__plate--swap"));
+    const dimNodes = Array.from(root.querySelectorAll<HTMLElement>(".cw-aud__dim"));
+    // DOM order matches `PASSES` order exactly: both node lists come from the
+    // same static array, mapped once each, so index `i` is pass `i` in both.
+    const near: boolean[] = PASSES.map(() => false);
+
+    return registerScene({
+      element,
+      apply(progress) {
+        PASSES.forEach((pass, i) => {
+          const isNear = progress >= pass.from - NEAR_MARGIN && progress <= pass.to + NEAR_MARGIN;
+          if (isNear === near[i]) return;
+          near[i] = isNear;
+          const value = isNear ? "true" : "false";
+          swapNodes[i].dataset.near = value;
+          dimNodes[i].dataset.near = value;
+        });
+      },
+    });
+  }, [rootRef]);
+}
+
 export function AudienceFooter() {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useNearPassPromotion(rootRef);
+
   return (
     <Scene
       id="audience"
@@ -291,7 +376,7 @@ export function AudienceFooter() {
       label="The audience"
       className="cw-scene--audience"
     >
-      <div className="cw-aud" aria-hidden="true">
+      <div className="cw-aud" aria-hidden="true" ref={rootRef}>
         <div className="cw-aud__frame">
           {/* The theatre itself. Never transitions, never moves. */}
           <div className="cw-aud__plate cw-aud__plate--base" data-plate="1" />

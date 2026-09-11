@@ -2692,7 +2692,19 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
    repeat reads as the same building seen from its output side, not a pasted
    duplicate. */
 .cw-plate--crt-control {
-  opacity: calc(var(--l5) * clamp(0, calc((.155 - var(--ad)) * 11), 1) * .32);
+  /* Reach matched to the gate's own .095, not borrowed from Department 01's
+     .155. The forward pass never exposed the mismatch — `--l5` is gated on
+     `--j`, which has not reached Control's own wake window yet while the
+     visitor is still passing Department 04, so the reuse is silent there
+     regardless of `--ad`. But `--l5` is `--j`-gated, not `--cam`-gated: once
+     the journey has passed Control at all, `--l5` stays at 1 for the rest of
+     the page, Beat 8's reverse traversal included. On the way back, this
+     plate's opacity is then governed by `--ad` alone, the same as the gate's
+     — and at .155 that reach comfortably covers the .108 gap between the two
+     rooms, so the wall stayed partially lit through the gate's own peak
+     every time the camera passed it in reverse. .095 clears the gap in both
+     directions, the same way it already does for the gate. */
+  opacity: calc(var(--l5) * clamp(0, calc((.095 - var(--ad)) * 11), 1) * .32);
   filter: saturate(.62) contrast(1.14) brightness(1.02);
 }
 
@@ -2841,6 +2853,30 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
 .cw-plate__flip { position: relative; display: block; width: 100%; height: 100%; }
 .cw-plate--gate .cw-plate__flip { transform: scaleX(-1); }
 
+/* The two Department 04 elements: the wide mirrored plate by default, the
+   phone's own self-framed crop hidden until the phone breakpoint swaps them. */
+.cw-plate--gate__phone { position: absolute; inset: 0; display: none; }
+
+/* --- Tablet --------------------------------------------------------------
+   768–1024px, portrait-biased. The wide plate's desktop box (`78vw` by
+   `62vh`) assumes a landscape viewport; on a portrait tablet `62vh` is tall
+   relative to a much narrower `78vw`, so `object-fit: cover` on a 16:9 source
+   crops hard on the sides and leaves a narrow vertical sliver — measured at
+   768×1024 and 820×1180, the monitor bank was cut down to one or two screens
+   and the operator was gone entirely. Shortened and widened so the box's own
+   aspect stays closer to the source's, which is what keeps the crop close to
+   the desktop composition instead of a slice of it. */
+@media (min-width: 721px) and (max-width: 1024px) {
+  .cw-plate--gate {
+    width: 92vw;
+    height: 40vh;
+    top: 20%;
+    transform:
+      translate3d(calc(var(--d) * var(--rate) * 1vw - 4vw), 0, 0)
+      scale(calc(1.04 - var(--ad) * .35));
+  }
+}
+
 /* --- Mobile ------------------------------------------------------------- */
 
 @media (max-width: 720px) {
@@ -2852,20 +2888,40 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
      survived was a faint smudge in the top-right corner: no CRT legible, no
      blueprint interaction, still costing a decode and a composited layer.
      Omission is preferable to a compromised composition, and this is the
-     composition that settles it.
-
-     The alternative is a purpose-made tight crop — four to six televisions,
-     nearer, lower-right — which is a new asset rather than a tuning of this
-     one. Recorded as the follow-up; not faked with a scaled desktop plate. */
+     composition that settles it. */
   .cw-plate--crt { display: none; }
   /* The aperture is most of Beat 2 on a phone, so the room beyond it matters
      more here, not less. Held slightly stronger against a smaller opening. */
   .cw-plate--stage { opacity: calc(var(--reveal, 0) * .7); }
-  /* Same reasoning as the CRT wall: the drawn gate has no linework left to
-     sit behind at this width, so a wide masked plate has nothing to seam
-     into. A purpose-made tight crop is the correct mobile treatment and is
-     recorded as a follow-up rather than shipped as a scaled desktop plate. */
-  .cw-plate--gate { display: none; }
+
+  /* Department 04 does NOT follow the CRT wall's omission here. The CRT wall
+     is one of several photographic beats; Department 04 is otherwise the
+     only room in the entire journey with no physical object on any
+     viewport, and losing it on a phone was a worse trade than it looked —
+     see the implementation report. Pattern B instead of Pattern A: the
+     phone crop is self-framed (own feathered edge, no mask, no mirror — see
+     `ProductionGate` in `plates.tsx`), the same grammar the soundstage
+     threshold already uses on a phone, so it does not depend on linework it
+     will never have here. */
+  .cw-plate--gate {
+    top: auto;
+    bottom: 8vh;
+    width: min(66vw, 78svh);
+    aspect-ratio: 871 / 993;
+    height: auto;
+    /* No `--d`-driven drift and no re-centring term here: `left: 50%` plus
+       the base `.cw-prop`'s own `translate: -50% 0` already centre this
+       element, and stacking a second `-50%` inside `transform` on top of
+       that would double the offset. Only the scale survives from the
+       desktop rule. */
+    transform: scale(calc(1.02 - var(--ad) * .3));
+    mask-image: radial-gradient(ellipse 66% 68% at 50% 50%, #000 34%, transparent 97%);
+    -webkit-mask-image: radial-gradient(ellipse 66% 68% at 50% 50%, #000 34%, transparent 97%);
+    mask-composite: add;
+    -webkit-mask-composite: source-over;
+  }
+  .cw-plate--gate__wide { display: none; }
+  .cw-plate--gate__phone { display: block; }
 }
 
 /* ============================================================================
@@ -2998,8 +3054,32 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
    dark. Blur is what actually does the concealment work now; the darkening
    is kept only for the sense that something in the room shifted. */
 .cw-studios[data-ready="true"] .cw-aud__dim {
-  opacity: calc(var(--tw) * .62);
-  backdrop-filter: blur(calc(var(--tw) * 52px));
+  /* .58-.62 measured as "clearly dimmed" in isolation and still let a sharp
+     pair of glasses show through doubled: `backdrop-filter` composites as
+     (blurred-and-darkened backdrop) blended with (the untouched original)
+     in exactly the ratio this opacity sets, so at .62 the visitor is still
+     looking at 38% of the unblurred, undarkened frame — plenty for two
+     high-contrast white rectangles to read as four. Measured up to .92 and
+     a doubled edge was still faintly visible; only near-total opacity
+     removes it outright, which is also why raising the blur radius alone
+     (tried up to 80px at the old .58-.62 ceiling) never fixed this — no
+     radius blurs away a pixel that isn't being blended in at all. Reads as
+     a soft, photographic dimming rather than the flat "hole in the frame"
+     the original near-opaque, unblurred cut caused, because the blur keeps
+     the shape and light of what's underneath rather than replacing it with
+     a flat fill. */
+  opacity: calc(var(--tw) * .95);
+  /* Radius halved from an earlier, untested "for safety" 52px to a since
+     disproven 26px. That number was measured against the mask's *centre*,
+     not against where a swap's own paint actually reaches: `shadowFor` in
+     `audience-footer.tsx` let its gradient fall to half-strength well inside
+     a neighbouring pass's own paint edge, so raising this radius alone could
+     never have fixed what was really a coverage gap in the mask, not a
+     blur-strength one. 36px restores the margin the file's own history
+     already called "confirmed", now backed by a mask that actually holds
+     strength out to where a swap can paint, and an opacity ceiling that
+     actually conceals rather than merely dims. */
+  backdrop-filter: blur(calc(var(--tw) * 36px));
 }
 .cw-aud__dim {
   /* `none`, not `blur(0px)`: the build's CSS minifier collapses a literal
@@ -3017,20 +3097,25 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   -webkit-mask-composite: source-over;
 }
 
-/* Promotion is rented, not owned.
+/* Promotion is rented, not owned — and rented per pass, not for the whole
+   scene.
    ---------------------------------------------------------------------------
    Eight swap layers and eight flicker layers is sixteen full-frame compositor
-   layers, and hinting them unconditionally kept every one of them promoted
-   for the whole page — tens of megabytes of GPU backing store held while the
-   audience was nowhere near the viewport. The engine already writes
-   `data-on-stage` on the scene as it crosses the viewport, so the hint costs
-   nothing until the room is actually on screen, which is exactly when these
-   layers animate. Narrowing further, to only the passes near the current
-   progress, would mean per-pass state in JavaScript: more machinery than the
-   remaining win. `backdrop-filter` is the heavier of the two effects, so it
-   is named explicitly rather than left to a bare `opacity` hint. */
-[data-cw-scene][data-on-stage="true"] .cw-aud__plate--swap { will-change: opacity; }
-[data-cw-scene][data-on-stage="true"] .cw-aud__dim { will-change: opacity, backdrop-filter; }
+   layers. Hinting all sixteen for as long as the scene is merely on screen
+   (five viewports of scroll) was tried first and measured to cost more than
+   a performance nicety: under CPU throttling it was enough compositing
+   pressure to drop frames during a fast scroll, and `useNearPassPromotion` in
+   `audience-footer.tsx` exists because of what a dropped frame does here —
+   it can land the visitor on a state from inside a pass's blur window without
+   ever painting the smoother frames either side of it, which read as exactly
+   the doubled-glasses "compositing tell" this whole mechanism exists to
+   avoid. `data-near`, written by that effect, is true only for the one or two
+   passes within half a pass-width of the current position — everywhere else
+   in the five-viewport travel, nothing here is promoted at all.
+   `backdrop-filter` is the heavier of the two effects, so it is named
+   explicitly rather than left to a bare `opacity` hint. */
+.cw-aud__plate--swap[data-near="true"] { will-change: opacity; }
+.cw-aud__dim[data-near="true"] { will-change: opacity, backdrop-filter; }
 
 /* `backdrop-filter` has no effect to blur if reduced motion holds the scene
    static — `AudienceFooterStatic` renders instead, so this never runs there —
@@ -3039,7 +3124,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
    alpha above, reached without blur) keeps that browser's cut inside a dim
    rather than a flat crossfade. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .cw-studios[data-ready="true"] .cw-aud__dim { opacity: calc(var(--tw) * .92); }
+  .cw-studios[data-ready="true"] .cw-aud__dim { opacity: calc(var(--tw) * .97); }
 }
 
 /* Vignette and floor. Restrained on purpose: the artwork is already aged, and
