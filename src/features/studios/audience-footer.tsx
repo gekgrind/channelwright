@@ -26,15 +26,30 @@ import { Cue, Scene } from "./scene";
  * the region during the blend does not fix it either: the doubling is
  * structural, not tonal, and survives a 55% luminance cut.
  *
- * So no two poses of the same person are ever shown at once. Instead each
- * change is a **dip-to-shadow cut**: a broad, soft shadow drifts across a
- * region of the audience, the plate underneath is swapped while that region is
- * at ~1% luminance, and the light comes back up on people who are now looking
- * at the camera. The swap ramp is deliberately steep and sits entirely inside
- * the darkest part of the shadow, so the crossover is never visible. It also
- * happens to be the most diegetic solution available: the only light in the
- * room comes from a film we cannot see, so the room getting darker in patches
- * is exactly what the scene would really do.
+ * So no two poses of the same person are ever shown at once. Each change is a
+ * **defocus-and-exposure pulse**: a region of the audience softens under a
+ * `backdrop-filter` blur with a mild darkening, the plate underneath is
+ * swapped while the blur is at its peak, and focus returns on people who are
+ * now looking at the camera.
+ *
+ * The first build of this covered the swap with near-total darkness (a
+ * "dip-to-shadow cut") instead of blur, on the reasoning that a region dark
+ * enough hides anything under it. Rendered and measured, that reasoning
+ * proved wrong: a region has to cover the *union* of two poses to hide a real
+ * change, and at the size that requires — a tenth of the frame for the
+ * smallest pass, a quarter of it for the three foreground passes — near-total
+ * darkness stops reading as "the room dimmed" and starts reading as a hole cut
+ * in the photograph, which is the exact compositing "tell" this footer exists
+ * to avoid. Blur does not have that failure mode: a softly out-of-focus region
+ * reads as a photograph at any size, and it erases precisely the fine,
+ * high-contrast edges — the glasses, above everything — that make a crossfade
+ * unusable in the first place. The darkening is kept, but only as a light
+ * pulse alongside the blur, not as the thing doing the concealment.
+ *
+ * It is still the most diegetic solution available: the only light in the
+ * room comes from a film we cannot see, so a moment of the picture going soft
+ * and a little darker is exactly what the scene would really do — the
+ * projector's focus wavering, not a light being switched.
  *
  * ## Why the plates are full-frame layers behind masks
  *
@@ -133,13 +148,18 @@ function maskFor(regions: readonly Region[]) {
 }
 
 /**
- * The shadow that covers a swap.
+ * The mask for the blur-and-exposure pulse that covers a swap.
  *
- * Deliberately much larger and much softer than the mask it hides: a shadow
- * the size of the edit reads as a dark oval painted on a person, while one
- * that runs well past them reads as the light in the room changing. The long
- * feather is what keeps overlapping regions merging into one irregular pool
- * instead of showing as a string of ellipses.
+ * Deliberately much larger and much softer than the mask it hides: a region
+ * the size of the edit reads as a patch of softness painted on one person,
+ * while one that runs well past them reads as the whole picture's focus
+ * drifting for a moment — which is what actually sells the diegetic read
+ * (`studios.css`'s `.cw-aud__dim` turns this into `backdrop-filter: blur()`
+ * plus a mild darkening, not the near-opaque shadow the name still describes
+ * pixel-for-pixel; kept because the geometry, not the color, is what this
+ * function is actually shaping). The long feather is what keeps overlapping
+ * regions merging into one irregular pool instead of showing as a string of
+ * ellipses.
  */
 function shadowFor(regions: readonly Region[]) {
   return regions
