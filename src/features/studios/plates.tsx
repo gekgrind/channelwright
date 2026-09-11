@@ -171,17 +171,14 @@ export function ThresholdStage() {
  * in front of the photograph exactly as the fixture grid crosses the CRT
  * glass.
  *
- * `production-department.png` was supplied already composed — a seated
- * operator at a review console, dark edge falloff, negative space toward one
- * side — rather than generated against this brief. The image itself was not
- * available to inspect while this was written, so the subject is mirrored
- * into the frame's visible (right) half rather than assumed to already sit
- * there: the reading column convention every plate on this page follows
- * masks out the *left* ~40%, and mirroring is the only way to guarantee the
- * console lands in the surviving half without guessing at its source
- * position. Nothing in the source frame is legible text, so a horizontal
- * flip costs nothing. This still needs a visual pass once the asset is in
- * place — see the implementation report.
+ * `production-department.png`, inspected: 2560×1440 (16:9, not the 4:5 this
+ * was first built against blind). A seated operator faces a bank of CRT
+ * monitors left-of-centre (roughly the left two-thirds of the frame); the
+ * right third and the deep background are dark negative space. Still
+ * mirrored — the console sits left-of-centre in the source, and every plate
+ * on this page reserves its *left* ~40% for the reading column, so a flip is
+ * what lands the operator in the surviving half rather than in the masked
+ * one. Nothing in the frame is legible text, so the flip costs nothing.
  */
 export function ProductionGate({ at }: { at: number }) {
   return (
@@ -190,11 +187,11 @@ export function ProductionGate({ at }: { at: number }) {
         <Image
           src="/studios/production-department.png"
           alt=""
-          width={2400}
-          height={3000}
-          sizes="70vw"
+          width={2560}
+          height={1440}
+          sizes="76vw"
           loading="lazy"
-          style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 44%" }}
+          style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 38%" }}
         />
       </span>
     </div>

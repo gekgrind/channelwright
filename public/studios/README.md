@@ -39,12 +39,17 @@ this file is a delivery-only derivative, built the same way `crt-wall.jpg` and
 place. `ThresholdStage` in `plates.tsx` references this file, not the
 uncropped original.
 
-## `production-department.png` (pending)
+## `production-department.png`
 
-Department 04's new plate — the review/clearance console for Beat 6 — is
-referenced by `ProductionGate` in `plates.tsx` but was not available in this
-worktree when that integration was built. Drop the approved plate at this
-path (`public/studios/production-department.png`) to complete the wiring; no
-code change should be required, but the object-position and mirroring in
-`ProductionGate` were tuned blind and need a visual pass once the real image
-is in place. See the implementation report for detail.
+Department 04's plate for Beat 6 — the review/clearance console, seated
+operator, monitor bank left-of-centre, dark negative space to the right.
+2560×1440 (16:9). Copied here from `public/design-assets/production-department.png`
+(the untouched source), same pattern as the other two plates. `ProductionGate`
+in `plates.tsx` mirrors it — the console sits left-of-centre in the source,
+and every plate on this page reserves its own *left* ~30% for the reading
+column, so the flip is what lands the operator in the surviving half. Tuned
+against the real image: the plate is shifted left and gets its own right-edge
+fade so the travelling artifact card clears the monitor bank rather than
+sitting on top of it, and its reach into Department 05 was tightened (`.095`
+against the CRT wall's `.155`) after the untightened version left the console
+still faintly visible under Control's own CRT wake.

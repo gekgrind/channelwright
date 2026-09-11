@@ -2819,13 +2819,21 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   width: 78vw;
   height: 62vh;
   transform:
-    translate3d(calc(var(--d) * var(--rate) * 1vw + 6vw), 0, 0)
+    translate3d(calc(var(--d) * var(--rate) * 1vw - 10vw), 0, 0)
     scale(calc(1.04 - var(--ad) * .35));
-  opacity: calc(var(--fixtures-on) * clamp(0, calc((.16 - var(--ad)) * 10), 1) * .42);
+  /* Reach tightened from the CRT wall's .155 (borrowed as a starting point):
+     Department 05 stands only .108 away in journey terms, closer than
+     Department 01 is to 02, and once Department 05 got its own reused CRT
+     plate the wider reach left both plates visibly overlapping through the
+     handoff — the gate lingering into Control's own reveal. A smaller reach
+     clears the gate before Control's wall wakes, so the two rooms hand off
+     rather than blend. */
+  opacity: calc(var(--fixtures-on) * clamp(0, calc((.095 - var(--ad)) * 11), 1) * .42);
   filter: saturate(.78) contrast(1.16) brightness(.98);
   mix-blend-mode: screen;
   mask-image:
-    linear-gradient(to right, transparent 0, #000 42%),
+    linear-gradient(to right, transparent 0, #000 30%),
+    linear-gradient(to left, transparent 0, #000 20%),
     linear-gradient(to top, transparent 0, #000 18%);
   mask-composite: intersect;
   -webkit-mask-composite: source-in;
