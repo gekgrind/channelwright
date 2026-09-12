@@ -74,3 +74,28 @@ the one room in the journey with no physical object at all if it is also
 omitted below 720px, so it gets its own phone element instead of following
 the CRT wall's omission — see the implementation report for why that
 precedent didn't transfer.
+
+## Audience footer — `audience-turn.mp4` / `audience-turn.webm`
+
+The footer's head-turn is a continuous video asset, not a plate sequence. The
+component (`src/features/studios/audience-footer.tsx`) expects it here:
+
+| File | Required | Notes |
+|---|---|---|
+| `audience-turn.webm` | optional | Offered first; drop the entry from `AUDIENCE_VIDEO` if it does not ship, rather than leaving a source that 404s on every load. |
+| `audience-turn.mp4` | yes | H.264 — the universal fallback. |
+
+Two constraints on the artwork, both because stills stand behind the video:
+
+- **Its first frame should match `public/footer/1-*.webp`**, which is painted
+  underneath until the video has decoded a frame. A mismatch shows as a jump at
+  the moment the video is revealed.
+- **Its final frame should match `public/footer/4-*.webp`**, which is swapped in
+  underneath once the video ends. That swap happens *under* the held final
+  frame, so a mismatch is only visible if the browser drops the frame — but it
+  is also what a failed load falls back to, and what reduced motion shows.
+
+16:9. The frame it fills is `object-fit: cover`, so a small aspect difference
+crops rather than stretches. It is fetched with `preload="auto"` and has the
+whole page's scroll to buffer, so keep it small enough that this is polite on a
+phone connection.

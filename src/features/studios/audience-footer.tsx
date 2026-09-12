@@ -11,205 +11,192 @@ import { FOOTER, OPEN } from "./copy";
  *
  * The visitor has spent the page watching how media gets made. Here they
  * arrive in front of the people it is made for: an old cinema audience in
- * cardboard 3D glasses, absorbed in a film we never see. As the page scrolls,
- * attention comes off the screen and onto the visitor, and by the end the room
- * is quietly looking back. Then, over that same held frame, the site says its
- * last line and offers its one action. There is no footer *after* the
- * audience: the audience is the footer.
+ * cardboard 3D glasses, absorbed in a film we never see. Attention comes off
+ * the screen and onto the visitor, and by the end the room is quietly looking
+ * back. Then, over that same held frame, the site says its last line and
+ * offers its one action. There is no footer *after* the audience: the
+ * audience is the footer.
  *
- * ## Why full-frame cuts, and why they are timed rather than scrubbed
+ * ## One video, not four plates
  *
- * The four plates in `public/footer/` are separate generations of the same
- * staged audience. Plate 2 is pixel-registered to plate 1 (mean |Δ| ≈ 6/255,
- * noise), but plates 3 and 4 drift *everywhere*: measured at 720p, 2→3 and
- * 3→4 differ by a mean of 21–26/255 with a 90th percentile above 65, and no
- * column or row of either pair falls below ~10. There is therefore no region
- * of this artwork where two plates can be blended, masked or seamed — every
- * pixel held at partial alpha, in any mask of any softness, is a permanent
- * double exposure, and every previous build of this footer (crossfades, dip
- * to shadow, blur-and-swap under person-sized masks) failed on exactly that:
- * doubled glasses inside the feather, or a blurred patch the eye read as a
- * patch.
+ * The turn used to be four separate generations of the same staged audience,
+ * cut between under a dip of the projector's light, because the plates drift
+ * everywhere against one another (2→3 and 3→4 differ by a mean of 21–26/255
+ * with no column or row below ~10) and therefore cannot be blended, masked or
+ * seamed at any softness without a permanent double exposure. The dip existed
+ * only to hide that: it bought a dark gap to change plate inside.
  *
- * So no pixel is ever a blend of two plates. Each change is a **full-frame
- * cut hidden inside a dip of the projector's light**: the room goes dark for
- * a few frames, the plate underneath is swapped while it is dark, and the
- * light comes back on people who have turned. A flicker in the only light
- * source in the room is the one thing a cinema actually does, and the dark
- * gap is what makes the per-person drift invisible — change blindness across
- * a blank is near total, and nothing on screen ever moves *while* visible.
- * The first cut, 1→2, is registered, so it gets only a flutter: two men come
- * off the screen under a light that barely wavers, which is the right amount
- * of doubt for a first notice.
+ * The turn is now a continuous video generation, so none of that machinery is
+ * needed. The motion is in the asset. The page's job shrinks to four things,
+ * and it should not do a fifth:
  *
- * The cuts are triggered by scroll but *timed by the clock*. A scrubbed dip
- * would let a visitor park on a black frame, and a fast scroll could skip
- * from one plate to the next with the dip never painted. Instead the engine
- * writes a crossing (like `Scene`'s `revealAt`), the dip runs as a ~400ms
- * compositor animation, and the plate swaps at its darkest point. Scrolling
- * back crosses back, with the same dip. Nothing here runs per frame in
- * JavaScript beyond the one comparison the shared engine already pays for.
+ *   1. Start it once, when the visitor reaches the audience.
+ *   2. Never loop it.
+ *   3. Hold the last frame while the closing copy resolves over it.
+ *   4. Never show a gap — black, white, or empty — around any of that.
+ *
+ * No cover, no mask, no blur, no crossfade, no projector blackout. Anything
+ * added on top of a video that already contains the performance is an
+ * artefact laid over artwork.
+ *
+ * ## Holding the last frame
+ *
+ * A `<video>` with no `loop` holds its final frame after `ended` — that is the
+ * primary mechanism, and it costs nothing. The still underneath is the
+ * insurance, for the cases where it is not enough: the asset never loads, the
+ * decoder is dropped on a backgrounded tab, or an autoplay policy refuses a
+ * muted inline video anyway. Two stills are mounted, and exactly one is lit:
+ *
+ *   - plate 1 before the video ends — the audience as the video opens, so the
+ *     frame behind a not-yet-painted video already matches its first frame and
+ *     there is nothing to flash;
+ *   - plate 4 once it ends (or fails) — the audience as the video closes, so
+ *     what the copy resolves over is the settled, fully-turned room either way.
+ *
+ * The video itself stays transparent until it actually has a frame to show
+ * (`data-video="ready"`, written on `loadeddata`), which is what keeps a
+ * browser that paints an unpainted video element black from doing it here.
+ *
+ * ## Why the scroll engine rather than an observer
+ *
+ * Playback needs one boolean — has the visitor reached the audience — and the
+ * shared engine already measures this scene every frame for `--p`. Taking the
+ * answer from there costs one comparison inside a pass that was happening
+ * anyway, where an IntersectionObserver would be a second, independently
+ * timed source of truth about the same element. Nothing here runs per frame in
+ * JavaScript beyond that comparison, and no React state is written per frame,
+ * or at all.
  */
-
-type Beat = {
-  id: string;
-  /** Plate shown once this beat has happened. */
-  plate: 2 | 3 | 4;
-  /** Scene progress at which it happens. */
-  at: number;
-  /** How the light behaves over the cut. */
-  cover: "flutter" | "dark";
-  note: string;
-};
 
 /**
- * Three beats, ordered by how far the change has to travel.
- *
- * The holds between them are as much of the effect as the changes: they let
- * a visitor stop scrolling and find a coherent photograph rather than a
- * half-finished blend.
+ * The turn, in source order: WebM first for the browsers that take it, MP4 as
+ * the universal fallback. If only the MP4 ships, drop the first entry rather
+ * than leaving a source that resolves to a 404 on every load.
  */
-export const BEATS: readonly Beat[] = [
-  {
-    id: "notice",
-    plate: 2,
-    at: 0.16,
-    cover: "flutter",
-    note: "First notice. The curly man in the middle row turns to three-quarter and the man beside him lowers his chin. Registered plates, so the light only flutters — easy to miss, which is the point.",
-  },
-  {
-    id: "row",
-    plate: 3,
-    at: 0.38,
-    cover: "dark",
-    note: "The row. The light dips and comes back on the whole sharp middle row and two of the rear row looking straight down the lens. Attention has spread through the room.",
-  },
-  {
-    id: "room",
-    plate: 4,
-    at: 0.58,
-    cover: "dark",
-    note: "The room. The rear blonde and the three out-of-focus heads nearest the visitor turn last — the people closest to us are the last to look up. Two mid-left viewers never do, in any plate, and stay with the film.",
-  },
-];
+export const AUDIENCE_VIDEO = [
+  { src: "/studios/audience-turn.webm", type: "video/webm" },
+  { src: "/studios/audience-turn.mp4", type: "video/mp4" },
+] as const;
+
+/**
+ * Scene progress at which the turn starts, and the progress it must fall back
+ * below — having also left the stage — before it is rewound.
+ *
+ * These are deliberately not the same number. A single threshold would let a
+ * visitor resting their scroll on it restart the video on every small jitter;
+ * the gap between them is the hysteresis that makes that impossible, and the
+ * `onStage` term means even crossing it is not enough — the audience has to be
+ * off screen entirely, which on this page means scrolled back up out of the
+ * last act. Scrolling *within* the audience never restarts anything, and
+ * scrolling back while the turn is still running leaves it running: it is
+ * allowed to finish, because a half-turned room is not a state the artwork has.
+ */
+export const PLAY_AT = 0.06;
+export const RESET_AT = 0.02;
 
 /** Scene progress over which the closing copy resolves over the held frame. */
 export const CLOSE = { from: 0.8, to: 0.9 } as const;
 
 /**
- * The light over each cut, as compositor keyframes for the dark overlay.
+ * Start the turn once, hold its end, and rewind only on a clean exit.
  *
- * `swapAt` is the moment (ms from the start) at which the plate underneath
- * changes — the darkest frame of the dip. The dark cover sits at .97 rather
- * than 1 because a literal black frame reads as the page failing; a trace of
- * the room under it reads as the projector lamp.
+ * `state` is the only thing CSS reads: absent while the room is still turning,
+ * `"ended"` once it has settled — by finishing, by failing to load, or by
+ * having playback refused. All three resolve to the same picture, which is the
+ * point: the closing copy always lands on an audience that is looking back.
  */
-export const COVER = {
-  flutter: {
-    duration: 380,
-    swapAt: 110,
-    frames: [
-      { opacity: 0, offset: 0 },
-      { opacity: 0.44, offset: 0.28, easing: "ease-out" },
-      { opacity: 0.12, offset: 0.5 },
-      { opacity: 0.3, offset: 0.66 },
-      { opacity: 0, offset: 1 },
-    ],
-  },
-  dark: {
-    duration: 560,
-    swapAt: 200,
-    frames: [
-      { opacity: 0, offset: 0, easing: "ease-in" },
-      { opacity: 0.97, offset: 0.3 },
-      { opacity: 0.97, offset: 0.42, easing: "ease-out" },
-      { opacity: 0, offset: 1 },
-    ],
-  },
-} as const;
-
-/** How many beats have happened at a given scene progress: 0..BEATS.length. */
-export function beatAt(progress: number) {
-  let count = 0;
-  for (const beat of BEATS) if (progress >= beat.at) count += 1;
-  return count;
-}
-
-/**
- * Crossing detection and the cut itself.
- *
- * One more subscriber in the shared engine's pass. It compares the beat the
- * scroll position calls for against the one painted, and when they differ
- * runs a cut: the cover animates, and at its darkest frame `data-beat` is
- * written, which is the only thing CSS reads. A cut already in flight is
- * never interrupted — a fast scroll across all three beats is one dip landing
- * on the final plate, not three — and a further crossing during a cut is
- * picked up when it ends.
- */
-function useAudienceCuts(rootRef: React.RefObject<HTMLDivElement | null>) {
+function useAudienceTurn(rootRef: React.RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     const root = rootRef.current;
     const element = document.getElementById("audience");
-    const cover = root?.querySelector<HTMLElement>(".cw-aud__cover");
-    if (!root || !element || !cover) return;
+    const video = root?.querySelector<HTMLVideoElement>(".cw-aud__video");
+    if (!root || !element || !video) return;
 
-    let shown = -1;
-    let wanted = 0;
-    let inFlight = false;
-    let swapTimer = 0;
-    let animation: Animation | null = null;
+    // Set from script as well as markup: a muted autoplay is only permitted if
+    // the element is muted at the moment play() is called, and React has
+    // historically dropped the attribute on hydration.
+    video.muted = true;
 
-    const paint = (beat: number) => {
-      shown = beat;
-      root.dataset.beat = String(beat);
+    let started = false;
+
+    const settle = () => {
+      root.dataset.state = "ended";
+    };
+    const ready = () => {
+      root.dataset.video = "ready";
     };
 
-    const cut = () => {
-      if (inFlight || wanted === shown) return;
-      inFlight = true;
-      // The cover of the beat being crossed *into* going forward, or *out of*
-      // going back — either way the change of light belongs to that beat.
-      const index = Math.max(wanted, shown) - 1;
-      const kind = BEATS[index]?.cover ?? "dark";
-      const spec = COVER[kind];
-      if (typeof cover.animate !== "function") {
-        paint(wanted);
-        inFlight = false;
-        return;
+    const start = () => {
+      started = true;
+      try {
+        // Older browsers return undefined rather than a promise.
+        video.play()?.catch(settle);
+      } catch {
+        settle();
       }
-      animation = cover.animate(spec.frames.map((frame) => ({ ...frame })), { duration: spec.duration, fill: "none" });
-      swapTimer = window.setTimeout(() => {
-        swapTimer = 0;
-        paint(wanted);
-      }, spec.swapAt);
-      animation.onfinish = () => {
-        inFlight = false;
-        animation = null;
-        // Painted at the dark frame even if `wanted` moved on; catch up now.
-        if (wanted !== shown) cut();
-      };
     };
+
+    video.addEventListener("loadeddata", ready);
+    video.addEventListener("ended", settle);
+    video.addEventListener("error", settle);
+    // A cached asset can be ready before this effect runs.
+    if (video.readyState >= 2) ready();
 
     const stop = registerScene({
       element,
-      apply(progress) {
-        wanted = beatAt(progress);
-        if (shown === -1) {
-          // First measure: land on the right plate without a dip. A visitor
-          // arriving mid-scene (reload, anchor) meets the room as it is.
-          paint(wanted);
+      apply(progress, onStage) {
+        if (!started) {
+          if (onStage && progress >= PLAY_AT) start();
           return;
         }
-        if (wanted !== shown) cut();
+        if (!onStage && progress <= RESET_AT) {
+          started = false;
+          video.pause();
+          video.currentTime = 0;
+          delete root.dataset.state;
+        }
       },
     });
 
     return () => {
       stop();
-      window.clearTimeout(swapTimer);
-      animation?.cancel();
+      video.removeEventListener("loadeddata", ready);
+      video.removeEventListener("ended", settle);
+      video.removeEventListener("error", settle);
+      video.pause();
     };
   }, [rootRef]);
+}
+
+/**
+ * The audience frame: the stills, the turn, and the grade over both.
+ *
+ * Shared by the cinematic and reduced-motion paths so there is one composition
+ * and one crop, and the only difference between the modes is whether a video
+ * is mounted in it at all.
+ */
+function Frame({ video }: { video?: boolean }) {
+  return (
+    <div className="cw-aud__frame" aria-hidden="true">
+      {video ? <div className="cw-aud__still" data-plate="1" /> : null}
+      <div className="cw-aud__still" data-plate="4" />
+      {video ? (
+        <video
+          className="cw-aud__video"
+          muted
+          playsInline
+          preload="auto"
+          disablePictureInPicture
+          tabIndex={-1}
+        >
+          {AUDIENCE_VIDEO.map((source) => (
+            <source key={source.src} src={source.src} type={source.type} />
+          ))}
+        </video>
+      ) : null}
+      <div className="cw-aud__grade" />
+    </div>
+  );
 }
 
 /**
@@ -241,7 +228,7 @@ function Close({ children }: { children?: ReactNode }) {
 
 export function AudienceFooter() {
   const rootRef = useRef<HTMLDivElement>(null);
-  useAudienceCuts(rootRef);
+  useAudienceTurn(rootRef);
 
   return (
     <Scene
@@ -251,20 +238,8 @@ export function AudienceFooter() {
       className="cw-scene--audience"
       revealAt={CLOSE.from}
     >
-      {/* Server-rendered on the settled plate, so a visitor whose engine has
-          not started yet (or has no JavaScript) meets the room already
-          looking at them rather than an empty stage. The first measure
-          corrects it without a cut. */}
-      <div className="cw-aud" aria-hidden="true" ref={rootRef} data-beat="3">
-        <div className="cw-aud__frame">
-          <div className="cw-aud__plate" data-plate="1" />
-          <div className="cw-aud__plate" data-plate="2" />
-          <div className="cw-aud__plate" data-plate="3" />
-          <div className="cw-aud__plate" data-plate="4" />
-          <div className="cw-aud__grade" />
-        </div>
-        {/* The projector's light. Inert at rest; animated by the cut. */}
-        <div className="cw-aud__cover" />
+      <div className="cw-aud" aria-hidden="true" ref={rootRef}>
+        <Frame video />
       </div>
       {/* Resolves only once the room has been looking back for a while: the
           visitor gets the moment before they get the message. */}
@@ -278,18 +253,16 @@ export function AudienceFooter() {
 /**
  * The reduced-motion audience.
  *
- * Not the animation stopped part-way, and not the artwork withheld: the plate
- * the sequence was travelling towards, held still, with the same closing copy
- * over it. Someone who has asked for less motion still gets the photograph,
- * the glasses, the stare and the last line.
+ * Not the turn stopped part-way, and not the artwork withheld: the state the
+ * video was travelling towards, held still, with the same closing copy over
+ * it. No video element is mounted at all — not merely left unplayed — so
+ * nothing is fetched or decoded for a visitor who has asked for less motion.
+ * They still get the photograph, the glasses, the stare and the last line.
  */
 export function AudienceFooterStatic() {
   return (
-    <div className="cw-aud cw-aud--static" data-beat="3">
-      <div className="cw-aud__frame" aria-hidden="true">
-        <div className="cw-aud__plate" data-plate="4" />
-        <div className="cw-aud__grade" />
-      </div>
+    <div className="cw-aud cw-aud--static" data-state="ended">
+      <Frame />
       <Close />
     </div>
   );

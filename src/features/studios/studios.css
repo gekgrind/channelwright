@@ -3030,15 +3030,19 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
 /* ============================================================================
    THE AUDIENCE — the last act, and the footer
    ----------------------------------------------------------------------------
-   Four full-frame plates of one cinema audience, stacked. Exactly one is
-   visible at any moment (`data-beat`, written by the cut in
-   `audience-footer.tsx`), so no pixel is ever a blend of two photographs —
-   the measured drift between the plates makes any blend, at any softness, a
-   double exposure. The change of plate happens under `.cw-aud__cover`, the
-   projector's light dipping for a few frames, which is the only thing here
-   that runs on the clock rather than the scroll.
+   One continuous video of a cinema audience turning to look back, filling the
+   audience composition, with two stills underneath it as load and hold
+   insurance: plate 1 (the video's opening state) before it ends, plate 4 (its
+   closing state) after. `data-state="ended"` on `.cw-aud` selects between
+   them; `data-video="ready"` reveals the video only once it has a frame, so
+   nothing here is ever a black or empty rectangle.
 
-   The closing copy then resolves over the same held frame. There is no block
+   The four-plate stack and the projector-light dip this replaces existed only
+   to hide the drift between separate generations at the moment of a cut. The
+   motion is in the asset now, so there is no cover, no mask and no blend —
+   and nothing should be added back over artwork that already performs.
+
+   The closing copy then resolves over the held final frame. There is no block
    after this: the audience is the page's last frame and its footer.
    ============================================================================ */
 
@@ -3073,47 +3077,53 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   will-change: transform;
 }
 
-.cw-aud__plate, .cw-aud__grade, .cw-aud__cover {
+.cw-aud__still, .cw-aud__video, .cw-aud__grade {
   position: absolute;
   inset: 0;
   display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.cw-aud__plate {
+/* The stills. Never both lit, and never partially: these are two generations
+   of one staged room and any alpha between them is a double exposure, which
+   is the artifact the old plate stack was built around. They cut. */
+.cw-aud__still {
   background-repeat: no-repeat;
   background-position: center;
-  /* The frame is already the plate's own aspect ratio, so the artwork fills it
-     exactly: no second crop, and no resampling difference between layers. */
+  /* The frame is already the artwork's aspect ratio, so it fills exactly: no
+     second crop, and no resampling difference against the video over it. */
   background-size: 100% 100%;
-  /* A cut, never a ramp. Whichever plate the beat names is on; the rest are
-     off. No transition on purpose: the dip above is what covers the change,
-     and any opacity ramp here would be a frame-wide cross-fade of two
-     photographs — the artifact this whole section exists to remove. */
   opacity: 0;
 }
-.cw-aud[data-beat="0"] .cw-aud__plate[data-plate="1"],
-.cw-aud[data-beat="1"] .cw-aud__plate[data-plate="2"],
-.cw-aud[data-beat="2"] .cw-aud__plate[data-plate="3"],
-.cw-aud[data-beat="3"] .cw-aud__plate[data-plate="4"] { opacity: 1; }
+.cw-aud__still[data-plate="1"],
+.cw-aud[data-state="ended"] .cw-aud__still[data-plate="4"] { opacity: 1; }
+.cw-aud[data-state="ended"] .cw-aud__still[data-plate="1"] { opacity: 0; }
 
-/* CSS owns the plate URLs so the delivered resolution can change with the
+/* CSS owns the still URLs so the delivered resolution can change with the
    viewport without the component knowing. Sources are WebP derivatives built
    by `scripts/build-footer-assets.py`; the 2560x1440 originals stay in the
    repository untouched as production truth. */
 [data-plate="1"] { background-image: url("/footer/1-1920.webp"); }
-[data-plate="2"] { background-image: url("/footer/2-1920.webp"); }
-[data-plate="3"] { background-image: url("/footer/3-1920.webp"); }
 [data-plate="4"] { background-image: url("/footer/4-1920.webp"); }
 
-/* The projector's light. At rest it is nothing; the cut animates its opacity
-   on the compositor (`COVER` in `audience-footer.tsx`) and swaps the plate at
-   its darkest frame. It sits over the frame's push-in, not inside it. */
-.cw-aud__cover {
+/* The turn itself. `cover` rather than `fill` so a regenerated asset at a
+   slightly different aspect crops instead of stretching; inside this 16:9
+   frame at 16:9 the two are identical, and the frame is what owns the crop at
+   every viewport.
+
+   Hidden until it genuinely has a frame to paint. An unpainted video element
+   is black in some browsers, and the still underneath is already the video's
+   first frame, so this switch is invisible where it matters and the only
+   thing standing between the visitor and a black rectangle where it doesn't.
+   Instant, not a fade: a cross-fade here would be two exposures of the room. */
+.cw-aud__video {
+  object-fit: cover;
+  object-position: center;
   pointer-events: none;
-  background: var(--void);
   opacity: 0;
-  will-change: opacity;
 }
+.cw-aud[data-video="ready"] .cw-aud__video { opacity: 1; }
 
 /* Vignette and floor. Restrained on purpose: the artwork is already aged, and
    the brief for it was to stay imperfect rather than be corrected. */
@@ -3256,8 +3266,6 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   .cw-aud__note { text-align: left; max-width: 40ch; font-size: .76rem; }
 
   [data-plate="1"] { background-image: url("/footer/1-1100.webp"); }
-  [data-plate="2"] { background-image: url("/footer/2-1100.webp"); }
-  [data-plate="3"] { background-image: url("/footer/3-1100.webp"); }
   [data-plate="4"] { background-image: url("/footer/4-1100.webp"); }
 
   .cw-aud--static { height: auto; min-height: 0; padding-bottom: 0; }
