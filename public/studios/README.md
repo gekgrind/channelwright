@@ -74,3 +74,45 @@ the one room in the journey with no physical object at all if it is also
 omitted below 720px, so it gets its own phone element instead of following
 the CRT wall's omission — see the implementation report for why that
 precedent didn't transfer.
+
+## Audience footer — `audience-turn.mp4`
+
+The footer's head-turn is a continuous video asset, not a plate sequence. The
+component (`src/features/studios/audience-footer.tsx`) reads it from here.
+
+| File | Notes |
+|---|---|
+| `audience-turn.mp4` | H.264, 1280x720, 24 fps, 5.04 s, ~3.9 MB. The only source declared. |
+| `audience-turn-poster.jpg` | The video's own frame 0, extracted from it with ffmpeg. |
+
+No WebM ships. If one is added, put it *before* the MP4 in `AUDIENCE_VIDEO` so
+the browsers that take it never fetch both — and ship it, because a declared
+source that does not exist is a 404 on every load, for every visitor.
+
+### Why the poster is extracted rather than a footer plate
+
+Two stills stand behind the video: one painted until it has decoded a frame,
+one swapped in underneath once it ends. Both were measured against the asset
+(mean absolute luma difference at 1280x720, the same measure used for the plate
+drift above):
+
+| Pair | mean \|Δ\| | Verdict |
+|---|---|---|
+| video frame 0 vs `audience-turn-poster.jpg` | 1.4/255 | JPEG noise — used as the open still |
+| video frame 0 vs footer plate 1 | 13.1/255 | same poses, different grade — **not** usable |
+| video last frame vs footer plate 4 | 2.6/255 | already this state — used as the final still |
+| footer plate 1 vs plate 2 (registered pair, for scale) | 7.4/255 | |
+| footer plate 1 vs plate 4 (different states, for scale) | 26.6/255 | |
+
+The video is graded darker and higher-contrast than the plates it was generated
+from, so plate 1 sits further from frame 0 than two *registered* plates sit from
+each other. Using it would pop the exposure at the moment the video is revealed.
+Plate 4 needs no such treatment — the video resolves onto it.
+
+**If the video is regenerated, re-extract the poster** and re-check the last
+frame against plate 4:
+
+```
+npx remotion ffmpeg -y -i public/studios/audience-turn.mp4 \
+  -frames:v 1 -q:v 3 public/studios/audience-turn-poster.jpg
+```

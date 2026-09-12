@@ -121,41 +121,53 @@ export function CrtWall({ at, variant = "research" }: { at: number; variant?: "r
 }
 
 /**
- * Beat 2 — the soundstage, seen through the threshold.
+ * Beat 2 — the soundstage, arriving as a room rather than as a picture.
  *
- * Pattern B: a narrow plate that needs no mask, because it is clipped by the
- * aperture it is standing behind. Rendered as a child of the doorway so it
- * inherits the approach scale and is carried through the crossing — the
- * payoff the threshold has never had is a *place*, not a picture hung in it.
+ * There used to be a second, *far* state of this plate: the same photograph
+ * mounted inside the doorway, clipped by the aperture and carried by its
+ * approach. It is gone, and the reason is the failure it could not be tuned
+ * out of. A photograph inside a lit rectangle is a photograph inside a lit
+ * rectangle at every scale and every opacity — a portrait card hung at the end
+ * of the hall — and dissolving it late only moved the moment at which the
+ * visitor read it as one. The doorway is now what the hall's own comment in
+ * `studios.css` always argued it was: a warm opening in a dark wall, with the
+ * building's name on the lintel and nothing hung inside it.
  *
- * `soundstage-threshold-tight.jpg` is a crop of the same Magnific plate, not a
- * second generation: the source frame is roughly 70% unbroken ceiling above
- * the rig, and at this doorway's proportions `object-fit: cover` barely
- * touched that emptiness (box and source were nearly the same aspect), so the
- * plate read as a mostly-black photograph hung in a frame rather than a place
- * with a camera standing in it. The crop removes the dead band above the
- * light head — nothing else changes; the light, the camera and the deck are
- * untouched. See `public/studios/README.md`.
+ * What replaces it is not "the same image, later". `SoundstageRoom` is mounted
+ * in the world layer at the doorway's landmark, room-scale, riding `--cam` at
+ * the doorway's own drift rate so the two are one place — and it now resolves
+ * in two overlapping stages rather than one, the same grammar the doorway's
+ * own approach uses (`--near` then `--close`):
  *
- * The two struts are the same seam the CRT wall is built on, brought to this
- * doorway: hairline geometry crossing *in front of* the photograph, so the
- * aperture reads as the blueprint standing open on a real room rather than a
- * picture the blueprint happens to frame.
+ *   `--hint` opens well before the crossing and is held to a low ceiling. The
+ *   plate is screen-blended, so at a fifth of full strength only the brightest
+ *   things in the photograph reach the hall at all — the lamp haze, the rig's
+ *   lit edges, the cable and the deck. The visitor reads physical depth
+ *   beginning to appear in the building, not an image fading up, and because
+ *   the plate is far wider and taller than the doorway it can never be
+ *   contained by it: the drawn aperture stands *in front of* the emerging room
+ *   and occludes it, which is the relationship the beat wants.
+ *
+ *   `--emerge` opens as the crossing commits, at the same moment the doorway's
+ *   own jambs and lintel light give way, and carries the room to full.
+ *
+ * `--spent` is the reach on the far side, and it is the shorter half of the
+ * handoff into Department 01 — see the rule in `studios.css` for why it is
+ * tighter than it looks like it should be.
  */
-export function ThresholdStage() {
+export function SoundstageRoom({ at }: { at: number }) {
   return (
-    <span className="cw-plate cw-plate--stage" aria-hidden="true">
+    <div className="cw-prop cw-plate cw-plate--room" style={{ "--at": at } as CSSProperties}>
       <Image
         src="/studios/soundstage-threshold-tight.jpg"
         alt=""
         width={1728}
         height={1982}
-        sizes="34vw"
-        priority
+        sizes="(max-width: 720px) 160vw, 90vw"
+        loading="lazy"
         style={{ width: "100%", height: "100%", objectFit: "cover" }}
       />
-      <span className="cw-plate--stage__struts" />
-    </span>
+    </div>
   );
 }
 
