@@ -23,3 +23,54 @@ The CRT screen quads in `src/features/studios/plates.tsx` (`SCREENS`) were
 re-derived against the real photograph's visible glass apertures (measured as
 percentages of the 3024×1296 frame). The stand-in coordinates they replaced
 are in git history if needed for comparison.
+
+## `soundstage-threshold-tight.jpg`
+
+A crop of `soundstage-threshold.jpg`, not a second generation — the cinematic
+plate audit found the source frame roughly 70% unbroken ceiling above the rig,
+and the threshold's own proportions meant `object-fit: cover` barely touched
+that emptiness, so the plate read as a mostly-black photograph hung in a door
+frame rather than a place with a camera standing in it. The crop removes the
+dead band above the light head (top 14% of `soundstage-threshold.jpg`,
+1728×1982 remaining); the light, the camera and the deck are untouched.
+`public/design-assets/soundstage-threshold.jpg` stays the untouched source —
+this file is a delivery-only derivative, built the same way `crt-wall.jpg` and
+`soundstage-threshold.jpg` themselves are copied here rather than edited in
+place. `ThresholdStage` in `plates.tsx` references this file, not the
+uncropped original.
+
+## `production-department.jpg` / `production-department-mobile.jpg`
+
+Department 04's plate for Beat 6 — the review/clearance console, seated
+operator, monitor bank left-of-centre, dark negative space to the right.
+Source is `public/design-assets/production-department.png`, 2560×1440,
+5.4MB, and stays untouched there. `production-department.jpg` is a
+delivery-quality JPEG derived from it (480KB) — not a second copy of the
+PNG itself, the same pattern `soundstage-threshold-tight.jpg` already uses.
+Keeping the exact PNG in both places was the original delivery, and is
+where the "duplicated asset" finding came from; the other two plates get
+away with an exact duplicate because they're already small JPEGs from
+Magnific, and this one, at 5.4MB, did not.
+
+`ProductionGate` in `plates.tsx` mirrors the desktop/tablet plate — the
+console sits left-of-centre in the source, and every plate on this page
+reserves its own *left* ~30% for the reading column, so the flip is what
+lands the operator in the surviving half. Tuned against the real image: the
+plate is shifted left and gets its own right-edge fade so the travelling
+artifact card clears the monitor bank rather than sitting on top of it, and
+its reach into Department 05 was tightened (`.095` against the CRT wall's
+`.155`, and `.cw-plate--crt-control` matched to the same value) after the
+untightened version left the console and Control's wall visibly overlapping
+through the handoff — measurably worse in reverse (Beat 8's return) than
+forward, because `--l5` is `--j`-gated and stays at 1 for the rest of the
+page once the visitor has passed Control once, exposing the reach mismatch
+on every later pass through the gap in either direction.
+
+`production-department-mobile.jpg` is a separate, tighter crop (871×993),
+not a scaled-down version of the wide plate — a self-framed Pattern B crop
+of just the monitor bank and the operator's head and shoulders, the same
+grammar the soundstage threshold already uses on a phone. Department 04 is
+the one room in the journey with no physical object at all if it is also
+omitted below 720px, so it gets its own phone element instead of following
+the CRT wall's omission — see the implementation report for why that
+precedent didn't transfer.

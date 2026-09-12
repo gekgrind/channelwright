@@ -62,16 +62,29 @@ const SCREENS: readonly { x: number; y: number; w: number; h: number; seq: numbe
 ];
 
 /**
- * Beat 3 — Department 01's research wall, photographed.
+ * Beat 3 — Department 01's research wall, photographed — and Beat 7's reuse
+ * of it in Control.
  *
  * Pattern A: the plate spans the frame and a left mask carves out the reading
- * column. Five of eighteen screens wake, in sequence, and exactly one carries
- * the acid tally — the room rejects most of what it looks at, and a wall where
- * a few screens resolve and the rest stay dark is that claim made physically.
+ * column. In Department 01 (`variant="research"`), five of eighteen screens
+ * wake in sequence and exactly one carries the acid tally — the room rejects
+ * most of what it looks at, and a wall where a few screens resolve and the
+ * rest stay dark is that claim made physically.
+ *
+ * Department 05 (`variant="control"`) is deliberately the *same* wall rather
+ * than a redress — doctrine's own argument for the reuse is that it must
+ * still be recognisably one building — but it wakes on its own schedule
+ * (`--l5`, later and narrower than `--l1`) and only the chosen screen comes
+ * up. Research asks many questions and keeps a few answers lit; Control has
+ * already decided, so only the one screen that carries the release plays.
  */
-export function CrtWall({ at }: { at: number }) {
+export function CrtWall({ at, variant = "research" }: { at: number; variant?: "research" | "control" }) {
+  const screens = variant === "control" ? SCREENS.filter((screen) => screen.signal) : SCREENS;
   return (
-    <div className="cw-prop cw-plate cw-plate--crt" style={{ "--at": at } as CSSProperties}>
+    <div
+      className={`cw-prop cw-plate cw-plate--crt cw-plate--crt-${variant}`}
+      style={{ "--at": at } as CSSProperties}
+    >
       {/* `next/image` rather than a bare tag: it is what emits AVIF/WebP and a
           responsive srcset, which is the whole of the performance plan for
           these plates. Decorative, so the alt is empty and it is lazy. */}
@@ -88,7 +101,7 @@ export function CrtWall({ at }: { at: number }) {
           a lit rectangle sitting proud of the bezel is the exact failure that
           makes this read as a webpage overlay rather than a switched-on set. */}
       <div className="cw-plate__screens">
-        {SCREENS.map((screen, index) => (
+        {screens.map((screen, index) => (
           <span
             key={index}
             className="cw-screen"
@@ -114,19 +127,109 @@ export function CrtWall({ at }: { at: number }) {
  * aperture it is standing behind. Rendered as a child of the doorway so it
  * inherits the approach scale and is carried through the crossing — the
  * payoff the threshold has never had is a *place*, not a picture hung in it.
+ *
+ * `soundstage-threshold-tight.jpg` is a crop of the same Magnific plate, not a
+ * second generation: the source frame is roughly 70% unbroken ceiling above
+ * the rig, and at this doorway's proportions `object-fit: cover` barely
+ * touched that emptiness (box and source were nearly the same aspect), so the
+ * plate read as a mostly-black photograph hung in a frame rather than a place
+ * with a camera standing in it. The crop removes the dead band above the
+ * light head — nothing else changes; the light, the camera and the deck are
+ * untouched. See `public/studios/README.md`.
+ *
+ * The two struts are the same seam the CRT wall is built on, brought to this
+ * doorway: hairline geometry crossing *in front of* the photograph, so the
+ * aperture reads as the blueprint standing open on a real room rather than a
+ * picture the blueprint happens to frame.
  */
 export function ThresholdStage() {
   return (
     <span className="cw-plate cw-plate--stage" aria-hidden="true">
       <Image
-        src="/studios/soundstage-threshold.jpg"
+        src="/studios/soundstage-threshold-tight.jpg"
         alt=""
         width={1728}
-        height={2304}
+        height={1982}
         sizes="34vw"
         priority
         style={{ width: "100%", height: "100%", objectFit: "cover" }}
       />
+      <span className="cw-plate--stage__struts" />
     </span>
+  );
+}
+
+/**
+ * Beat 6 — Department 04, the gate hold. FINISHED ≠ CLEARED.
+ *
+ * The only department where the artifact stops moving and, until this plate,
+ * the only physical gap in the main journey: pure vector gate and conveyance
+ * geometry, no object for "finished is not the same as cleared" to hold
+ * against. Pattern A on desktop and tablet — the CRT wall's own grammar: the
+ * plate spans most of the frame, the left mask carves out the reading
+ * column, the room's own `Fixture` and `ConveyanceLine` render after this in
+ * `world.tsx` so the drawn gate crosses in front of the photograph exactly
+ * as the fixture grid crosses the CRT glass.
+ *
+ * `production-department.jpg` — a delivery-quality JPEG derived from
+ * `public/design-assets/production-department.png` (the untouched source),
+ * not a second copy of the 5.4MB PNG itself; same pattern as
+ * `soundstage-threshold-tight.jpg`. Inspected at 2560×1440 (16:9, not the
+ * 4:5 this was first built against blind). A seated operator faces a bank of CRT
+ * monitors left-of-centre (roughly the left two-thirds of the frame); the
+ * right third and the deep background are dark negative space. Still
+ * mirrored on desktop/tablet — the console sits left-of-centre in the
+ * source, and every plate on this page reserves its *left* ~30% for the
+ * reading column, so a flip is what lands the operator in the surviving
+ * half rather than in the masked one. Nothing in the frame is legible text,
+ * so the flip costs nothing.
+ *
+ * Phones get a second, unmirrored element instead of the same plate
+ * stretched: `Fixture` (the drawn console equipment) is dropped below 720px
+ * everywhere on this page, so Pattern A's whole argument — photography read
+ * *through* linework — cannot happen on a phone, the same reason the CRT
+ * wall itself is phone-omitted. But omission was the wrong call here
+ * specifically: Department 04 is otherwise the one room in the journey with
+ * no physical object at all, on any viewport, and a phone visitor should not
+ * lose it entirely. `production-department-mobile.jpg` is a tight, standalone
+ * crop of the monitor bank and the operator's head and shoulders — self-
+ * framed the way the soundstage threshold is (Pattern B: no mask needed
+ * because the plate's own edges do the work), so it does not depend on a
+ * blueprint grid it will never have. CSS toggles which element paints; both
+ * are mounted so a breakpoint change never has to swap in a whole element
+ * that was not there before. Both stay `loading="lazy"`, matching every
+ * other decorative plate on this page — the one this hides at the current
+ * breakpoint has no layout box, so it does not prefetch until CSS reveals
+ * it, meaning a visitor who resizes across the breakpoint can see one
+ * on-demand fetch for the newly-shown crop. Accepted: a mid-visit resize
+ * across this specific breakpoint is rare, and eager-loading either crop
+ * up front would cost every visitor who never resizes at all.
+ */
+export function ProductionGate({ at }: { at: number }) {
+  return (
+    <div className="cw-prop cw-plate cw-plate--gate" style={{ "--at": at } as CSSProperties}>
+      <span className="cw-plate__flip cw-plate--gate__wide">
+        <Image
+          src="/studios/production-department.jpg"
+          alt=""
+          width={2560}
+          height={1440}
+          sizes="76vw"
+          loading="lazy"
+          style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 38%" }}
+        />
+      </span>
+      <span className="cw-plate--gate__phone">
+        <Image
+          src="/studios/production-department-mobile.jpg"
+          alt=""
+          width={871}
+          height={993}
+          sizes="70vw"
+          loading="lazy"
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      </span>
+    </div>
   );
 }

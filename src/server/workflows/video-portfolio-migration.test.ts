@@ -2,8 +2,19 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { getWorkflowDefinition, WORKFLOW_FINALIZER_STEP } from "@/domain/production-workflows";
 
-const migration = readFileSync(new URL("../../../supabase/migrations/202609070001_video_portfolio.sql", import.meta.url), "utf8");
-const immutability = readFileSync(new URL("../../../supabase/migrations/202609070002_video_portfolio_immutability.sql", import.meta.url), "utf8");
+/**
+ * Migration source is read with line endings NORMALIZED.
+ *
+ * On Windows checkouts these files land as CRLF, so any assertion that spans
+ * more than one line is otherwise comparing against `\n`-joined text that never
+ * exists on disk. Normalizing here keeps multi-line assertions honest on every
+ * platform; single-line `toContain` checks are unaffected either way. Same
+ * pattern as `video-intelligence-migration.test.ts`.
+ */
+const readSql = (name: string) => readFileSync(new URL(`../../../supabase/migrations/${name}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
+
+const migration = readSql("202609070001_video_portfolio.sql");
+const immutability = readSql("202609070002_video_portfolio_immutability.sql");
 
 describe("CHANNEL_VIDEO_PORTFOLIO migration", () => {
   it("extends workflow constraints and active uniqueness forward-only", () => {

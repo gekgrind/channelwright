@@ -5,7 +5,7 @@ import { HallFar, HallMid, HallNear } from "./facility";
 import { registerScene } from "./scroll-engine";
 import { LANDMARK, SEAM, cameraVariables, lightVariables } from "./beats";
 import { ArtifactPlate } from "./artifact-plate";
-import { CrtWall, ThresholdStage } from "./plates";
+import { CrtWall, ProductionGate, ThresholdStage } from "./plates";
 import { WORLD } from "./copy";
 import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL } from "./capabilities";
 
@@ -185,11 +185,20 @@ export function StudiosWorld({ scope }: { scope: string }) {
       {/* SPIKE — the research wall, photographed. Mounted before the drawn
           fixture so the blueprint cell grid reads across the glass, and given
           the same landmark so both are the same wall at the same distance. */}
-      <CrtWall at={LANDMARK.dept01} />
+      <CrtWall at={LANDMARK.dept01} variant="research" />
       <Fixture at={LANDMARK.dept01} kind="research" />
       <Fixture at={LANDMARK.dept02} kind="decision" />
       <Fixture at={LANDMARK.dept03} kind="writers" />
+      {/* Beat 6 — the one physical gap in the main journey. A seated operator
+          at a review console, standing behind the gate: the room becomes
+          "finished ≠ cleared" is proven physically rather than only argued
+          in linework. */}
+      <ProductionGate at={LANDMARK.dept04} />
       <Fixture at={LANDMARK.dept04} kind="production" />
+      {/* Beat 7 — the research wall's reuse. Same plate, same distance, its
+          own wake (`--l5`) and only the chosen screen lit: research asked:
+          Beat 7 has already decided. */}
+      <CrtWall at={LANDMARK.dept05} variant="control" />
       <Fixture at={LANDMARK.dept05} kind="control" />
 
       <Sign at={LANDMARK.dept01} index={WORLD.dept01.index} name={WORLD.dept01.name} />

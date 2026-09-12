@@ -2,9 +2,14 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const engine = readFileSync(resolve(process.cwd(), "supabase/migrations/202608130001_production_workflow_engine.sql"), "utf8").toLowerCase();
-const strategy = readFileSync(resolve(process.cwd(), "supabase/migrations/202608140001_channel_strategy.sql"), "utf8").toLowerCase();
-const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/202608140002_finalize_strategy_output.sql"), "utf8").toLowerCase();
+// Line endings normalized before lowercasing: on Windows checkouts these
+// files land as CRLF, and the one assertion below that spans a line break
+// would otherwise compare against `\n`-joined text that never exists on
+// disk. Same pattern as `video-intelligence-migration.test.ts`.
+const readSql = (name: string) => readFileSync(resolve(process.cwd(), `supabase/migrations/${name}`), "utf8").replace(/\r\n/g, "\n").toLowerCase();
+const engine = readSql("202608130001_production_workflow_engine.sql");
+const strategy = readSql("202608140001_channel_strategy.sql");
+const migration = readSql("202608140002_finalize_strategy_output.sql");
 
 describe("CHANNEL_STRATEGY final output persistence migration", () => {
   it("documents the defect it corrects: the engine only promoted the research finalizer", () => {

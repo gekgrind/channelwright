@@ -311,6 +311,11 @@ export const LIGHT = {
    *  carried over unchanged from the pass-2 timings, restated room-relative. */
   dept01: [journeyAt("intelligence", 0.3533), journeyAt("strategy", 0.2322)] as Window,
   dept02: [journeyAt("writers", 0.752), journeyAt("production", 0.751)] as Window,
+  /** Beat 7's CRT-wall reuse: the same research wall, seen later, waking on
+   *  its own schedule rather than Department 01's. Later and narrower than
+   *  `dept01` because the room has already been established and only one
+   *  screen — the chosen tally — needs to resolve here. */
+  dept05: [journeyAt("control", 0.16), journeyAt("control", 0.5)] as Window,
 } as const;
 
 /** Floors, so nothing in the opening frame is at absolute nothing. */
@@ -393,6 +398,7 @@ export function lightVariables(): Record<string, string> {
     seam: LIGHT.seam,
     l1: LIGHT.dept01,
     l2: LIGHT.dept02,
+    l5: LIGHT.dept05,
     inside: GATE.inside,
     fixtures: GATE.fixtures,
     route: GATE.route,

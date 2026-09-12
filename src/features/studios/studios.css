@@ -114,6 +114,30 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   overflow: hidden;
   display: grid;
   grid-template-areas: "stage";
+  /* The stage is as wide as the viewport and no wider — every layer stacked in
+     it is sized from the *stage*, never from whichever layer happens to have
+     the largest intrinsic width.
+     ------------------------------------------------------------------------
+     Without this the single implicit column is content-sized, and one layer
+     could stretch the track that every other layer is then laid out in. That
+     is not hypothetical: the instruments (`.cw-line`, `.cw-sequencer`, …) set
+     `width: 100%` and an `aspect-ratio`, and `.cw-atmos > *` gives them a
+     definite height. On a phone the percentage width is cyclic, so the used
+     width falls back to height x aspect-ratio — 490px x 16/8 gives a 979px
+     track inside a 390px viewport. `overflow: hidden` concealed how far that
+     reached, because the layer it damaged most was the one carrying no
+     visible box: `.cw-layer--copy` became 979px wide too, and any room whose
+     composition is not left-aligned then placed its headline in a column the
+     screen does not contain. Measured at 390x844, Department 04 (`b6`,
+     centred) put "Finished is not the same as cleared." at x=362 and
+     Department 02 (`b4`, right-aligned) put its headline at x=666 — both
+     effectively invisible, which is why Department 04 read as a black gap on
+     a phone however its plate was toned.
+     `minmax(0, 1fr)` fixes the track to the stage box, so a too-wide
+     instrument overflows on its own (cropped exactly as before, since
+     `overflow: hidden` already clipped it) instead of dragging the copy out
+     of the frame with it. */
+  grid-template-columns: minmax(0, 1fr);
   isolation: isolate;
 }
 .cw-stage > * { grid-area: stage; }
@@ -409,6 +433,9 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
      arrival, so the next room is already bleeding into this one. */
   --l1: clamp(0, calc((var(--j) - var(--l1-a, 0)) * var(--l1-k, 6)), 1);
   --l2: clamp(0, calc((var(--j) - var(--l2-a, 0)) * var(--l2-k, 6)), 1);
+  /* Beat 7 — the research wall's reuse in Control. Its own schedule, later
+     than `--l1` and reaching only Control's own approach. */
+  --l5: clamp(0, calc((var(--j) - var(--l5-a, 0)) * var(--l5-k, 6)), 1);
   /* Things that only exist inside the building: wall signage, installed
      equipment, and the route the artifact is about to be set down on. */
   --inside: clamp(0, calc((var(--j) - var(--inside-a, 0)) * var(--inside-k, 7)), 1);
@@ -2659,23 +2686,50 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   transform:
     translate3d(calc(var(--d) * var(--rate) * 1vw + 9vw), 0, 0)
     scale(calc(1.05 - var(--ad) * .35));
-  /* Gated on the same fixtures ramp as the drawn wall, and reaching only as
-     far as its own department.
-     The reach is deliberately tighter than `.cw-fixture`'s .24, and the scroll
-     test is why. The drawn fixture is small and capped at .3, so a long tail
-     costs nothing; a 112vw plate at .48 inherits that tail as most of the
-     frame. Measured during Beat 8 the wall was still at 85% of full strength
-     while the camera stood in Department 02 — Department 01's equipment
-     filling the Return, which is the one beat that must stay quiet. At .155
-     the wall is spent before the neighbouring room and gone entirely by 02. */
-  opacity: calc(var(--fixtures-on) * clamp(0, calc((.155 - var(--ad)) * 11), 1) * .48);
-  filter: saturate(.8) contrast(1.18) brightness(.96);
   mix-blend-mode: screen;
   mask-image:
     linear-gradient(to right, transparent 0, #000 45%),
     linear-gradient(to top, transparent 0, #000 20%);
   mask-composite: intersect;
   -webkit-mask-composite: source-in;
+}
+/* Department 01 — evidence. Gated on the same fixtures ramp as the drawn
+   wall, and reaching only as far as its own department.
+   The reach is deliberately tighter than `.cw-fixture`'s .24, and the scroll
+   test is why. The drawn fixture is small and capped at .3, so a long tail
+   costs nothing; a 112vw plate at .48 inherits that tail as most of the
+   frame. Measured during Beat 8 the wall was still at 85% of full strength
+   while the camera stood in Department 02 — Department 01's equipment
+   filling the Return, which is the one beat that must stay quiet. At .155
+   the wall is spent before the neighbouring room and gone entirely by 02. */
+.cw-plate--crt-research {
+  opacity: calc(var(--fixtures-on) * clamp(0, calc((.155 - var(--ad)) * 11), 1) * .48);
+  filter: saturate(.8) contrast(1.18) brightness(.96);
+}
+/* Department 05 — the reuse. Beat 7's argument is "one of five, chosen by a
+   person": the same wall Department 01 doubted is seen again with only the
+   tally screen resolved, so the room reads as control rather than research.
+   Lower ceiling than Department 01 (.32 against .48) because this room has
+   already been established and the wall is corroborating, not introducing —
+   and a flatter, slightly warmer grade (matching Control's own paper-toned
+   fixture tint rather than Department 01's cooler research blue) so the
+   repeat reads as the same building seen from its output side, not a pasted
+   duplicate. */
+.cw-plate--crt-control {
+  /* Reach matched to the gate's own .095, not borrowed from Department 01's
+     .155. The forward pass never exposed the mismatch — `--l5` is gated on
+     `--j`, which has not reached Control's own wake window yet while the
+     visitor is still passing Department 04, so the reuse is silent there
+     regardless of `--ad`. But `--l5` is `--j`-gated, not `--cam`-gated: once
+     the journey has passed Control at all, `--l5` stays at 1 for the rest of
+     the page, Beat 8's reverse traversal included. On the way back, this
+     plate's opacity is then governed by `--ad` alone, the same as the gate's
+     — and at .155 that reach comfortably covers the .108 gap between the two
+     rooms, so the wall stayed partially lit through the gate's own peak
+     every time the camera passed it in reverse. .095 clears the gap in both
+     directions, the same way it already does for the gate. */
+  opacity: calc(var(--l5) * clamp(0, calc((.095 - var(--ad)) * 11), 1) * .32);
+  filter: saturate(.62) contrast(1.14) brightness(1.02);
 }
 
 /* Activation, without a second photograph.
@@ -2738,20 +2792,113 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   opacity: calc(var(--reveal, 0) * .82);
   filter: saturate(.8) contrast(1.16) brightness(1.02);
   mix-blend-mode: screen;
+  /* The plate's own edges dissolve into the jamb's darkness instead of
+     ending on a hard rectangle. A crisp-edged photograph inside a crisp
+     border is what makes a doorway read as a framed print; feathering the
+     plate itself — independently of the frame around it — is what lets the
+     opening read as depth instead of a picture hung in it. */
+  mask-image: radial-gradient(ellipse 62% 64% at 50% 55%, #000 30%, transparent 97%);
+  -webkit-mask-image: radial-gradient(ellipse 62% 64% at 50% 55%, #000 30%, transparent 97%);
 }
 .cw-plate--stage img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* Weighted low: the camera and the deck are the subject, and the plate's own
-     unlit top band lines up with the lintel. */
-  object-position: 50% 62%;
+  /* Weighted low: the camera and the deck are the subject. The source crop
+     already removes most of the dead ceiling band, so this only needs a
+     light bias rather than the harness's original .62. */
+  object-position: 50% 56%;
 }
+/* The same seam the CRT wall is built on, brought to this doorway: hairline
+   geometry crossing *in front of* the photograph rather than framing it from
+   outside. Two struts, not a grid — the aperture is narrow and a denser
+   pattern would read as a cage rather than architecture standing in depth. */
+.cw-plate--stage__struts {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: calc(var(--reveal, 0) * .8);
+}
+.cw-plate--stage__struts::before,
+.cw-plate--stage__struts::after {
+  content: "";
+  position: absolute;
+  top: 4%;
+  bottom: 6%;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0,
+    rgba(242, 239, 230, .5) 12%,
+    rgba(242, 239, 230, .5) 88%,
+    transparent 100%
+  );
+}
+.cw-plate--stage__struts::before { left: 34%; }
+.cw-plate--stage__struts::after { left: 70%; }
 /* The doorway's light wash is held back where a room now exists behind it.
    At full strength it greys the stage into the same blue haze it paints on
    nothing, which is the difference between a lit opening and a way through. */
 .cw-threshold[data-stage] .cw-threshold__frame::after {
   opacity: calc((1 - var(--close) * .82) * .46);
+}
+
+/* --- Beat 6 — Department 04, the gate hold (Pattern A) ------------------- */
+
+/* The CRT wall's own grammar: the plate spans most of the frame, the left
+   mask carves out the reading column, and the room's own drawn gate and
+   conveyance line render after this in `world.tsx`, so they cross in front
+   of the photograph rather than sitting beside it. */
+.cw-plate--gate {
+  --rate: 96;
+  top: 22%;
+  width: 78vw;
+  height: 62vh;
+  transform:
+    translate3d(calc(var(--d) * var(--rate) * 1vw - 10vw), 0, 0)
+    scale(calc(1.04 - var(--ad) * .35));
+  /* Reach tightened from the CRT wall's .155 (borrowed as a starting point):
+     Department 05 stands only .108 away in journey terms, closer than
+     Department 01 is to 02, and once Department 05 got its own reused CRT
+     plate the wider reach left both plates visibly overlapping through the
+     handoff — the gate lingering into Control's own reveal. A smaller reach
+     clears the gate before Control's wall wakes, so the two rooms hand off
+     rather than blend. */
+  opacity: calc(var(--fixtures-on) * clamp(0, calc((.095 - var(--ad)) * 11), 1) * .42);
+  filter: saturate(.78) contrast(1.16) brightness(.98);
+  mix-blend-mode: screen;
+  mask-image:
+    linear-gradient(to right, transparent 0, #000 30%),
+    linear-gradient(to left, transparent 0, #000 20%),
+    linear-gradient(to top, transparent 0, #000 18%);
+  mask-composite: intersect;
+  -webkit-mask-composite: source-in;
+}
+.cw-plate__flip { position: relative; display: block; width: 100%; height: 100%; }
+.cw-plate--gate .cw-plate__flip { transform: scaleX(-1); }
+
+/* The two Department 04 elements: the wide mirrored plate by default, the
+   phone's own self-framed crop hidden until the phone breakpoint swaps them. */
+.cw-plate--gate__phone { position: absolute; inset: 0; display: none; }
+
+/* --- Tablet --------------------------------------------------------------
+   768–1024px, portrait-biased. The wide plate's desktop box (`78vw` by
+   `62vh`) assumes a landscape viewport; on a portrait tablet `62vh` is tall
+   relative to a much narrower `78vw`, so `object-fit: cover` on a 16:9 source
+   crops hard on the sides and leaves a narrow vertical sliver — measured at
+   768×1024 and 820×1180, the monitor bank was cut down to one or two screens
+   and the operator was gone entirely. Shortened and widened so the box's own
+   aspect stays closer to the source's, which is what keeps the crop close to
+   the desktop composition instead of a slice of it. */
+@media (min-width: 721px) and (max-width: 1024px) {
+  .cw-plate--gate {
+    width: 92vw;
+    height: 40vh;
+    top: 20%;
+    transform:
+      translate3d(calc(var(--d) * var(--rate) * 1vw - 4vw), 0, 0)
+      scale(calc(1.04 - var(--ad) * .35));
+  }
 }
 
 /* --- Mobile ------------------------------------------------------------- */
@@ -2765,15 +2912,74 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
      survived was a faint smudge in the top-right corner: no CRT legible, no
      blueprint interaction, still costing a decode and a composited layer.
      Omission is preferable to a compromised composition, and this is the
-     composition that settles it.
-
-     The alternative is a purpose-made tight crop — four to six televisions,
-     nearer, lower-right — which is a new asset rather than a tuning of this
-     one. Recorded as the follow-up; not faked with a scaled desktop plate. */
+     composition that settles it. */
   .cw-plate--crt { display: none; }
   /* The aperture is most of Beat 2 on a phone, so the room beyond it matters
      more here, not less. Held slightly stronger against a smaller opening. */
   .cw-plate--stage { opacity: calc(var(--reveal, 0) * .7); }
+
+  /* Department 04 does NOT follow the CRT wall's omission here. The CRT wall
+     is one of several photographic beats; Department 04 is otherwise the
+     only room in the entire journey with no physical object on any
+     viewport, and losing it on a phone was a worse trade than it looked —
+     see the implementation report. Pattern B instead of Pattern A: the
+     phone crop is self-framed (own feathered edge, no mask, no mirror — see
+     `ProductionGate` in `plates.tsx`), the same grammar the soundstage
+     threshold already uses on a phone, so it does not depend on linework it
+     will never have here. */
+  .cw-plate--gate {
+    top: auto;
+    bottom: 8vh;
+    width: min(66vw, 78svh);
+    aspect-ratio: 871 / 993;
+    height: auto;
+    /* No `--d`-driven drift and no re-centring term here: `left: 50%` plus
+       the base `.cw-prop`'s own `translate: -50% 0` already centre this
+       element, and stacking a second `-50%` inside `transform` on top of
+       that would double the offset. Only the scale survives from the
+       desktop rule. */
+    transform: scale(calc(1.02 - var(--ad) * .3));
+    /* Core opened from 34% to 58% of the ellipse. The monitor bank and the
+       operator's head sit across the middle two-thirds of this crop, so a
+       core that stopped at a third of the radius left the subject itself
+       inside the feather, at roughly half alpha, on top of everything below.
+       Pattern B's edge only has to dissolve the plate's *boundary* into the
+       hall; it does not have to fade the picture. */
+    mask-image: radial-gradient(ellipse 72% 74% at 50% 50%, #000 58%, transparent 99%);
+    -webkit-mask-image: radial-gradient(ellipse 72% 74% at 50% 50%, #000 58%, transparent 99%);
+    mask-composite: add;
+    -webkit-mask-composite: source-over;
+    /* Pattern A's envelope, inherited, is what made this chapter a black gap.
+       ----------------------------------------------------------------------
+       The base rule's `* .42` ceiling is calibrated for a plate read *behind*
+       the drawn gate and conveyance geometry: at that strength it reads as a
+       wall standing behind architecture, which is the whole of Pattern A. On
+       a phone none of that linework exists — the fixtures are dropped at this
+       width — so the same .42, multiplied by a centre-weighted feather and
+       screened over a near-black hall, left the operator and the monitor bank
+       at roughly a quarter of their own (already dim) luminance. Sampled at
+       390x844 across the chapter the element never exceeded .42 and sat below
+       .26 for its whole first half: nothing in the frame was legible at any
+       point. Pattern B has to carry the room on its own, so it gets its own
+       ceiling rather than the one written for a plate with a blueprint in
+       front of it.
+
+       The reach is widened and steepened for the same reason. `.095` at 11x
+       only approached the ceiling in the last sixth of the chapter, which on
+       desktop is fine — the room has its drawn fixtures and its instrument
+       carrying the beat until then. Here the plate is the only physical
+       object in the entire journey's one objectless room, so it has to be
+       present as the chapter opens, not arrive as it closes. */
+    opacity: calc(var(--fixtures-on) * clamp(0, calc((.115 - var(--ad)) * 16), 1) * .82);
+    /* Lifted rather than pushed: the source crop is a dim CRT room and the
+       contrast boost Pattern A uses to separate a plate from linework only
+       crushed it further here. Brightness carries the lift; contrast comes
+       back down so the monitors read as the room's light source instead of
+       blowing to white. */
+    filter: saturate(.8) contrast(1.1) brightness(1.16);
+  }
+  .cw-plate--gate__wide { display: none; }
+  .cw-plate--gate__phone { display: block; }
 }
 
 /* ============================================================================
@@ -2856,18 +3062,49 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
 
 /* A swapped region.
    ---------------------------------------------------------------------------
-   The ramp is steep and centred, and it is timed to sit entirely inside the
-   deepest part of the shadow above it: by the time this layer is at 15% the
-   region is already at ~7% luminance, and it is back under cover until well
-   past 85%. That is the whole trick — the two poses do overlap, but never
-   anywhere the eye can read them. */
+   REVISED. The original cut hid the pose swap behind near-total darkness
+   (opacity .99) over a region sized to the union of two poses. Measured
+   against the live render, that combination is never small enough to read as
+   "the room dimmed" — the three foreground passes alone blacked out 20-25% of
+   the visible frame, and even the smallest pass covered a tenth of it. A
+   region that size going to near-black reads as a hole cut in the photograph
+   before any eye reaches it, which is the exact failure this was built to
+   avoid.
+
+   The swap itself is still real — two different photographs still change
+   place under this mask — but what conceals it is no longer darkness, it is
+   defocus. A blurred region stays legible as "the photograph, softly out of
+   focus" at any size, the way a hard-blacked region never does, and blur
+   erases exactly the fine, high-contrast edges (the glasses, most of all)
+   that made a crossfade unusable in the first place.
+
+   The change itself is an instantaneous cut placed at the peak of that blur —
+   see the rule below for why it must be a cut and not a ramp of any width,
+   and `maskFor` in `audience-footer.tsx` for why the mask carrying it has to
+   be near-binary for the same reason. */
 .cw-studios[data-ready="true"] .cw-aud__plate--swap {
-  /* Effectively a step. The window in which both poses are on screen at all
-     is 0.6% of the pass — a dozen pixels of scroll — and it sits at the exact
-     centre of the shadow, where the plate is painting at 1% luminance. A
-     gentler ramp was measured first and left a readable second pair of glasses
-     in the dark; this does not. */
-  opacity: clamp(0, calc((var(--t) - .497) / .006), 1);
+  /* A true cut, not a narrow ramp.
+     ------------------------------------------------------------------------
+     Blur cannot hide a *sustained* 50/50 blend of two different photographs
+     the way it hides an instantaneous one, so this was already narrow (0.02
+     of the pass). But narrow is not zero: the engine quantises `--p` to
+     1/1000, which on the widest pass is a step of ~0.0071 in `--t`, so a
+     0.02-wide ramp still had two or three sampled frames sitting at genuine
+     part-opacity — two poses of one face on screen at once, softened by the
+     shadow above but not removed by it.
+
+     0.0002 is some thirty times narrower than the finest step the engine can
+     produce (1/1000 of scene progress over a 0.14-wide pass is ~0.0071 of
+     `--t`), so in practice the layer is either off or on at every frame the
+     visitor can land on. `round()` below makes that exact rather than
+     merely overwhelmingly likely, and is stated as a second declaration so
+     that a browser without it simply keeps the line above — never the
+     `opacity: 1` resting value, which would show every plate at once.
+
+     The cut lands at the instant the shadow is at its own peak (`--tw` is ~1
+     across this window), which is what conceals it. */
+  opacity: clamp(0, calc((var(--t) - .5) / .0002), 1);
+  opacity: round(var(--t));
 }
 .cw-aud__plate--swap {
   /* Held at the finished state until the engine confirms it is driving, so a
@@ -2880,35 +3117,89 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   -webkit-mask-composite: source-over;
 }
 
-/* The shadow that covers the swap.
+/* The flicker that covers the swap.
    ---------------------------------------------------------------------------
-   `--tw` is the symmetric window the cue vocabulary already provides: nothing
-   at the edges, one at the centre. Peaked just under full and shaped a little
-   wider than the mask beneath it, it reads as the unseen film going dark for a
-   moment across part of the room — which is the only light source the scene
-   has, so it is also the only honest way for it to change. */
-.cw-studios[data-ready="true"] .cw-aud__dim { opacity: calc(var(--tw) * .99); }
+   REVISED from a black shadow to a defocus-and-exposure pulse: `--tw` (the
+   cue vocabulary's symmetric rise-and-fall) now drives a `backdrop-filter`
+   blur over the masked region, at a mild darkening rather than the original
+   near-total black. This is still "the unseen film flickering" — the only
+   light source in the room changing for a moment — but the moment reads as
+   the projector's focus wavering rather than as part of the audience going
+   dark. Blur is what actually does the concealment work now; the darkening
+   is kept only for the sense that something in the room shifted. */
+.cw-studios[data-ready="true"] .cw-aud__dim {
+  /* .58-.62 measured as "clearly dimmed" in isolation and still let a sharp
+     pair of glasses show through doubled: `backdrop-filter` composites as
+     (blurred-and-darkened backdrop) blended with (the untouched original)
+     in exactly the ratio this opacity sets, so at .62 the visitor is still
+     looking at 38% of the unblurred, undarkened frame — plenty for two
+     high-contrast white rectangles to read as four. Measured up to .92 and
+     a doubled edge was still faintly visible; only near-total opacity
+     removes it outright, which is also why raising the blur radius alone
+     (tried up to 80px at the old .58-.62 ceiling) never fixed this — no
+     radius blurs away a pixel that isn't being blended in at all. Reads as
+     a soft, photographic dimming rather than the flat "hole in the frame"
+     the original near-opaque, unblurred cut caused, because the blur keeps
+     the shape and light of what's underneath rather than replacing it with
+     a flat fill. */
+  opacity: calc(var(--tw) * .95);
+  /* Radius halved from an earlier, untested "for safety" 52px to a since
+     disproven 26px. That number was measured against the mask's *centre*,
+     not against where a swap's own paint actually reaches: `shadowFor` in
+     `audience-footer.tsx` let its gradient fall to half-strength well inside
+     a neighbouring pass's own paint edge, so raising this radius alone could
+     never have fixed what was really a coverage gap in the mask, not a
+     blur-strength one. 36px restores the margin the file's own history
+     already called "confirmed", now backed by a mask that actually holds
+     strength out to where a swap can paint, and an opacity ceiling that
+     actually conceals rather than merely dims. */
+  backdrop-filter: blur(calc(var(--tw) * 36px));
+}
 .cw-aud__dim {
+  /* `none`, not `blur(0px)`: the build's CSS minifier collapses a literal
+     zero-valued filter argument to `blur()`, which is invalid and gets
+     dropped by the browser along with the whole declaration — silently
+     disabling the ramp above wherever this rule loses the cascade. `none` is
+     the correct resting value regardless, and the bug does not affect the
+     `calc()` value above because it is never a literal zero. */
   opacity: 0;
-  background: #000;
+  background: rgba(5, 6, 7, .7);
+  backdrop-filter: none;
   mask-image: var(--mask);
   -webkit-mask-image: var(--mask);
   mask-composite: add;
   -webkit-mask-composite: source-over;
 }
 
-/* Promotion is rented, not owned.
+/* Promotion is rented, not owned — and rented per pass, not for the whole
+   scene.
    ---------------------------------------------------------------------------
-   Eight swap layers and eight shadows is sixteen full-frame compositor layers,
-   and hinting them unconditionally kept every one of them promoted for the
-   whole page — tens of megabytes of GPU backing store held while the audience
-   was nowhere near the viewport. The engine already writes `data-on-stage` on
-   the scene as it crosses the viewport, so the hint costs nothing until the
-   room is actually on screen, which is exactly when these layers animate.
-   Narrowing further, to only the passes near the current progress, would mean
-   per-pass state in JavaScript: more machinery than the remaining win. */
-[data-cw-scene][data-on-stage="true"] .cw-aud__plate--swap,
-[data-cw-scene][data-on-stage="true"] .cw-aud__dim { will-change: opacity; }
+   Eight swap layers and eight flicker layers is sixteen full-frame compositor
+   layers. Hinting all sixteen for as long as the scene is merely on screen
+   (five viewports of scroll) was tried first and measured to cost more than
+   a performance nicety: under CPU throttling it was enough compositing
+   pressure to drop frames during a fast scroll, and `useNearPassPromotion` in
+   `audience-footer.tsx` exists because of what a dropped frame does here —
+   it can land the visitor on a state from inside a pass's blur window without
+   ever painting the smoother frames either side of it, which read as exactly
+   the doubled-glasses "compositing tell" this whole mechanism exists to
+   avoid. `data-near`, written by that effect, is true only for the one or two
+   passes within half a pass-width of the current position — everywhere else
+   in the five-viewport travel, nothing here is promoted at all.
+   `backdrop-filter` is the heavier of the two effects, so it is named
+   explicitly rather than left to a bare `opacity` hint. */
+.cw-aud__plate--swap[data-near="true"] { will-change: opacity; }
+.cw-aud__dim[data-near="true"] { will-change: opacity, backdrop-filter; }
+
+/* `backdrop-filter` has no effect to blur if reduced motion holds the scene
+   static — `AudienceFooterStatic` renders instead, so this never runs there —
+   but a browser without `backdrop-filter` support needs the swap to still be
+   covered by *something*. Raising the fallback darkening a little (`.7` base
+   alpha above, reached without blur) keeps that browser's cut inside a dim
+   rather than a flat crossfade. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .cw-studios[data-ready="true"] .cw-aud__dim { opacity: calc(var(--tw) * .97); }
+}
 
 /* Vignette and floor. Restrained on purpose: the artwork is already aged, and
    the brief for it was to stay imperfect rather than be corrected. */
