@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CAST, PASSES } from "./audience-footer";
+import { CAST, PASSES, SWAP_STOPS, swapAlphaAt } from "./audience-footer";
 
 /**
  * Durable invariants for the audience footer's choreography, pinned after
@@ -76,5 +76,73 @@ describe("audience footer choreography", () => {
     // final hold by fabricating motion for them has to change this
     // assertion deliberately rather than drift past it unnoticed.
     expect(Object.keys(CAST).length).toBe(10);
+  });
+});
+
+/**
+ * The invariant the whole footer turns on, and the one three repairs missed.
+ *
+ * Plate 1 and plate 4 are different photographs of the same room *everywhere*
+ * — measured mean |Δ| of roughly 25-45 of 255 across the entire frame, not
+ * only on the heads that turn. So a mask holding partial alpha over anyone is
+ * a permanent blend of two poses of that person, and where the person carries
+ * real drift between plates that is a readable second pair of glasses, present
+ * in the settled composite long after every shadow has lifted.
+ *
+ * These assertions are written against coordinates read off the plates rather
+ * than against the geometry, so they keep their meaning if `CAST` is retuned:
+ * they say "nothing may paint partially *here*", not "this ellipse may not
+ * move".
+ */
+describe("audience footer mask safety", () => {
+  /** Glasses positions in plate percentages, union of the plate-1 and plate-4
+   *  poses, read off `public/footer/1-1920.webp` and `4-1920.webp`. */
+  const HELD_OUT = {
+    "blonde woman": { x: 10, y: 37 },
+    "cable-knit man": { x: 24, y: 34 },
+    "left-edge man": { x: 3, y: 40 },
+  } as const;
+
+  it("never paints a held-out face, at any alpha, in any pass", () => {
+    // The blonde woman measured 0.31 and the cable-knit man 0.39 before the
+    // foreground regions were pulled down onto the out-of-focus band — a
+    // permanent third of the other plate's likeness of a face nobody ever
+    // asked to transition.
+    for (const [who, at] of Object.entries(HELD_OUT)) {
+      for (const pass of PASSES) {
+        const alpha = swapAlphaAt(pass.regions, at.x, at.y);
+        expect(`${who} under ${pass.id}: ${alpha.toFixed(3)}`).toBe(`${who} under ${pass.id}: 0.000`);
+      }
+    }
+  });
+
+  it("keeps the three foreground regions out of the sharp middle row", () => {
+    // Local-contrast mapping of plate 1 puts the seated rows above y≈52% and
+    // the out-of-focus foreground below it. A foreground mask that reaches
+    // above that line is over faces it has no business changing, which is
+    // exactly how the defect above got there.
+    for (const region of [CAST.foregroundLeft, CAST.foregroundCentre, CAST.foregroundRight]) {
+      expect(region.y - region.ry).toBeGreaterThanOrEqual(48);
+    }
+  });
+
+  it("holds the partial-alpha band to a thin rim of each region", () => {
+    // A long feather is a wide permanent cross-fade: this used to fall off
+    // from 44% of the radius, so more than half of every region was a blend
+    // of two photographs. The rim has to stay narrow enough that it cannot
+    // contain a whole pair of glasses.
+    const [solidTo] = [...SWAP_STOPS].filter(([, alpha]) => alpha === 1).pop()!;
+    expect(solidTo).toBeGreaterThanOrEqual(0.75);
+    expect(SWAP_STOPS.at(-1)).toEqual([1, 0]);
+  });
+
+  it("paints every transitioned subject's own centre at full strength", () => {
+    // The counterpart guard: tightening the mask must not stop a pass
+    // actually replacing the person it exists for.
+    for (const pass of PASSES) {
+      for (const region of pass.regions) {
+        expect(swapAlphaAt(pass.regions, region.x, region.y)).toBe(1);
+      }
+    }
   });
 });

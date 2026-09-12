@@ -64,6 +64,26 @@ import { registerScene } from "./scroll-engine";
  * turning, and the surrounding base plate never moves, so the theatre itself
  * stays physically stationary.
  *
+ * ## The corollary that took three repairs to find
+ *
+ * That drift is *global*. Measured across the frame, plate 1 and plate 4
+ * disagree by a mean |Δ| of roughly 25-45 of 255 everywhere — not only on the
+ * heads that turn. There is therefore no such thing as a region of this
+ * artwork where two plates can be safely cross-faded, and it follows that
+ * **any pixel held at partial mask alpha is a permanent double exposure**,
+ * whatever the timing does. Two rules fall out of that, and both are load
+ * bearing:
+ *
+ *  1. A swap mask must be effectively binary (see `maskFor`). Its thin rim is
+ *     the only partial-alpha it is allowed, and each region is placed so that
+ *     rim lands between faces.
+ *  2. A swap's opacity must cut, never ramp (see `.cw-aud__plate--swap` in
+ *     `studios.css`). A ramp is a frame-wide cross-fade of two photographs.
+ *
+ * The shadow above is exempt from both: `backdrop-filter` blends the blurred
+ * frame with the sharp frame — one photograph — so it can stay as soft and as
+ * wide as it likes.
+ *
  * Every layer is therefore the *same* full 16:9 frame, painted at the same
  * size and position, revealed through a static mask. Co-registration is free —
  * there are no crops to align — and the browser decodes each plate once no
@@ -112,9 +132,34 @@ export const CAST = {
   rearWomanRight: { x: 80.5, y: 31, rx: 10, ry: 18 },
   rearBlonde: { x: 62.5, y: 26, rx: 9, ry: 16 },
   rearManCentre: { x: 48.4, y: 27, rx: 9, ry: 16 },
-  foregroundLeft: { x: 17.7, y: 61, rx: 19, ry: 34 },
-  foregroundCentre: { x: 40.6, y: 63, rx: 22, ry: 36 },
-  foregroundRight: { x: 65.8, y: 67, rx: 21, ry: 36 },
+  /* The three foreground heads sit entirely in the out-of-focus band, and
+     their regions are now sized to it rather than to a generous guess.
+     ---------------------------------------------------------------------
+     These were previously centred at y 61-67 with ry 34-36, which put their
+     upper halves across the sharp middle row at y 30-50 — the blonde woman
+     at x 6-15 and the cable-knit man at x 19-29 in particular. Those two are
+     deliberately never transitioned (see below), so a mask lying across them
+     could only ever paint one plate's likeness of them partially over
+     another's. Measured, `foregroundLeft` held 0.31 alpha on the blonde
+     woman's glasses and 0.39 on the cable-knit man's, permanently, and plate
+     1 -> plate 4 moves her glasses about four percent of frame height. That
+     is a readable second pair of glasses in the settled frame, and it is the
+     defect that survived every previous repair.
+
+     The bounds below come from a focus map of plate 1 (local contrast falls
+     off sharply below y ~58%, which is where the foreground row begins) and
+     from the union of each head's plate-1 and plate-4 glasses:
+
+       left    glasses x  1-14, y 54-73   region y 49-103
+       centre  glasses x 32-44, y 67-84   region y 60-108
+       right   glasses x 61-73, y 72-89   region y 66-110
+
+     Every region's upper edge now lands in the gap between the seated row's
+     chins and the foreground row's hairlines — low-contrast, out-of-focus
+     territory where a mask edge has nothing legible to cut through. */
+  foregroundLeft: { x: 9, y: 76, rx: 19, ry: 27 },
+  foregroundCentre: { x: 39, y: 84, rx: 16, ry: 24 },
+  foregroundRight: { x: 67, y: 88, rx: 15, ry: 22 },
 } as const satisfies Record<string, Region>;
 
 /**
@@ -135,16 +180,86 @@ export const CAST = {
 /**
  * A mask that reveals only the listed regions.
  *
- * The core of each ellipse is solid and the outer third feathers away, so a
- * swapped head is joined to the untouched plate underneath by a gradient
- * rather than by an edge. Multiple regions union through `mask-composite`.
+ * Multiple regions union through `mask-composite`.
+ *
+ * ## Why the feather is a thin rim rather than the outer half
+ *
+ * This used to run `#000 44%, rgba(0,0,0,.74) 68%, transparent 100%` — a soft
+ * join across 56% of each ellipse's radius — on the reasoning that a gradient
+ * joins a swapped head to "the untouched plate underneath" more kindly than an
+ * edge does. That reasoning has one load-bearing assumption, and measurement
+ * against the actual artwork disproves it: the plate underneath is not
+ * untouched. Plate 1 and plate 4 differ by a mean |Δ| of roughly 25-45 of 255
+ * across the *entire* frame, not merely on the heads that turn — generative
+ * drift and relighting everywhere. So every pixel a mask holds at partial
+ * alpha is a permanent blend of two different photographs of the same room,
+ * and a 56%-of-radius feather is a very large amount of frame held that way.
+ *
+ * That is the whole mechanism behind the "doubled glasses" reports. It was
+ * never a timing fault and never a blur-strength fault, which is why widening
+ * the pass windows, raising the shadow opacity and raising the blur radius
+ * each failed in turn: the artifact does not live in the transition at all.
+ * It is in the settled composite, and it is still there long after every
+ * shadow has lifted. It merely *became visible* around progress 0.72-0.79
+ * because that is where the near-left shadow — which had been partly covering
+ * the ghost it had just created — fades out.
+ *
+ * A thin rim inverts the trade. The partial-alpha band is now the outer fifth
+ * of the radius, narrow enough that it cannot hold a whole pair of glasses,
+ * and every region above is positioned so that rim lands between faces rather
+ * than across one. Measured over the settled composite, frame-wide ghost
+ * energy falls by about 9x against the old feather.
  */
+/**
+ * The swap mask's gradient stops, as `[fraction of the ellipse radius, alpha]`.
+ *
+ * Declared once so the CSS below and `swapAlphaAt` cannot drift apart: the
+ * invariant that keeps this footer correct is a statement about alpha at a
+ * coordinate, and a test that re-typed these numbers would stop testing the
+ * mask the moment someone edited only the gradient.
+ */
+export const SWAP_STOPS: readonly (readonly [number, number])[] = [
+  [0, 1],
+  [0.8, 1],
+  [0.9, 0.9],
+  [1, 0],
+];
+
+function stopsToCss() {
+  return SWAP_STOPS.slice(1)
+    .map(([at, alpha]) =>
+      alpha === 0
+        ? `transparent ${at * 100}%`
+        : alpha === 1
+          ? `#000 ${at * 100}%`
+          : `rgba(0,0,0,${String(alpha).replace(/^0/, "")}) ${at * 100}%`,
+    )
+    .join(", ");
+}
+
+/**
+ * The alpha this mask paints at a point, in the same plate percentages `CAST`
+ * is written in. The union of regions composites through `mask-composite: add`,
+ * which saturates, so overlapping regions take the strongest of them.
+ */
+export function swapAlphaAt(regions: readonly Region[], x: number, y: number) {
+  let alpha = 0;
+  for (const r of regions) {
+    const radius = Math.hypot((x - r.x) / r.rx, (y - r.y) / r.ry);
+    for (let i = 0; i < SWAP_STOPS.length - 1; i++) {
+      const [at0, a0] = SWAP_STOPS[i];
+      const [at1, a1] = SWAP_STOPS[i + 1];
+      if (radius > at1) continue;
+      alpha = Math.max(alpha, a0 + (a1 - a0) * ((radius - at0) / (at1 - at0)));
+      break;
+    }
+  }
+  return Math.min(1, alpha);
+}
+
 function maskFor(regions: readonly Region[]) {
   return regions
-    .map(
-      (r) =>
-        `radial-gradient(ellipse ${r.rx}% ${r.ry}% at ${r.x}% ${r.y}%, #000 44%, rgba(0,0,0,.74) 68%, transparent 100%)`,
-    )
+    .map((r) => `radial-gradient(ellipse ${r.rx}% ${r.ry}% at ${r.x}% ${r.y}%, ${stopsToCss()})`)
     .join(", ");
 }
 
@@ -171,20 +286,20 @@ function shadowFor(regions: readonly Region[]) {
          the same multiplier put half the picture in darkness at once. The halo
          therefore shrinks as the region grows. */
       const spread = Math.max(1.16, 1.45 - Math.max(0, r.rx - 9) * 0.02);
-      /* The gradient stops used to reach full strength at 46% of this ellipse's
-         own radius and fall to half-strength by 70% — measured live, that is
-         well inside where the *swap's own paint* still reaches (a swap mask
-         sits at 1/spread of this radius, e.g. ~69% for the smallest rear-row
-         regions), so the concealment was already fading out before the thing
-         it exists to hide had finished painting. That is what a "doubled
-         glasses" report during natural scrolling traced back to here rather
-         than to timing: mask-image attenuates backdrop-filter's own strength
-         at each pixel exactly like it attenuates opacity, so a 50%-alpha ring
-         only ever blends half-blurred with the sharp frame under it, however
-         large the blur radius gets — no amount of extra blur fixes a coverage
-         gap. Stops moved out so full strength holds to 60% and near-full to
-         85%, past every swap's own edge with margin for a neighbouring pass's
-         region sitting close by, which is common by design (see PASSES). */
+      /* Unlike `maskFor` above, this mask stays soft on purpose, and softness
+         here costs nothing: a partial-alpha pixel under a `backdrop-filter`
+         blends the blurred frame with the sharp frame — the same photograph
+         either way — so it can never double anything. It is only the *swap*
+         mask, which blends two different photographs, that had to go hard.
+
+         What this geometry must still guarantee is coverage: mask-image
+         attenuates backdrop-filter's strength at each pixel exactly as it
+         attenuates opacity, so a 50%-alpha rim is only ever half-blurred
+         however large the radius gets, and no amount of extra blur fixes a
+         gap. Full strength holds to 60% of this (already enlarged) radius and
+         near-full to 85%, i.e. out to ~1.06x the swap's own outer edge — past
+         every swap's paint with margin for a neighbouring pass's region
+         sitting close by, which is common by design (see PASSES). */
       return `radial-gradient(ellipse ${r.rx * spread}% ${r.ry * (spread - 0.14)}% at ${r.x}% ${r.y + 1}%, #000 60%, rgba(0,0,0,.92) 85%, transparent 100%)`;
     })
     .join(", ");
