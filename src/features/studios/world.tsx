@@ -5,7 +5,7 @@ import { HallFar, HallMid, HallNear } from "./facility";
 import { registerScene } from "./scroll-engine";
 import { LANDMARK, SEAM, cameraVariables, lightVariables } from "./beats";
 import { ArtifactPlate } from "./artifact-plate";
-import { CrtWall, ProductionGate, SoundstageRoom, ThresholdStage } from "./plates";
+import { CrtWall, ProductionGate, SoundstageRoom } from "./plates";
 import { WORLD } from "./copy";
 import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL } from "./capabilities";
 
@@ -55,12 +55,14 @@ function Sign({ at, index, name }: { at: number; index: string; name: string }) 
  * Channelwright ingests no analytics today. The camera closes on it and the
  * building runs out.
  */
-function Threshold({ at, mark, label, kind, stage }: { at: number; mark: string; label: string; kind?: "seam"; stage?: boolean }) {
+function Threshold({ at, mark, label, kind, room }: { at: number; mark: string; label: string; kind?: "seam"; room?: boolean }) {
   return (
-    <div className="cw-prop cw-threshold" data-kind={kind} data-stage={stage ? "" : undefined} style={prop(at)}>
-      {/* Before the frame in DOM order, so the jamb reveal, the lit spill and
-          the lintel all paint over the room beyond rather than under it. */}
-      {stage ? <ThresholdStage /> : null}
+    <div className="cw-prop cw-threshold" data-kind={kind} data-room={room ? "" : undefined} style={prop(at)}>
+      {/* Nothing is mounted inside the aperture. `data-room` marks the doorway
+          that has a real room standing behind it in the world layer, which is
+          what lets the opening's own light give way as that room resolves
+          (see `.cw-threshold[data-room]` in `studios.css`) — the doorway is a
+          way through, never a frame with something hung in it. */}
       <span className="cw-threshold__frame" />
       {/* The building names itself on its own lintel. The cold open used to
           resolve out of an unlabelled rectangle in the dark, which read as
@@ -217,11 +219,13 @@ export function StudiosWorld({ scope }: { scope: string }) {
       <div className="cw-world__deck" />
       <ConveyanceLine />
 
-      {/* Beat 2's payoff: the room on the far side of the threshold, at room
-          scale. Mounted here — over the floor and deck, under the partitions,
-          the near plane, the doorway and the jambs — so the drawn structure
-          the visitor is standing between crosses in front of the photograph
-          and the floor the camera stands on is the deck they are standing on. */}
+      {/* Beat 2, whole: the soundstage is the *only* state of this photograph
+          now, hinted through the approach and at room scale by the crossing.
+          Mounted here — over the floor and deck, under the partitions, the
+          near plane, the doorway and the jambs — so the drawn structure the
+          visitor is standing between crosses in front of the photograph, the
+          doorway occludes the room rather than containing it, and the floor
+          the camera stands on is the deck they are standing on. */}
       <SoundstageRoom at={LANDMARK.threshold} />
 
       <Partition at={LANDMARK.partition} />
@@ -229,7 +233,7 @@ export function StudiosWorld({ scope }: { scope: string }) {
       <Partition at={LANDMARK.partition03to04} />
       <Partition at={LANDMARK.partition04to05} />
       <div className="cw-plane cw-plane--near"><HallNear /></div>
-      <Threshold at={LANDMARK.threshold} mark={WORLD.facility} label={WORLD.thresholdLabel} stage />
+      <Threshold at={LANDMARK.threshold} mark={WORLD.facility} label={WORLD.thresholdLabel} room />
       {/* Beat 9. Named off `./capabilities.ts` rather than restated here, so
           the door on the wall and the row in the register can never disagree
           about what is built. */}

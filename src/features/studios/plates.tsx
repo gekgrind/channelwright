@@ -121,43 +121,40 @@ export function CrtWall({ at, variant = "research" }: { at: number; variant?: "r
 }
 
 /**
- * Beat 2 — the soundstage, in two states.
+ * Beat 2 — the soundstage, arriving as a room rather than as a picture.
  *
- * `ThresholdStage` is the *far* state: a lit room glimpsed through a small
- * doorway at the end of the hall. It is a child of the doorway, so it is
- * clipped by the aperture and carried by the approach scale, and it is only
- * ever seen small — it dissolves as the crossing commits (`--close`), before
- * the aperture is large enough for anyone to read it as a photograph in a
- * frame, and before the room-scale plate resolves, so the rig is never on
- * screen twice at two sizes. It carries no struts and no border of its own: at reading distance
- * a doorway is a warm opening in a dark wall, not a picture.
+ * There used to be a second, *far* state of this plate: the same photograph
+ * mounted inside the doorway, clipped by the aperture and carried by its
+ * approach. It is gone, and the reason is the failure it could not be tuned
+ * out of. A photograph inside a lit rectangle is a photograph inside a lit
+ * rectangle at every scale and every opacity — a portrait card hung at the end
+ * of the hall — and dissolving it late only moved the moment at which the
+ * visitor read it as one. The doorway is now what the hall's own comment in
+ * `studios.css` always argued it was: a warm opening in a dark wall, with the
+ * building's name on the lintel and nothing hung inside it.
  *
- * `SoundstageRoom` is the *near* state and the actual payoff: the same plate
- * mounted in the world layer at the doorway's landmark, room-scale, riding
- * `--cam` at the doorway's own drift rate so the two are one place. It is
- * screen-blended, so the photograph's black is simply the hall's own dark and
- * has no edge, and it is masked with a soft irregular falloff rather than a
- * rectangle, so what the visitor meets on the far side of the door is a
- * camera standing in fog with the facility's floor, partitions and jambs
- * drawn across it — the schematic continuing through a physical room rather
- * than framing a photograph of one.
+ * What replaces it is not "the same image, later". `SoundstageRoom` is mounted
+ * in the world layer at the doorway's landmark, room-scale, riding `--cam` at
+ * the doorway's own drift rate so the two are one place — and it now resolves
+ * in two overlapping stages rather than one, the same grammar the doorway's
+ * own approach uses (`--near` then `--close`):
+ *
+ *   `--hint` opens well before the crossing and is held to a low ceiling. The
+ *   plate is screen-blended, so at a fifth of full strength only the brightest
+ *   things in the photograph reach the hall at all — the lamp haze, the rig's
+ *   lit edges, the cable and the deck. The visitor reads physical depth
+ *   beginning to appear in the building, not an image fading up, and because
+ *   the plate is far wider and taller than the doorway it can never be
+ *   contained by it: the drawn aperture stands *in front of* the emerging room
+ *   and occludes it, which is the relationship the beat wants.
+ *
+ *   `--emerge` opens as the crossing commits, at the same moment the doorway's
+ *   own jambs and lintel light give way, and carries the room to full.
+ *
+ * `--spent` is the reach on the far side, and it is the shorter half of the
+ * handoff into Department 01 — see the rule in `studios.css` for why it is
+ * tighter than it looks like it should be.
  */
-export function ThresholdStage() {
-  return (
-    <span className="cw-plate cw-plate--stage" aria-hidden="true">
-      <Image
-        src="/studios/soundstage-threshold-tight.jpg"
-        alt=""
-        width={1728}
-        height={1982}
-        sizes="34vw"
-        priority
-        style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 56%" }}
-      />
-    </span>
-  );
-}
-
 export function SoundstageRoom({ at }: { at: number }) {
   return (
     <div className="cw-prop cw-plate cw-plate--room" style={{ "--at": at } as CSSProperties}>

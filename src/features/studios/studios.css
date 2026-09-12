@@ -2774,45 +2774,75 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
 }
 
 /* --- Beat 2 — the soundstage ---------------------------------------------
-   Two states of one plate. Far: a lit room seen small through the doorway,
-   clipped by the aperture and carried by its approach. Near: the same room at
-   room scale in the world layer, emerging as the crossing commits.
+   One state of one plate, and the removal of the second is the whole of this
+   pass.
 
-   The far state used to be the whole beat, and it failed for a structural
-   reason: a photograph that stays inside a scaling rectangle is a photograph
-   in a rectangle at every scale, and once the aperture was larger than the
-   viewport its 2px jambs and two hairline struts were the brightest things on
-   screen — bars, not a building. So the far state is now only ever seen small
-   and dissolves before the door is large enough to read as a frame, and the
-   photograph the visitor actually arrives in is mounted in the room itself
-   with no frame at all. */
+   There used to be a *far* state: the same photograph mounted inside the
+   doorway, clipped by the aperture, carried by the approach and dissolved as
+   the crossing committed. Every tuning of it failed the same way. A
+   photograph inside a lit rectangle reads as a photograph inside a lit
+   rectangle at every scale and every opacity — a portrait card hung at the
+   end of the hall — and moving the dissolve earlier only moved the moment at
+   which the visitor read it as one. Softening the plate's own edges never
+   helped either, because the edge doing the damage was never the plate's: it
+   was the doorway's own lit jamb drawn around it.
 
-.cw-plate--stage {
-  position: absolute;
-  inset: 8px 8px 0;
-  overflow: hidden;
-  /* Present while the doorway is far, gone as the camera commits to going
-     through it. It is spent by two thirds of `--close`; `.cw-plate--room`
-     starts resolving just before that, at the doorway's own light, so there
-     is never a frame with an empty opening on screen — and the far state is
-     small and masked enough by then that the rig never reads twice. */
-  opacity: calc(var(--reveal, 0) * .82 * clamp(0, calc(2.17 - var(--close) * 3.33), 1));
-  filter: saturate(.8) contrast(1.16) brightness(1.02);
-  mix-blend-mode: screen;
-  /* The plate's own edges dissolve into the jamb's darkness rather than
-     ending on the aperture's rectangle. */
-  mask-image: radial-gradient(ellipse 62% 64% at 50% 55%, #000 30%, transparent 97%);
-  -webkit-mask-image: radial-gradient(ellipse 62% 64% at 50% 55%, #000 30%, transparent 97%);
+   So nothing is mounted inside the aperture. The doorway is what the Beat 2
+   comment above always claimed it was — a warm opening in a dark wall with
+   the building's name on the lintel — and the photograph is only ever the
+   room, in the world, at room scale, where no rectangle can contain it. */
+
+/* The crossing's two halves read the same two ramps.
+   ---------------------------------------------------------------------------
+   The room that materialises and the doorway that gives way to it are one
+   event, and they stand at one landmark, so `--d` is the same number in both.
+   Stating the ramps once, on both, is what makes it impossible for the light
+   in the opening and the photograph behind it to disagree about when the
+   crossing happens.
+
+   Two stages rather than one, the same grammar as the doorway's own approach
+   (`--near` then `--close`), and for the same reason: a single ramp gives an
+   image fading up at a constant rate, which is the thing that reads as an
+   image. Slow while the room is only an atmosphere, fast as the camera
+   commits, is what a room does as you walk into it. */
+.cw-plate--room,
+.cw-threshold[data-room] {
+  /* Long and low. Opens well before the crossing and is held to a fifth of
+     full strength by the ceiling in the opacity below — the plate is
+     screen-blended, so at that strength only the brightest things in the
+     photograph reach the hall at all: the lamp haze, the rig's lit edges, the
+     cable and the deck. Physical depth appearing in the building, rather than
+     a picture arriving in it. */
+  --hint: clamp(0, calc((.0424 - var(--d)) * 35.7), 1);
+  /* Short and steep, and deliberately coincident with the doorway's own last
+     stretch: the room reaches full as the jambs, the lintel light and the
+     wash on the wall are going, so what the camera passes through is a room
+     that is already there rather than an opening that then fills. */
+  --emerge: clamp(0, calc((.0244 - var(--d)) * 55.5), 1);
 }
+
 /* The doorway's frame is only a frame while it is a doorway. Once the camera
    commits to the crossing the jambs, the lintel light and the wash on the
    wall all fall away, so the aperture is not standing on screen as a lit
    rectangle around the room the visitor is now inside. */
-.cw-threshold[data-stage] .cw-threshold__frame {
+.cw-threshold[data-room] .cw-threshold__frame {
   opacity: clamp(0, calc(2 - var(--close) * 3.33), 1);
 }
-.cw-threshold[data-stage] .cw-threshold__frame::after {
-  opacity: calc((1 - var(--close) * .82) * .46);
+/* The light in the opening, and the one rule that decides whether this beat
+   reads as architecture or as a panel.
+
+   The fill is a dark volume with its own light in it, which is correct while
+   there is nothing behind the doorway: without it the operating floor reads
+   straight through at the same contrast on both sides. But the room *is*
+   behind it now, and this element paints over it — so held at its old
+   strength the aperture became the one place on screen where the emerging
+   photograph was dimmed, which is exactly the inverted read ("a panel hung in
+   the hall") this pass exists to remove. It is therefore spent by the room's
+   own arrival rather than by the crossing: thinning as the room hints, gone
+   by the time the room is established, so the opening turns from a lit volume
+   into a way through onto something real. */
+.cw-threshold[data-room] .cw-threshold__frame::after {
+  opacity: calc((1 - var(--hint) * .6) * (1 - var(--emerge)) * .46);
 }
 
 /* The room. A prop at the doorway's landmark, at the doorway's drift rate,
@@ -2825,16 +2855,28 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
    the building at their own rate rather than along a line; and the plate is
    taller than the viewport, so the rig stands at eye level with the deck
    under the visitor's feet and the lamp head out of frame above — which is
-   what standing in a room looks like, and what a picture of one does not. */
+   what standing in a room looks like, and what a picture of one does not.
+   It is also far wider and taller than the aperture at every point of the
+   approach, which is what makes it structurally impossible for the doorway to
+   contain it: the drawn opening occludes the room, never frames it. */
 .cw-plate--room {
   --rate: 62;
-  /* Own approach ramps off the doorway's landmark. `--emerge` opens in the
-     last stretch of the crossing, after the far state has already gone, and
-     completes just as the camera reaches the door. `--spent` is the reach on
-     the far side: the room gives way to Department 01's own wall over the
-     approach corridor, and never survives into the department itself. */
-  --emerge: clamp(0, calc((.0165 - var(--d)) * 45), 1);
-  --spent: clamp(0, calc((var(--d) + .05) * 30), 1);
+  /* The reach on the far side, and the shorter half of the handoff into
+     Department 01. It looks tighter than it should be, and the measurement is
+     why: `--fixtures-on` — the gate Department 01's photographed CRT wall is
+     held behind — opens at .1188, which is .0044 past this doorway's own
+     landmark, and that wall's distance ramp is already saturated by the time
+     the camera is through the crossing. There is therefore no stretch of
+     journey in which the soundstage can linger without the monitor wall
+     climbing underneath it. At the old .05 reach the two ran together for the
+     better part of a viewport-height and the frame carried two full
+     environments at once — the rig and the cable still at two-thirds while
+     the CRTs were reading as the room. Ending here leaves the soundstage in
+     sole possession of its own beat, gives the handoff a brief connective
+     moment where the wall is only a suggestion behind it, and clears before
+     the wall is what the frame is about. Same argument, and the same fix, as
+     the gate plate's .095 two sections down. */
+  --spent: clamp(0, calc((var(--d) + .0276) * 83.3), 1);
   top: -28vh;
   height: 148vh;
   width: calc(148vh * 1728 / 1982);
@@ -2842,7 +2884,10 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
      centre-right, and the plate's soft edge is well inside the frame on the
      left while the right edge runs off it. */
   transform: translate3d(calc(var(--d) * var(--rate) * 1vw + 14vw), 0, 0);
-  opacity: calc(var(--emerge) * var(--spent) * .96);
+  /* Gated on `--reveal` as well as on distance, so the hall's own light is up
+     before anything photographic is: the building resolves first, then it
+     starts to become physical. */
+  opacity: calc(var(--reveal, 1) * var(--spent) * (var(--hint) * .26 + var(--emerge) * .7));
   filter: saturate(.7) contrast(1.1) brightness(1.04);
   mix-blend-mode: screen;
   mask-image:
@@ -2942,18 +2987,22 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
      Omission is preferable to a compromised composition, and this is the
      composition that settles it. */
   .cw-plate--crt { display: none; }
-  /* The aperture is most of Beat 2 on a phone, so the room beyond it matters
-     more here, not less. Held slightly stronger against a smaller opening. */
-  .cw-plate--stage { opacity: calc(var(--reveal, 0) * .7 * clamp(0, calc(2.17 - var(--close) * 3.33), 1)); }
+  /* The phone doorway's last stretch is longer and gentler (its own `--close`
+     above), so its jambs are already going at `--d` .02 where desktop's hold
+     to .012. Both ramps are moved out by that difference, so the room hints
+     and resolves against the same points of *that* approach as it does
+     against desktop's — the opening still gives way onto a room that is
+     already there, rather than onto one that starts arriving afterwards. */
+  .cw-plate--room,
+  .cw-threshold[data-room] {
+    --hint: clamp(0, calc((.05 - var(--d)) * 38.5), 1);
+    --emerge: clamp(0, calc((.032 - var(--d)) * 50), 1);
+  }
   /* The room on a phone: the rig itself, centred, rather than the desktop
      composition's off-centre spread — a 390px frame has no reading column to
      keep clear beside a room, and at the desktop offset it saw only the lens. */
   .cw-plate--room {
     --rate: 120;
-    /* The phone doorway's last stretch is longer and gentler (its `--close`
-       above), so the room starts resolving at the same point of *that* ramp
-       as it does on desktop — just as the frame lines are going. */
-    --emerge: clamp(0, calc((.024 - var(--d)) * 33), 1);
     top: -18vh;
     height: 128vh;
     width: calc(128vh * 1728 / 1982);
