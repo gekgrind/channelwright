@@ -5,7 +5,7 @@ import { HallFar, HallMid, HallNear } from "./facility";
 import { registerScene } from "./scroll-engine";
 import { LANDMARK, SEAM, cameraVariables, lightVariables } from "./beats";
 import { ArtifactPlate } from "./artifact-plate";
-import { CrtWall, ProductionGate, ThresholdStage } from "./plates";
+import { CrtWall, ProductionGate, SoundstageRoom, ThresholdStage } from "./plates";
 import { WORLD } from "./copy";
 import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL } from "./capabilities";
 
@@ -216,6 +216,13 @@ export function StudiosWorld({ scope }: { scope: string }) {
           floor grid alone could only imply. */}
       <div className="cw-world__deck" />
       <ConveyanceLine />
+
+      {/* Beat 2's payoff: the room on the far side of the threshold, at room
+          scale. Mounted here — over the floor and deck, under the partitions,
+          the near plane, the doorway and the jambs — so the drawn structure
+          the visitor is standing between crosses in front of the photograph
+          and the floor the camera stands on is the deck they are standing on. */}
+      <SoundstageRoom at={LANDMARK.threshold} />
 
       <Partition at={LANDMARK.partition} />
       <Partition at={LANDMARK.partition02to03} />

@@ -121,26 +121,26 @@ export function CrtWall({ at, variant = "research" }: { at: number; variant?: "r
 }
 
 /**
- * Beat 2 — the soundstage, seen through the threshold.
+ * Beat 2 — the soundstage, in two states.
  *
- * Pattern B: a narrow plate that needs no mask, because it is clipped by the
- * aperture it is standing behind. Rendered as a child of the doorway so it
- * inherits the approach scale and is carried through the crossing — the
- * payoff the threshold has never had is a *place*, not a picture hung in it.
+ * `ThresholdStage` is the *far* state: a lit room glimpsed through a small
+ * doorway at the end of the hall. It is a child of the doorway, so it is
+ * clipped by the aperture and carried by the approach scale, and it is only
+ * ever seen small — it dissolves as the crossing commits (`--close`), before
+ * the aperture is large enough for anyone to read it as a photograph in a
+ * frame, and before the room-scale plate resolves, so the rig is never on
+ * screen twice at two sizes. It carries no struts and no border of its own: at reading distance
+ * a doorway is a warm opening in a dark wall, not a picture.
  *
- * `soundstage-threshold-tight.jpg` is a crop of the same Magnific plate, not a
- * second generation: the source frame is roughly 70% unbroken ceiling above
- * the rig, and at this doorway's proportions `object-fit: cover` barely
- * touched that emptiness (box and source were nearly the same aspect), so the
- * plate read as a mostly-black photograph hung in a frame rather than a place
- * with a camera standing in it. The crop removes the dead band above the
- * light head — nothing else changes; the light, the camera and the deck are
- * untouched. See `public/studios/README.md`.
- *
- * The two struts are the same seam the CRT wall is built on, brought to this
- * doorway: hairline geometry crossing *in front of* the photograph, so the
- * aperture reads as the blueprint standing open on a real room rather than a
- * picture the blueprint happens to frame.
+ * `SoundstageRoom` is the *near* state and the actual payoff: the same plate
+ * mounted in the world layer at the doorway's landmark, room-scale, riding
+ * `--cam` at the doorway's own drift rate so the two are one place. It is
+ * screen-blended, so the photograph's black is simply the hall's own dark and
+ * has no edge, and it is masked with a soft irregular falloff rather than a
+ * rectangle, so what the visitor meets on the far side of the door is a
+ * camera standing in fog with the facility's floor, partitions and jambs
+ * drawn across it — the schematic continuing through a physical room rather
+ * than framing a photograph of one.
  */
 export function ThresholdStage() {
   return (
@@ -152,10 +152,25 @@ export function ThresholdStage() {
         height={1982}
         sizes="34vw"
         priority
+        style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 56%" }}
+      />
+    </span>
+  );
+}
+
+export function SoundstageRoom({ at }: { at: number }) {
+  return (
+    <div className="cw-prop cw-plate cw-plate--room" style={{ "--at": at } as CSSProperties}>
+      <Image
+        src="/studios/soundstage-threshold-tight.jpg"
+        alt=""
+        width={1728}
+        height={1982}
+        sizes="(max-width: 720px) 160vw, 90vw"
+        loading="lazy"
         style={{ width: "100%", height: "100%", objectFit: "cover" }}
       />
-      <span className="cw-plate--stage__struts" />
-    </span>
+    </div>
   );
 }
 

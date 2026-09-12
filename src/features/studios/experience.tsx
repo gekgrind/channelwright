@@ -10,7 +10,7 @@ import { AudienceFooter, AudienceFooterStatic } from "./audience-footer";
 import { refreshScenes } from "./scroll-engine";
 import { useSmoothScroll } from "./smooth-scroll";
 import { CAPABILITIES, DEPARTMENTS, STATUS_LABEL, type CapabilityStatus } from "./capabilities";
-import { ARTIFACT, CONTROL, FINALE, FOOTER, INTELLIGENCE, OPEN, PRODUCTION, REGISTER, RETURN, STRATEGY, WORLD, WRITERS } from "./copy";
+import { ARTIFACT, CONTROL, FINALE, INTELLIGENCE, OPEN, PRODUCTION, REGISTER, RETURN, STRATEGY, WORLD, WRITERS } from "./copy";
 import "./studios.css";
 
 
@@ -139,25 +139,6 @@ function CapabilityRegister() {
         </div>
       </div>
     </section>
-  );
-}
-
-function Footer() {
-  return (
-    <footer className="cw-footer">
-      <div className="cw-shell cw-footer__grid">
-        <div>
-          <p className="cw-mono cw-mono--signal">Channelwright Studios</p>
-          <p className="cw-heading" style={{ marginTop: 14 }}>{FOOTER.line}</p>
-        </div>
-        <div style={{ display: "grid", gap: 18, justifyItems: "flex-start" }}>
-          <Link className="cw-cta cw-cta--solid" href="/login">
-            {OPEN.primaryCta}
-          </Link>
-          <p className="cw-footer__note">{FOOTER.note}</p>
-        </div>
-      </div>
-    </footer>
   );
 }
 
@@ -425,21 +406,16 @@ export default function StudiosExperience() {
           <div className="cw-archive">
             <ArchiveHall />
             <CapabilityRegister />
-            {/* The last act. The register is the building's own account of
-                itself; the audience is who the account is for, and the footer
-                arrives out of the far side of it rather than after it. */}
+            {/* The last act, and the footer. The register is the building's
+                own account of itself; the audience is who the account is for,
+                and the site's last line resolves over that held frame rather
+                than in a block after it. */}
             <AudienceFooter />
-            <Footer />
           </div>
         )}
       </main>
 
-      {reduced ? (
-        <>
-          <AudienceFooterStatic />
-          <Footer />
-        </>
-      ) : null}
+      {reduced ? <AudienceFooterStatic /> : null}
       <span className="cw-preview-flag">Preview · /studios-preview</span>
     </div>
   );
