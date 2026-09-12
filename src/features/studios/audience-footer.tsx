@@ -215,10 +215,15 @@ function useAudienceCuts(rootRef: React.RefObject<HTMLDivElement | null>) {
 /**
  * The closing copy, over the held frame. Shared by both modes so the reduced-
  * motion page ends on exactly the same words and the same action.
+ *
+ * A `<footer>` with an explicit `contentinfo` role: the cinematic path mounts
+ * it inside `<main>`, where a bare `<footer>` would carry no landmark role,
+ * and the site's last action and note should stay reachable by landmark
+ * navigation exactly as the standalone footer they replace was.
  */
 function Close({ children }: { children?: ReactNode }) {
   return (
-    <div className="cw-aud__close">
+    <footer className="cw-aud__close" role="contentinfo" aria-label="Channelwright Studios">
       <div className="cw-shell cw-aud__close-grid">
         <div className="cw-aud__close-main">
           <p className="cw-mono cw-mono--signal">Channelwright Studios</p>
@@ -230,7 +235,7 @@ function Close({ children }: { children?: ReactNode }) {
         <p className="cw-aud__note">{FOOTER.note}</p>
       </div>
       {children}
-    </div>
+    </footer>
   );
 }
 

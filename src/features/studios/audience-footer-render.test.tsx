@@ -30,6 +30,9 @@ describe("AudienceFooterStatic", () => {
   it("closes on the site's own last line and its one action, over the frame", () => {
     const { container } = render(<AudienceFooterStatic />);
     expect(container.querySelector(".cw-aud__line")?.textContent).toBe(FOOTER.line);
+    // A landmark, not a div: the closing action stays reachable by landmark
+    // navigation as the standalone footer it replaces was.
+    expect(container.querySelector("footer.cw-aud__close")?.getAttribute("role")).toBe("contentinfo");
     const cta = container.querySelector(".cw-aud__close a");
     expect(cta?.textContent).toBe(OPEN.primaryCta);
     expect(cta?.getAttribute("href")).toBe("/login");
