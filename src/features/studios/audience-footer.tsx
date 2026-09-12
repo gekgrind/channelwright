@@ -177,7 +177,7 @@ function useAudienceCuts(rootRef: React.RefObject<HTMLDivElement | null>) {
         inFlight = false;
         return;
       }
-      animation = cover.animate(spec.frames as Keyframe[], { duration: spec.duration, fill: "none" });
+      animation = cover.animate(spec.frames.map((frame) => ({ ...frame })), { duration: spec.duration, fill: "none" });
       swapTimer = window.setTimeout(() => {
         swapTimer = 0;
         paint(wanted);

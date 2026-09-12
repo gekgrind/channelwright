@@ -21,6 +21,27 @@ Every claim below carries one of these. Nothing is asserted without one.
 
 ---
 
+## 0. Revision 4 — two mechanisms superseded by the final cinematic pass
+
+Two sections below no longer describe the implementation and are kept as
+history only:
+
+- **Beat 2 (§7).** "Photography strictly inside the doorway" is superseded.
+  The far state is still a small lit room seen through the aperture, but the
+  payoff is `SoundstageRoom` in `plates.tsx`: the same plate at room scale in
+  the world layer, screen-blended, masked with a soft irregular falloff, riding
+  `--cam` at the doorway's rate, resolving as the crossing commits and giving
+  way to Department 01 in the approach corridor. The doorway's frame lines and
+  its struts dissolve as it is crossed. A photograph that stays inside a
+  scaling rectangle reads as a photograph in a rectangle at every scale.
+- **The audience footer.** Person-sized masks, crossfades and blur-and-swap
+  are all superseded. Measured at 720p the plates drift everywhere (2→3 and
+  3→4 mean |Δ| 21–26/255, no column or row below ~10), so any partial alpha is
+  a permanent double exposure. The footer is now three full-frame cuts hidden
+  in projector-light dips, scroll-triggered and clock-timed (`BEATS`, `COVER`
+  in `audience-footer.tsx`), with the closing copy over the held frame and no
+  block after it.
+
 ## 0. What changed in revision 3, and why
 
 Revisions 1 and 2 were written before any asset had been seen composited. Local

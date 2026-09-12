@@ -2792,11 +2792,11 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   inset: 8px 8px 0;
   overflow: hidden;
   /* Present while the doorway is far, gone as the camera commits to going
-     through it: it is spent by two thirds of `--close`, just before
-     `.cw-plate--room` begins to resolve, so the rig is never on screen at two
-     scales at once. The short stretch between them is the doorway's own
-     light, which is what walking into a lit opening looks like. */
-  opacity: calc(var(--reveal, 0) * .82 * clamp(0, calc(1.9 - var(--close) * 2.9), 1));
+     through it. It is spent by two thirds of `--close`; `.cw-plate--room`
+     starts resolving just before that, at the doorway's own light, so there
+     is never a frame with an empty opening on screen — and the far state is
+     small and masked enough by then that the rig never reads twice. */
+  opacity: calc(var(--reveal, 0) * .82 * clamp(0, calc(2.17 - var(--close) * 3.33), 1));
   filter: saturate(.8) contrast(1.16) brightness(1.02);
   mix-blend-mode: screen;
   /* The plate's own edges dissolve into the jamb's darkness rather than
@@ -2809,7 +2809,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
    wall all fall away, so the aperture is not standing on screen as a lit
    rectangle around the room the visitor is now inside. */
 .cw-threshold[data-stage] .cw-threshold__frame {
-  opacity: clamp(0, calc(2.25 - var(--close) * 2.5), 1);
+  opacity: clamp(0, calc(2 - var(--close) * 3.33), 1);
 }
 .cw-threshold[data-stage] .cw-threshold__frame::after {
   opacity: calc((1 - var(--close) * .82) * .46);
@@ -2833,8 +2833,8 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
      completes just as the camera reaches the door. `--spent` is the reach on
      the far side: the room gives way to Department 01's own wall over the
      approach corridor, and never survives into the department itself. */
-  --emerge: clamp(0, calc((.012 - var(--d)) * 62), 1);
-  --spent: clamp(0, calc((var(--d) + .062) * 22), 1);
+  --emerge: clamp(0, calc((.0165 - var(--d)) * 45), 1);
+  --spent: clamp(0, calc((var(--d) + .05) * 30), 1);
   top: -28vh;
   height: 148vh;
   width: calc(148vh * 1728 / 1982);
@@ -2856,6 +2856,19 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   height: 100%;
   object-fit: cover;
   object-position: 50% 60%;
+}
+
+/* Portrait tablets: the desktop plate is sized from the viewport height, so
+   on a tall narrow frame it is wider than the screen and the rig runs off
+   the right edge. Sized down and pulled left so the rig stands centre-right
+   with the deck still under the visitor. */
+@media (min-width: 721px) and (max-width: 1024px) {
+  .cw-plate--room {
+    top: -16vh;
+    height: 122vh;
+    width: calc(122vh * 1728 / 1982);
+    transform: translate3d(calc(var(--d) * var(--rate) * 1vw - 4vw), 0, 0);
+  }
 }
 
 /* --- Beat 6 — Department 04, the gate hold (Pattern A) ------------------- */
@@ -2931,12 +2944,16 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   .cw-plate--crt { display: none; }
   /* The aperture is most of Beat 2 on a phone, so the room beyond it matters
      more here, not less. Held slightly stronger against a smaller opening. */
-  .cw-plate--stage { opacity: calc(var(--reveal, 0) * .7 * clamp(0, calc(1.9 - var(--close) * 2.9), 1)); }
+  .cw-plate--stage { opacity: calc(var(--reveal, 0) * .7 * clamp(0, calc(2.17 - var(--close) * 3.33), 1)); }
   /* The room on a phone: the rig itself, centred, rather than the desktop
      composition's off-centre spread — a 390px frame has no reading column to
      keep clear beside a room, and at the desktop offset it saw only the lens. */
   .cw-plate--room {
     --rate: 120;
+    /* The phone doorway's last stretch is longer and gentler (its `--close`
+       above), so the room starts resolving at the same point of *that* ramp
+       as it does on desktop — just as the frame lines are going. */
+    --emerge: clamp(0, calc((.024 - var(--d)) * 33), 1);
     top: -18vh;
     height: 128vh;
     width: calc(128vh * 1728 / 1982);
@@ -3160,11 +3177,13 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   text-wrap: balance;
 }
 .cw-aud__cta { margin-top: 8px; }
+/* Kept narrow and small so it sits in the dark seat-back corner rather than
+   across the out-of-focus head beside it. */
 .cw-aud__note {
   color: var(--lume-3);
-  font-size: .8rem;
+  font-size: .74rem;
   line-height: 1.55;
-  max-width: 34ch;
+  max-width: 27ch;
   text-align: right;
 }
 
