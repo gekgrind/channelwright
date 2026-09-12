@@ -47,15 +47,25 @@ import { FOOTER, OPEN } from "./copy";
  * decoder is dropped on a backgrounded tab, or an autoplay policy refuses a
  * muted inline video anyway. Two stills are mounted, and exactly one is lit:
  *
- *   - plate 1 before the video ends — the audience as the video opens, so the
- *     frame behind a not-yet-painted video already matches its first frame and
- *     there is nothing to flash;
- *   - plate 4 once it ends (or fails) — the audience as the video closes, so
- *     what the copy resolves over is the settled, fully-turned room either way.
+ *   - the *open* still before the video ends. This is the video own first
+ *     frame, extracted from it (`audience-turn-poster.jpg`), not one of the
+ *     footer plates: the plates are graded differently from the generation, so
+ *     plate 1 sits a measured 13.1/255 away from frame 0 with identical poses,
+ *     and using it would pop the exposure at the moment the video is revealed.
+ *     Extracted, that distance is 1.4/255 — JPEG noise.
+ *   - the *final* still once it ends (or fails) — the audience as the video
+ *     closes, so what the copy resolves over is the settled, fully-turned room
+ *     either way. Footer plate 4 measures 2.6/255 from the video last frame,
+ *     so the existing artwork already is that state and no second extract is
+ *     warranted.
  *
  * The video itself stays transparent until it actually has a frame to show
  * (`data-video="ready"`, written on `loadeddata`), which is what keeps a
  * browser that paints an unpainted video element black from doing it here.
+ *
+ * "Fails" has to include the case where no source is usable at all — a 404, or
+ * a Chromium built without H.264. That one does not surface on the video
+ * element; see `useAudienceTurn`.
  *
  * ## Why the scroll engine rather than an observer
  *
@@ -69,14 +79,12 @@ import { FOOTER, OPEN } from "./copy";
  */
 
 /**
- * The turn, in source order: WebM first for the browsers that take it, MP4 as
- * the universal fallback. If only the MP4 ships, drop the first entry rather
- * than leaving a source that resolves to a 404 on every load.
+ * The turn. Only the H.264 MP4 ships, so that is the only source declared: an
+ * entry for a WebM that does not exist would resolve to a 404 on every load,
+ * for every visitor, forever. If a WebM is added later, put it *before* the
+ * MP4 so the browsers that take it never fetch both.
  */
-export const AUDIENCE_VIDEO = [
-  { src: "/studios/audience-turn.webm", type: "video/webm" },
-  { src: "/studios/audience-turn.mp4", type: "video/mp4" },
-] as const;
+export const AUDIENCE_VIDEO = [{ src: "/studios/audience-turn.mp4", type: "video/mp4" }] as const;
 
 /**
  * Scene progress at which the turn starts, and the progress it must fall back
@@ -138,7 +146,25 @@ function useAudienceTurn(rootRef: React.RefObject<HTMLDivElement | null>) {
 
     video.addEventListener("loadeddata", ready);
     video.addEventListener("ended", settle);
+    // Fires for a decode failure once a source has been chosen.
     video.addEventListener("error", settle);
+    // ...but NOT when no source can be used at all. With `<source>` children a
+    // browser that rejects every candidate — a 404, or a build without the
+    // codec — fires `error` on the last <source> element and leaves the video
+    // element itself silent, with networkState NO_SOURCE. Without this the
+    // footer would hold the *opening* still, the room still facing the screen,
+    // under closing copy that reads as though it had turned. Sources are tried
+    // in order, so an error on the last one means every one has failed;
+    // an earlier source failing while a later one plays never reaches here.
+    const sources = root.querySelectorAll("source");
+    const last = sources[sources.length - 1];
+    last?.addEventListener("error", settle);
+    // The listener alone is not enough. The video is server-rendered, so the
+    // browser runs resource selection while parsing the HTML — it can have
+    // failed and fired long before React hydrates and this effect attaches.
+    // NO_SOURCE is only reached once selection has concluded with nothing
+    // usable, so reading it here catches exactly the case the listener missed.
+    if (video.networkState === video.NETWORK_NO_SOURCE) settle();
     // A cached asset can be ready before this effect runs.
     if (video.readyState >= 2) ready();
 
@@ -163,6 +189,7 @@ function useAudienceTurn(rootRef: React.RefObject<HTMLDivElement | null>) {
       video.removeEventListener("loadeddata", ready);
       video.removeEventListener("ended", settle);
       video.removeEventListener("error", settle);
+      last?.removeEventListener("error", settle);
       video.pause();
     };
   }, [rootRef]);
@@ -178,8 +205,8 @@ function useAudienceTurn(rootRef: React.RefObject<HTMLDivElement | null>) {
 function Frame({ video }: { video?: boolean }) {
   return (
     <div className="cw-aud__frame" aria-hidden="true">
-      {video ? <div className="cw-aud__still" data-plate="1" /> : null}
-      <div className="cw-aud__still" data-plate="4" />
+      {video ? <div className="cw-aud__still" data-still="open" /> : null}
+      <div className="cw-aud__still" data-still="final" />
       {video ? (
         <video
           className="cw-aud__video"

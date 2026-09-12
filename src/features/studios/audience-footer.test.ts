@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AUDIENCE_VIDEO, CLOSE, PLAY_AT, RESET_AT } from "./audience-footer";
 
@@ -37,7 +39,10 @@ describe("audience turn sources", () => {
   });
 
   it("offers WebM ahead of MP4, so the browsers that take it never fetch both", () => {
-    const types = AUDIENCE_VIDEO.map((source) => source.type);
+    // Widened on purpose: only the MP4 ships today, so `as const` narrows the
+    // literal type to it alone. The ordering rule still has to hold the day a
+    // WebM is added, and this is where it is written down.
+    const types: readonly string[] = AUDIENCE_VIDEO.map((source) => source.type);
     if (types.includes("video/webm")) {
       expect(types.indexOf("video/webm")).toBeLessThan(types.indexOf("video/mp4"));
     }
@@ -48,5 +53,19 @@ describe("audience turn sources", () => {
       expect(source.type).toMatch(/^video\//);
       expect(source.src.startsWith("/")).toBe(true);
     }
+  });
+
+  it("ships every source it declares", () => {
+    // A declared source that is not in the repository is a 404 on every load,
+    // for every visitor — the reason the WebM entry was dropped once only the
+    // MP4 shipped. Checked against the filesystem rather than a list, so
+    // adding a source without the asset fails here rather than in production.
+    for (const source of AUDIENCE_VIDEO) {
+      expect(existsSync(join(process.cwd(), "public", source.src))).toBe(true);
+    }
+  });
+
+  it("ships the poster still the video is revealed over", () => {
+    expect(existsSync(join(process.cwd(), "public/studios/audience-turn-poster.jpg"))).toBe(true);
   });
 });

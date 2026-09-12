@@ -29,11 +29,11 @@ describe("AudienceFooter", () => {
     expect(video.getAttribute("preload")).toBe("auto");
   });
 
-  it("offers the turn as sources in order rather than a single hard-coded src", () => {
+  it("declares only sources that exist, so no load spends a request on a 404", () => {
     const { container } = render(<AudienceFooter />);
     const sources = [...container.querySelectorAll("video source")];
-    expect(sources.map((source) => source.getAttribute("type"))).toEqual(["video/webm", "video/mp4"]);
-    expect(sources[sources.length - 1].getAttribute("src")).toBe("/studios/audience-turn.mp4");
+    expect(sources.map((source) => source.getAttribute("src"))).toEqual(["/studios/audience-turn.mp4"]);
+    expect(sources.map((source) => source.getAttribute("type"))).toEqual(["video/mp4"]);
   });
 
   it("stands two stills behind the video: the state it opens on and the one it ends on", () => {
@@ -41,19 +41,34 @@ describe("AudienceFooter", () => {
     const stills = [...container.querySelectorAll(".cw-aud__still")];
     // Exactly two — the poster and the held final state. Not the old four-plate
     // compositor left mounted underneath.
-    expect(stills.map((still) => still.getAttribute("data-plate"))).toEqual(["1", "4"]);
+    expect(stills.map((still) => still.getAttribute("data-still"))).toEqual(["open", "final"]);
   });
 
   it("leaves no projector-cut machinery behind", () => {
     const { container } = render(<AudienceFooter />);
     expect(container.querySelector(".cw-aud__cover")).toBeNull();
     expect(container.querySelector(".cw-aud__plate")).toBeNull();
+    expect(container.querySelector("[data-plate]")).toBeNull();
     expect(container.querySelector(".cw-aud")?.hasAttribute("data-beat")).toBe(false);
   });
 
   it("starts un-ended, so the still behind the video is the state it opens on", () => {
     const { container } = render(<AudienceFooter />);
     expect(container.querySelector(".cw-aud")?.getAttribute("data-state")).toBeNull();
+  });
+
+  it("settles to the final still when no source can be used at all", () => {
+    // Regression. A browser that cannot use any source — a 404, or a Chromium
+    // built without H.264 — fires `error` on the last <source>, NOT on the
+    // video element, and leaves video.error null. A listener on the video
+    // alone therefore never hears it, and the footer would hold the *opening*
+    // still: the room facing the screen, under closing copy that reads as
+    // though it had turned. Verified against a real codec-less Chromium.
+    const { container } = render(<AudienceFooter />);
+    const sources = container.querySelectorAll("video source");
+    const last = sources[sources.length - 1];
+    last.dispatchEvent(new Event("error"));
+    expect(container.querySelector(".cw-aud")?.getAttribute("data-state")).toBe("ended");
   });
 });
 
@@ -70,7 +85,7 @@ describe("AudienceFooterStatic", () => {
     const { container } = render(<AudienceFooterStatic />);
     const stills = container.querySelectorAll(".cw-aud__still");
     expect(stills).toHaveLength(1);
-    expect(stills[0].getAttribute("data-plate")).toBe("4");
+    expect(stills[0].getAttribute("data-still")).toBe("final");
     expect(container.querySelector(".cw-aud")?.getAttribute("data-state")).toBe("ended");
   });
 

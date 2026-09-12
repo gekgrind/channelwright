@@ -3032,8 +3032,8 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
    ----------------------------------------------------------------------------
    One continuous video of a cinema audience turning to look back, filling the
    audience composition, with two stills underneath it as load and hold
-   insurance: plate 1 (the video's opening state) before it ends, plate 4 (its
-   closing state) after. `data-state="ended"` on `.cw-aud` selects between
+   insurance: the video's own extracted frame 0 before it ends, footer plate 4
+   (measured 2.6/255 from its last frame) after. `data-state="ended"` on `.cw-aud` selects between
    them; `data-video="ready"` reveals the video only once it has a frame, so
    nothing here is ever a black or empty rectangle.
 
@@ -3096,16 +3096,23 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   background-size: 100% 100%;
   opacity: 0;
 }
-.cw-aud__still[data-plate="1"],
-.cw-aud[data-state="ended"] .cw-aud__still[data-plate="4"] { opacity: 1; }
-.cw-aud[data-state="ended"] .cw-aud__still[data-plate="1"] { opacity: 0; }
+.cw-aud__still[data-still="open"],
+.cw-aud[data-state="ended"] .cw-aud__still[data-still="final"] { opacity: 1; }
+.cw-aud[data-state="ended"] .cw-aud__still[data-still="open"] { opacity: 0; }
 
-/* CSS owns the still URLs so the delivered resolution can change with the
-   viewport without the component knowing. Sources are WebP derivatives built
-   by `scripts/build-footer-assets.py`; the 2560x1440 originals stay in the
-   repository untouched as production truth. */
-[data-plate="1"] { background-image: url("/footer/1-1920.webp"); }
-[data-plate="4"] { background-image: url("/footer/4-1920.webp"); }
+/* The open still is the video's own frame 0, extracted from the asset, because
+   the footer plates are graded differently from the generation — plate 1 holds
+   the same poses but measures 13.1/255 from frame 0, which would pop the
+   exposure at the moment the video is revealed. One size: the source is a 720p
+   video, so a larger still would only invent detail the video never has.
+
+   The final still stays a footer plate: plate 4 measures 2.6/255 from the
+   video's last frame, so the existing artwork already is that state. CSS owns
+   its URL so the delivered resolution can still change with the viewport.
+   Sources are WebP derivatives built by `scripts/build-footer-assets.py`; the
+   2560x1440 originals stay in the repository untouched as production truth. */
+[data-still="open"] { background-image: url("/studios/audience-turn-poster.jpg"); }
+[data-still="final"] { background-image: url("/footer/4-1920.webp"); }
 
 /* The turn itself. `cover` rather than `fill` so a regenerated asset at a
    slightly different aspect crops instead of stretching; inside this 16:9
@@ -3265,8 +3272,7 @@ html.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
   .cw-aud__line { font-size: 1.55rem; max-width: 14ch; }
   .cw-aud__note { text-align: left; max-width: 40ch; font-size: .76rem; }
 
-  [data-plate="1"] { background-image: url("/footer/1-1100.webp"); }
-  [data-plate="4"] { background-image: url("/footer/4-1100.webp"); }
+  [data-still="final"] { background-image: url("/footer/4-1100.webp"); }
 
   .cw-aud--static { height: auto; min-height: 0; padding-bottom: 0; }
   .cw-aud--static .cw-aud__frame {
