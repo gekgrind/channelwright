@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Check, Clock3, LoaderCircle, RefreshCcw, ShieldCheck, Sparkles, XCircle } from "lucide-react";
+import type { FormEvent } from "react";
+import { Clock3, LoaderCircle, RefreshCcw, ShieldCheck, Sparkles } from "lucide-react";
 import {
   channelVideoScriptResultSchema,
   videoScriptQAResultSchema,
@@ -9,22 +9,18 @@ import {
   type VideoScriptQAResult,
 } from "@/domain/production-workflows";
 import type { ViewerValueGate } from "@/domain/viewer-value";
-import type { WorkflowList } from "./channel-research-workspace";
+import type { WorkflowList } from "./workflow-api";
+import { runVersionOf } from "./workflow-api";
+import { useWorkflowWorkspace } from "./use-workflow-workspace";
+import { describeVideoArtifact, parseObjectPayload, UpstreamCard, useApprovedUpstream } from "./upstream-selection";
+import { DecisionBar, RunChips, StageList, WorkspaceFeedback } from "./workflow-controls";
 
 type WorkflowDetail = {
   workflow: { id: string; status: string; created_at: string; current_run_id: string };
-  runs: Array<{ id: string; status: string; input_payload: Record<string, unknown>; context_payload: Record<string, unknown>; output_payload: unknown; error_code: string | null; artifact_hash: string | null; provenance_hash: string | null }>;
+  runs: Array<{ id: string; status: string; input_payload: Record<string, unknown>; context_payload: Record<string, unknown>; output_payload: unknown; error_code: string | null; artifact_hash: string | null; provenance_hash: string | null; created_at?: string; completed_at?: string | null }>;
   steps: Array<{ id: string; workflow_run_id: string; step_key: string; status: string; output_payload: unknown; attempt_count: number; max_attempts: number; error_code: string | null }>;
   approvals: Array<{ id: string; workflow_run_id: string; status: string; decision_note: string | null; requested_at: string; decided_at: string | null }>;
 };
-
-function message(payload: unknown, fallback: string) {
-  if (!payload || typeof payload !== "object") return fallback;
-  const error = (payload as { error?: unknown }).error;
-  if (typeof error === "string") return error;
-  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") return error.message;
-  return fallback;
-}
 
 const gateTone = (gate: ViewerValueGate) => gate === "PASS" ? "done" : gate === "REVISE" ? "warning" : "failed";
 
@@ -42,109 +38,30 @@ const formatDuration = (seconds: number) => {
   return minutes > 0 ? `${minutes}m ${remainder}s` : `${remainder}s`;
 };
 
-/** An approved video-brief workflow eligible to script. */
-type EligibleBrief = { workflowId: string; runId: string };
-
 export function VideoScriptWorkspace({ initial }: { initial?: WorkflowList }) {
-  const [engine, setEngine] = useState(initial);
-  const [detail, setDetail] = useState<WorkflowDetail | null>(null);
-  const [brief, setBrief] = useState<EligibleBrief | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [revisionNote, setRevisionNote] = useState("");
-
-  const scriptWorkflows = useMemo(() => engine?.workflows.filter((item) => item.workflow_type === "CHANNEL_VIDEO_SCRIPT") ?? [], [engine]);
-  const approvedBrief = useMemo(() => engine?.workflows.find((item) => item.workflow_type === "CHANNEL_VIDEO_BRIEF" && item.status === "COMPLETED"), [engine]);
-  const activeId = detail?.workflow.id ?? scriptWorkflows[0]?.id;
-
-  const load = async (workflowId?: string) => {
-    const listResponse = await fetch("/api/workflows", { cache: "no-store" });
-    const listPayload = await listResponse.json();
-    if (!listResponse.ok) throw new Error(message(listPayload, "Could not refresh video script workflows."));
-    setEngine(listPayload.workflowEngine);
-    const selected = workflowId ?? detail?.workflow.id ?? listPayload.workflowEngine.workflows.find((item: { workflow_type: string }) => item.workflow_type === "CHANNEL_VIDEO_SCRIPT")?.id;
-    if (!selected) return;
-    const response = await fetch(`/api/workflows/${selected}`, { cache: "no-store" });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(message(payload, "Could not load the video script workflow."));
-    setDetail(payload);
-  };
-
-  /** Confirms the approved brief has a completed run to script. */
-  const loadBrief = async (workflowId: string) => {
-    const response = await fetch(`/api/workflows/${workflowId}`, { cache: "no-store" });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(message(payload, "Could not load the approved video brief."));
-    const run = payload.runs?.find((item: { status: string; output_payload: unknown }) => item.status === "COMPLETED" && item.output_payload);
-    if (run) setBrief({ workflowId, runId: run.id });
-  };
-
-  useEffect(() => {
-    let disposed = false;
-    const refresh = () => load()
-      .catch((cause: unknown) => { if (!disposed) setError(cause instanceof Error ? cause.message : "Could not load video script workflows."); })
-      .finally(() => { if (!disposed) setLoading(false); });
-    void refresh();
-    return () => { disposed = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const briefId = approvedBrief?.id;
-    if (!briefId) return;
-    let disposed = false;
-    const refresh = () => loadBrief(briefId).catch(() => { if (!disposed) setBrief(null); });
-    void refresh();
-    return () => { disposed = true; };
-  }, [approvedBrief?.id]);
+  const workspace = useWorkflowWorkspace<WorkflowDetail>({ initial, workflowType: "CHANNEL_VIDEO_SCRIPT", label: "video script" });
+  const { detail, currentRun, pendingApproval, busy } = workspace;
+  const selection = useApprovedUpstream({
+    engine: workspace.engine,
+    workflowType: "CHANNEL_VIDEO_BRIEF",
+    label: "video brief",
+    parse: parseObjectPayload,
+    describe: describeVideoArtifact("Approved video brief"),
+  });
+  const brief = selection.upstream;
 
   const start = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!brief) return;
-    setBusy(true); setError(null); setNotice(null);
-    try {
-      // Only identifiers travel; the server resolves the authoritative brief.
-      const input = { videoBriefWorkflowId: brief.workflowId, videoBriefRunId: brief.runId };
-      const response = await fetch("/api/workflows", {
-        method: "POST",
-        headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
-        body: JSON.stringify({ operation: "START_WORKFLOW", workflowType: "CHANNEL_VIDEO_SCRIPT", definitionVersion: 1, input }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(message(payload, "Could not start the video script."));
-      await load(payload.operationResult.workflowId);
-      setNotice("Video script queued from the exact approved brief. The server persisted its immutable upstream reference.");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not start the video script."); }
-    finally { setBusy(false); }
+    // Only identifiers travel; the server resolves the authoritative brief.
+    await workspace.start({ videoBriefWorkflowId: brief.workflowId, videoBriefRunId: brief.runId }, "Video script queued from the exact approved brief. The server persisted its immutable upstream reference.");
   };
 
-  const decide = async (decision: "APPROVE" | "REJECT" | "REQUEST_REVISION") => {
-    const approval = detail?.approvals.find((item) => item.status === "PENDING");
-    if (!detail || !approval) return;
-    const note = decision === "REQUEST_REVISION" ? revisionNote.trim() : undefined;
-    if (decision === "REQUEST_REVISION" && !note) return;
-    setBusy(true); setError(null);
-    try {
-      const response = await fetch(`/api/workflows/${detail.workflow.id}/approvals/${approval.id}`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decision, note }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(message(payload, "Could not record the review decision."));
-      await load(detail.workflow.id);
-      if (decision === "REQUEST_REVISION") setRevisionNote("");
-      setNotice(`${decision.replaceAll("_", " ")} recorded. The original script and its lineage are preserved.`);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not record the review decision."); }
-    finally { setBusy(false); }
-  };
-
-  const currentRun = detail?.runs.find((run) => run.id === detail.workflow.current_run_id) ?? detail?.runs[0];
   const script = safeScript(currentRun?.output_payload);
   // Scope QA to the current run: after a revision the step collection also holds
   // the predecessor run's final QA, which must not appear beside the new script.
   const finalQa = safeQa(detail?.steps.find((step) => step.workflow_run_id === currentRun?.id && step.step_key === "final-video-script-qa")?.output_payload);
-  const pendingApproval = detail?.approvals.find((item) => item.status === "PENDING");
+  const version = detail && currentRun ? runVersionOf(detail, currentRun.id) : undefined;
 
   return (
     <section className="workspace-section" aria-label="Video script">
@@ -153,37 +70,28 @@ export function VideoScriptWorkspace({ initial }: { initial?: WorkflowList }) {
           <h2>Video script</h2>
           <p>Turn one approved video brief into a structured, timed, evidence-disciplined script. Titles, thumbnails, media generation, and publishing remain later stages.</p>
         </div>
-        <button type="button" className="button" onClick={() => load().catch(() => undefined)} disabled={busy}>
+        <button type="button" className="button" onClick={() => void workspace.refresh()} disabled={busy}>
           <RefreshCcw size={15} /> Refresh
         </button>
       </header>
 
-      {loading && <p className="muted" role="status"><LoaderCircle size={14} className="spin" /> Loading video script workflows…</p>}
-      {error && <div className="error-banner" role="alert">{error}</div>}
-      {notice && <div className="notice-banner" role="status">{notice}</div>}
+      <WorkspaceFeedback label="video script" loading={workspace.loading} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
 
-      {!approvedBrief && !loading && (
+      {selection.eligible.length === 0 && !workspace.loading && (
         <p className="muted">Approve a video brief first. A video script can only be written from an approved brief.</p>
       )}
 
-      {approvedBrief && brief && (
+      {selection.eligible.length > 0 && (
         <form className="stack-form" onSubmit={start}>
+          <UpstreamCard heading="Write a script from" kindLabel="Brief" selection={selection} disabled={busy} />
           <p className="muted">The script inherits the approved brief promise, content architecture, and evidence plan. The server re-verifies the approved brief before any script is written.</p>
-          <button className="button button-accent" type="submit" disabled={busy}>
+          <button className="button button-accent" type="submit" disabled={busy || !brief}>
             {busy ? <LoaderCircle size={15} className="spin" /> : <Sparkles size={15} />} Start video script
           </button>
         </form>
       )}
 
-      {scriptWorkflows.length > 0 && (
-        <nav className="chip-row" aria-label="Video script runs">
-          {scriptWorkflows.map((item) => (
-            <button key={item.id} type="button" className={`chip ${item.id === activeId ? "chip-active" : ""}`} onClick={() => load(item.id).catch(() => undefined)}>
-              {new Date(item.created_at).toLocaleDateString()} · {item.status}
-            </button>
-          ))}
-        </nav>
-      )}
+      <RunChips label="Video script runs" workflows={workspace.workflows} activeId={workspace.activeId} disabled={busy} onSelect={workspace.select} />
 
       {detail && (
         <div className="detail-grid">
@@ -199,36 +107,18 @@ export function VideoScriptWorkspace({ initial }: { initial?: WorkflowList }) {
       {script && <ScriptDocument script={script} qa={finalQa} />}
 
       {script && pendingApproval && (
-        <div className="approval-panel">
-          <h3>Review</h3>
-          <p className="muted">Approving accepts the script. It does not mean the video is ready to package, render, or publish.</p>
-          <label>
-            Revision note
-            <textarea value={revisionNote} onChange={(event) => setRevisionNote(event.target.value)} maxLength={2000}
-              placeholder="What should the revised script change?" disabled={busy} />
-          </label>
-          <div className="button-row">
-            <button type="button" className="button button-accent" onClick={() => decide("APPROVE")} disabled={busy}><Check size={15} /> Approve</button>
-            <button type="button" className="button" onClick={() => decide("REQUEST_REVISION")} disabled={busy || !revisionNote.trim()}><RefreshCcw size={15} /> Request revision</button>
-            <button type="button" className="button button-danger" onClick={() => decide("REJECT")} disabled={busy}><XCircle size={15} /> Reject</button>
-          </div>
-        </div>
+        <DecisionBar
+          busy={busy}
+          title="Review this script"
+          explanation="Approving accepts the script. It does not mean the video is ready to package, render, or publish."
+          versionLabel={version ? `Script v${version}` : undefined}
+          approveLabel="Approve exact version"
+          revisionPlaceholder="What should the revised script change?"
+          artifactLabel="script"
+          onDecide={(decision, note) => workspace.decide(decision, note, `${decision.replaceAll("_", " ")} recorded. The original script and its lineage are preserved.`)}
+        />
       )}
     </section>
-  );
-}
-
-function StageList({ steps }: { steps: Array<{ id: string; step_key: string; status: string; attempt_count: number; max_attempts: number; error_code: string | null }> }) {
-  return (
-    <ol className="stage-list" aria-label="Workflow stages">
-      {steps.map((step) => (
-        <li key={step.id} className={`stage stage-${step.status.toLowerCase()}`}>
-          <span>{step.step_key.replaceAll("-", " ")}</span>
-          <span className="muted">{step.status}{step.attempt_count > 1 ? ` · attempt ${step.attempt_count}/${step.max_attempts}` : ""}</span>
-          {step.error_code && <code>{step.error_code}</code>}
-        </li>
-      ))}
-    </ol>
   );
 }
 

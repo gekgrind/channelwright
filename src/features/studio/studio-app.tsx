@@ -1,15 +1,16 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle, ArrowRight, Check, ChevronRight, CircleDot, Clock3, FileCheck2, FlaskConical,
-  GitBranch, GitCompare, LayoutDashboard, Link2, LoaderCircle, LogOut, Plus, RefreshCcw, Search, ShieldCheck, Sparkles, Video, XCircle,
+  Activity, AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronRight, CircleDot, Clock3, FileCheck2, FileText, FlaskConical,
+  GitBranch, GitCompare, LayoutDashboard, Layers, LineChart, Link2, ListOrdered, LoaderCircle, LogOut, Package, Plus, RefreshCcw, ScrollText, Search, Send, ShieldCheck, Sparkles, Video, XCircle,
+  type LucideIcon,
 } from "lucide-react";
 import type { WorkflowAction } from "@/domain/actions";
 import type { BuildProject, Channel, VideoProject } from "@/domain/entities";
 import type { ReferenceReportSection } from "@/domain/studio-contracts";
-import type { MediaProductionSnapshot } from "@/domain/media-production";
+import { emptyMediaProduction, type MediaProductionSnapshot } from "@/domain/media-production";
 import { ChannelResearchWorkspace, type WorkflowList } from "./channel-research-workspace";
 import { ChannelStrategyWorkspace } from "./channel-strategy-workspace";
 import { ContentIntelligenceWorkspace } from "./content-intelligence-workspace";
@@ -29,6 +30,62 @@ const scoreLabels: Record<string, string> = {
 };
 
 const key = () => crypto.randomUUID();
+// The fixture snapshot omits media records; without this the video view cannot render at all.
+const FIXTURE_MEDIA_FALLBACK = emptyMediaProduction();
+
+type NavItem = { id: string; label: string; icon: LucideIcon };
+
+/**
+ * The production workflow stages that exist today, in business-loop order. Each
+ * one starts only from an approved upstream artifact; there is no production
+ * channel entity yet, so navigation names stages rather than channels.
+ */
+const PRODUCTION_STAGES: Array<NavItem & { loop: string }> = [
+  { id: "stage-research", label: "Research", loop: "Opportunity and validation", icon: Search },
+  { id: "stage-strategy", label: "Strategy", loop: "Strategy", icon: GitBranch },
+  { id: "stage-content", label: "Content plan", loop: "Next decision", icon: ListOrdered },
+  { id: "stage-brief", label: "Brief", loop: "Production", icon: FileText },
+  { id: "stage-script", label: "Script", loop: "Production", icon: ScrollText },
+  { id: "stage-packaging", label: "Packaging", loop: "Production", icon: Package },
+  { id: "stage-release", label: "Release", loop: "Distribution intent", icon: Send },
+  { id: "stage-performance", label: "Performance", loop: "Measurement and learning", icon: LineChart },
+];
+
+/**
+ * Marks the current section with aria-current: from the URL hash, and — for a
+ * single-column page — from whichever section is scrolled into view.
+ */
+function useActiveSection(ids: string[], scrollSpy: boolean) {
+  const [active, setActive] = useState<string | undefined>(undefined);
+  const signature = ids.join("|");
+  useEffect(() => {
+    const sectionIds = signature ? signature.split("|") : [];
+    const fromHash = () => { const hash = window.location.hash.slice(1); if (sectionIds.includes(hash)) setActive(hash); };
+    fromHash();
+    window.addEventListener("hashchange", fromHash);
+    let observer: IntersectionObserver | undefined;
+    if (scrollSpy && typeof IntersectionObserver !== "undefined") {
+      observer = new IntersectionObserver((entries) => {
+        const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (visible) setActive(visible.target.id);
+      }, { rootMargin: "-15% 0px -65% 0px" });
+      for (const id of sectionIds) { const element = document.getElementById(id); if (element) observer.observe(element); }
+    }
+    return () => { window.removeEventListener("hashchange", fromHash); observer?.disconnect(); };
+  }, [signature, scrollSpy]);
+  return active;
+}
+
+function StudioNav({ label, items, note, scrollSpy = false }: { label: string; items: NavItem[]; note?: string; scrollSpy?: boolean }) {
+  const active = useActiveSection(items.map((item) => item.id), scrollSpy);
+  if (items.length === 0) return null;
+  return <nav aria-label={label}>{items.map(({ id, label: text, icon: Icon }) => <a key={id} href={`#${id}`} aria-current={active === id ? "location" : undefined} className={active === id ? "active" : undefined}><Icon size={17} aria-hidden="true" /> {text}</a>)}{note && <p className="nav-note">{note}</p>}</nav>;
+}
+
+function ProductionStage({ index, children }: { index: number; children: ReactNode }) {
+  const stage = PRODUCTION_STAGES[index];
+  return <div id={stage.id} className="production-stage"><p className="stage-marker"><b>{String(index + 1).padStart(2, "0")}</b> {stage.label} · {stage.loop}</p>{children}</div>;
+}
 
 export default function StudioApp({ user }: { user: { email: string; mode: "mock" | "supabase" } }) {
   const [snapshot, setSnapshot] = useState<ApiSnapshot | null>(null);
@@ -61,24 +118,48 @@ export default function StudioApp({ user }: { user: { email: string; mode: "mock
   };
 
   const activeChannel = snapshot?.channels.at(-1);
-  const activeVideo = activeChannel ? snapshot?.videos.filter((video) => video.channelId === activeChannel.id).at(-1) : undefined;
-  const activeBuild = activeChannel ? snapshot?.buildProjects.filter((project) => project.channelId === activeChannel.id).at(-1) : undefined;
+  const channelVideos = activeChannel ? snapshot?.videos.filter((video) => video.channelId === activeChannel.id) ?? [] : [];
+  const channelBuilds = activeChannel ? snapshot?.buildProjects.filter((project) => project.channelId === activeChannel.id) ?? [] : [];
+  const activeVideo = channelVideos.at(-1);
+  const activeBuild = channelBuilds.at(-1);
+  // Production has no channel entity yet: it shows the workflow stages that exist.
+  const production = user.mode === "supabase" && !activeChannel;
+  const showingChannel = Boolean(snapshot && !production && activeChannel && !showNew);
+  const channelReady = activeChannel?.state === "READY_FOR_VIDEO_PRODUCTION" && activeChannel.monetizationPlans.at(-1)?.status !== "REVIEW_REQUIRED";
+  const fixtureNav: NavItem[] = showingChannel ? [
+    { id: "workspace", label: "Channel workspace", icon: LayoutDashboard },
+    ...(channelReady ? [{ id: "channel-work", label: "Videos and builds", icon: Layers }, { id: "business-strategy", label: "Strategy and offers", icon: Sparkles }] : []),
+    { id: "runs", label: "Activity ledger", icon: Activity },
+  ] : [];
 
   return (
     <div className="studio-shell">
       <aside className="studio-sidebar">
         <Link className="wordmark" href="/"><span>CW</span> CHANNELWRIGHT</Link>
-        <nav aria-label="Studio"><a className="active" href="#workspace"><LayoutDashboard size={17} /> Workspace</a><a href="#channels"><GitBranch size={17} /> Channels <b>{snapshot?.channels.length ?? 0}</b></a><a href="#videos"><Video size={17} /> Videos <b>{snapshot?.videos.length ?? 0}</b></a><a href="#offers"><CircleDot size={17} /> Offers <b>{snapshot?.channels.reduce((sum, channel) => sum + channel.offerSelections.length, 0) ?? 0}</b></a><a href="#products"><ShieldCheck size={17} /> Products <b>{snapshot?.products.length ?? 0}</b></a><a href="#funnels"><Link2 size={17} /> Funnels <b>{snapshot?.buildProjects.filter((item) => item.projectType === "FREE_RESOURCE").length ?? 0}</b></a><a href="#monetization"><Sparkles size={17} /> Monetization <b>{snapshot?.channels.reduce((sum, channel) => sum + channel.monetizationPlans.length, 0) ?? 0}</b></a><a href="#runs"><CircleDot size={17} /> Agent runs <b>{snapshot?.agentRuns.length ?? 0}</b></a></nav>
+        {production
+          ? <StudioNav label="Production stages" items={PRODUCTION_STAGES} note="Stages run in order. Each one starts only from an approved upstream artifact." scrollSpy={Boolean(snapshot)} />
+          : <StudioNav label="Studio" items={fixtureNav} />}
         <div className="sidebar-bottom"><div className="mode-chip"><FlaskConical size={14} /> {user.mode === "mock" ? "FIXTURE MODE" : "SUPABASE AUTH"}</div><div className="user-row"><span>{user.email.slice(0, 1).toUpperCase()}</span><div><strong>{user.email}</strong><small>Studio operator</small></div></div><form action="/api/auth/logout" method="post"><button className="sidebar-logout"><LogOut size={15} /> Sign out</button></form></div>
       </aside>
 
       <main id="main" className="studio-main">
-        <header className="studio-header"><div><p className="eyebrow">Production control</p><h1>Channel workspace</h1></div><button className="button" onClick={() => setShowNew(true)}><Plus size={16} /> New channel</button></header>
-        {error && <div className="error-banner" role="alert"><AlertTriangle size={17} /> {error}<button onClick={() => setError(null)}>×</button></div>}
-        {notice && <div className="success-banner" role="status"><Check size={17} /> {notice}<button onClick={() => setNotice(null)}>×</button></div>}
+        <header className="studio-header"><div><p className="eyebrow">Production control</p><h1>{production ? "Production workflows" : "Channel workspace"}</h1></div>{!production && snapshot && (showNew && activeChannel
+          ? <button className="button" onClick={() => setShowNew(false)}><ArrowLeft size={16} /> Back to {activeChannel.preferences.name}</button>
+          : activeChannel && <button className="button" onClick={() => setShowNew(true)}><Plus size={16} /> New channel</button>)}</header>
+        {error && <div className="error-banner" role="alert"><AlertTriangle size={17} /> {error}<button onClick={() => setError(null)} aria-label="Dismiss error">×</button></div>}
+        {notice && <div className="success-banner" role="status"><Check size={17} /> {notice}<button onClick={() => setNotice(null)} aria-label="Dismiss notice">×</button></div>}
         {busy && <div className="working-bar" role="status"><LoaderCircle className="spin" size={15} /> Validating output and advancing workflow…</div>}
 
-        {!snapshot ? <LoadingState /> : user.mode === "supabase" && !activeChannel ? <><ChannelResearchWorkspace initial={snapshot.workflowEngine} media={snapshot.mediaProduction} /><ChannelStrategyWorkspace initial={snapshot.workflowEngine} /><ContentIntelligenceWorkspace initial={snapshot.workflowEngine} /><VideoBriefWorkspace initial={snapshot.workflowEngine} /><VideoScriptWorkspace initial={snapshot.workflowEngine} /><VideoPackagingWorkspace initial={snapshot.workflowEngine} /><VideoReleaseWorkspace initial={snapshot.workflowEngine} /><VideoPerformanceWorkspace initial={snapshot.workflowEngine} /></> : showNew || !activeChannel ? <NewChannelForm busy={busy} onSubmit={act} /> : (
+        {!snapshot ? <LoadingState /> : production ? <div className="production-stages">
+          <ProductionStage index={0}><ChannelResearchWorkspace initial={snapshot.workflowEngine} media={snapshot.mediaProduction} /></ProductionStage>
+          <ProductionStage index={1}><ChannelStrategyWorkspace initial={snapshot.workflowEngine} /></ProductionStage>
+          <ProductionStage index={2}><ContentIntelligenceWorkspace initial={snapshot.workflowEngine} /></ProductionStage>
+          <ProductionStage index={3}><VideoBriefWorkspace initial={snapshot.workflowEngine} /></ProductionStage>
+          <ProductionStage index={4}><VideoScriptWorkspace initial={snapshot.workflowEngine} /></ProductionStage>
+          <ProductionStage index={5}><VideoPackagingWorkspace initial={snapshot.workflowEngine} /></ProductionStage>
+          <ProductionStage index={6}><VideoReleaseWorkspace initial={snapshot.workflowEngine} /></ProductionStage>
+          <ProductionStage index={7}><VideoPerformanceWorkspace initial={snapshot.workflowEngine} /></ProductionStage>
+        </div> : showNew || !activeChannel ? <NewChannelForm busy={busy} onSubmit={act} /> : (
           <div id="workspace" className="workspace-grid">
             <section className="conversation-pane"><ConversationWorkspace snapshot={snapshot} channel={activeChannel} video={activeVideo} build={activeBuild} busy={busy} act={act} /><ActivityRail snapshot={snapshot} channel={activeChannel} /></section>
             <section className="workspace-primary artifact-workspace" aria-label="Artifact workspace">
@@ -86,15 +167,20 @@ export default function StudioApp({ user }: { user: { email: string; mode: "mock
               {activeChannel.state === "CONCEPT_REVIEW_REQUIRED" && <ViabilityReview channel={activeChannel} busy={busy} act={act} />}
               {activeChannel.state === "CONCEPT_SELECTION_REQUIRED" && <ConceptSelection channel={activeChannel} busy={busy} act={act} />}
               {activeChannel.state === "REFERENCE_CHANNEL_REVIEW_REQUIRED" && <ReferenceResearchReview channel={activeChannel} busy={busy} act={act} />}
-              {activeChannel.state === "FAILED" && activeChannel.mode === "REFERENCE_CHANNEL" && <ReferenceResearchFailure channel={activeChannel} busy={busy} act={act} />}
+              {activeChannel.state === "FAILED" && (activeChannel.mode === "REFERENCE_CHANNEL" ? <ReferenceResearchFailure channel={activeChannel} busy={busy} act={act} /> : <ChannelFailure onStartNew={() => setShowNew(true)} />)}
               {activeChannel.state === "BUSINESS_STRATEGY_REVIEW_REQUIRED" && <BusinessStrategyReview channel={activeChannel} busy={busy} act={act} />}
-              {activeChannel.state === "READY_FOR_VIDEO_PRODUCTION" && (activeChannel.monetizationPlans.at(-1)?.status === "REVIEW_REQUIRED" ? <MonetizationReview channel={activeChannel} busy={busy} act={act} /> : <ReadyWorkspace channel={activeChannel} video={activeVideo} build={activeBuild} media={snapshot.mediaProduction} busy={busy} act={act} />)}
+              {activeChannel.state === "READY_FOR_VIDEO_PRODUCTION" && (activeChannel.monetizationPlans.at(-1)?.status === "REVIEW_REQUIRED" ? <MonetizationReview channel={activeChannel} busy={busy} act={act} /> : <ReadyWorkspace key={`${activeVideo?.id ?? "none"}:${activeBuild?.id ?? "none"}`} channel={activeChannel} videos={channelVideos} builds={channelBuilds} media={snapshot.mediaProduction ?? FIXTURE_MEDIA_FALLBACK} busy={busy} act={act} />)}
             </section>
           </div>
         )}
       </main>
     </div>
   );
+}
+
+/** Fixture channels that failed outside reference research have no retry action; say so and offer the real next step. */
+function ChannelFailure({ onStartNew }: { onStartNew: () => void }) {
+  return <section className="channel-failure" role="alert"><XCircle size={28} aria-hidden="true" /><div><p className="eyebrow">Workflow stopped</p><h2>This channel could not finish its current step.</h2><p>The failure is recorded in the activity ledger. Fixture mode has no retry for this step, and nothing was advanced or overwritten. Start a new channel to continue the demo; this one stays in history.</p></div><div className="button-row"><button type="button" className="button button-accent" onClick={onStartNew}><Plus size={15} /> Start a new channel</button><a className="button" href="#runs"><Activity size={15} /> View activity ledger</a></div></section>;
 }
 
 function ConversationWorkspace({ snapshot, channel, video, build, busy, act }: { snapshot: ApiSnapshot; channel: Channel; video?: VideoProject; build?: BuildProject; busy: boolean; act: (a: WorkflowAction, s: string) => Promise<void> }) {
@@ -267,13 +353,50 @@ function MonetizationReview({ channel, busy, act }: { channel: Channel; busy: bo
   </section>;
 }
 
-function ReadyWorkspace({ channel, video, build, media, busy, act }: { channel: Channel; video?: VideoProject; build?: BuildProject; media: MediaProductionSnapshot; busy: boolean; act: (a: WorkflowAction, s: string) => Promise<void> }) {
-  if (build) return <BuildWorkspace project={build} busy={busy} act={act} />;
-  if (video) return <><VideoReview video={video} busy={busy} act={act} /><MediaProductionPanel video={video} media={media} busy={busy} act={act} /><MediaHumanQaPanel video={video} media={media} busy={busy} act={act} /></>;
+type WorkFocus = { kind: "video" | "build"; id: string } | null;
+
+/**
+ * Fixture channel home. Existing videos and builds, the approved strategy and
+ * offers, and "develop another video" all stay reachable after work exists;
+ * the newest build (else video) opens by default, as before.
+ */
+function ReadyWorkspace({ channel, videos, builds, media, busy, act }: { channel: Channel; videos: VideoProject[]; builds: BuildProject[]; media: MediaProductionSnapshot; busy: boolean; act: (a: WorkflowAction, s: string) => Promise<void> }) {
+  const [focus, setFocus] = useState<WorkFocus>(() => {
+    const build = builds.at(-1); const video = videos.at(-1);
+    return build ? { kind: "build", id: build.id } : video ? { kind: "video", id: video.id } : null;
+  });
+  const focusedBuild = focus?.kind === "build" ? builds.find((item) => item.id === focus.id) : undefined;
+  const focusedVideo = focus?.kind === "video" ? videos.find((item) => item.id === focus.id) : undefined;
+  return <>
+    <ChannelWork videos={videos} builds={builds} focus={focus} onFocus={setFocus} />
+    {focusedBuild && <BuildWorkspace project={focusedBuild} busy={busy} act={act} />}
+    {focusedVideo && (focusedVideo.scripts.length > 0
+      ? <><VideoReview video={focusedVideo} busy={busy} act={act} /><MediaProductionPanel video={focusedVideo} media={media} busy={busy} act={act} /><MediaHumanQaPanel video={focusedVideo} media={media} busy={busy} act={act} /></>
+      : <section className="build-workspace" role="status"><p>This video has no script version to review ({focusedVideo.state.replaceAll("_", " ").toLowerCase()}). Its runs are recorded in the activity ledger; develop another video below to continue.</p></section>)}
+    <ChannelHome channel={channel} busy={busy} act={act} />
+  </>;
+}
+
+function ChannelWork({ videos, builds, focus, onFocus }: { videos: VideoProject[]; builds: BuildProject[]; focus: WorkFocus; onFocus: (focus: WorkFocus) => void }) {
+  const items = [
+    ...videos.map((video) => ({ kind: "video" as const, id: video.id, label: "Video", title: video.scripts.at(-1)?.title ?? video.topic, state: video.state, at: video.createdAt })),
+    ...builds.map((build) => ({ kind: "build" as const, id: build.id, label: build.projectType === "PAID_PRODUCT" ? "Paid product build" : "Free resource build", title: build.specifications.at(-1)?.specification.name ?? "Build project", state: build.state, at: build.createdAt })),
+  ].sort((a, b) => b.at.localeCompare(a.at));
+  return <section id="channel-work" className="channel-work" aria-labelledby="channel-work-title">
+    <header><div><p className="eyebrow">Channel home</p><h2 id="channel-work-title">Videos and builds</h2><p>Open any piece of work to review it. Strategy, offers, and the next video stay available below.</p></div></header>
+    {items.length === 0 ? <p className="channel-work-empty">No videos or builds yet. Create the Pillar Video or develop another video below.</p> : <div className="channel-work-list">{items.map((item) => {
+      const open = focus?.kind === item.kind && focus.id === item.id;
+      return <button type="button" key={`${item.kind}-${item.id}`} aria-pressed={open} onClick={() => onFocus(open ? null : { kind: item.kind, id: item.id })}><small>{item.label}{open ? " · open" : ""}</small><strong>{item.title}</strong><span>{item.state.replaceAll("_", " ")}</span></button>;
+    })}</div>}
+  </section>;
+}
+
+function ChannelHome({ channel, busy, act }: { channel: Channel; busy: boolean; act: (a: WorkflowAction, s: string) => Promise<void> }) {
   const selectedConcept = channel.concepts.find((item) => item.id === channel.selectedConceptVersionId) ?? channel.concepts.at(-1);
   const viability = selectedConcept?.viability;
   const create = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); void act({ type: "CREATE_VIDEO", channelId: channel.id, topic: String(form.get("topic")) }, "Video strategy, research, script, and QA completed; human review is required."); };
-  return <><ApprovedBusinessStrategy channel={channel} busy={busy} act={act} /><section className="strategy-panel"><div><p className="eyebrow">Persisted channel strategy</p><h2>{channel.strategy?.channelPromise}</h2><p>{channel.strategy?.positioning}</p></div><div className="strategy-grid"><article><h3>Content pillars</h3>{channel.strategy?.contentPillars.map((item) => <span key={item}>{item}</span>)}</article><article><h3>Recurring series</h3>{channel.strategy?.recurringSeries.map((item) => <span key={item}>{item}</span>)}</article><article><h3>Monetization</h3>{channel.strategy?.monetizationApproaches.map((item) => <span key={item}>{item}</span>)}</article></div>{viability && <section className="accepted-evidence"><header><div><p className="eyebrow">Accepted concept evidence / Version {selectedConcept?.version}</p><h3>{viability.recommendation.replaceAll("_", " ")} recommendation retained</h3></div><strong>{viability.overallScore}<small>/100</small></strong></header><p>{selectedConcept?.research?.summary ?? viability.summary}</p><div>{Object.entries(viability.gates).map(([name, gate]) => <span key={name}>{name.replace(/([A-Z])/g, " $1")}<b>{gate.status} · {gate.score}</b></span>)}</div></section>}</section><section className="video-launch"><div><p className="eyebrow">Standard video</p><h2>Develop another video</h2><p>The deterministic runner will create strategy, source-linked fixture research, a versioned script, and independent QA before pausing.</p><div className="launch-targets"><small>INHERITED TARGETS</small><TargetSummary targets={channel.preferences.distributionTargets} /></div></div><form onSubmit={create}><label>Video topic<input name="topic" required minLength={5} defaultValue="Why loyalty programs change the way customers make decisions" /></label><button className="button button-accent" disabled={busy}>Run to script review <ArrowRight size={16} /></button></form></section></>;
+  const hasApprovedStrategy = channel.businessStrategies.some((item) => item.status === "APPROVED");
+  return <><div id="business-strategy" className="workspace-primary">{hasApprovedStrategy && <ApprovedBusinessStrategy channel={channel} busy={busy} act={act} />}<section className="strategy-panel"><div><p className="eyebrow">Persisted channel strategy</p><h2>{channel.strategy?.channelPromise}</h2><p>{channel.strategy?.positioning}</p></div><div className="strategy-grid"><article><h3>Content pillars</h3>{channel.strategy?.contentPillars.map((item) => <span key={item}>{item}</span>)}</article><article><h3>Recurring series</h3>{channel.strategy?.recurringSeries.map((item) => <span key={item}>{item}</span>)}</article><article><h3>Monetization</h3>{channel.strategy?.monetizationApproaches.map((item) => <span key={item}>{item}</span>)}</article></div>{viability && <section className="accepted-evidence"><header><div><p className="eyebrow">Accepted concept evidence / Version {selectedConcept?.version}</p><h3>{viability.recommendation.replaceAll("_", " ")} recommendation retained</h3></div><strong>{viability.overallScore}<small>/100</small></strong></header><p>{selectedConcept?.research?.summary ?? viability.summary}</p><div>{Object.entries(viability.gates).map(([name, gate]) => <span key={name}>{name.replace(/([A-Z])/g, " $1")}<b>{gate.status} · {gate.score}</b></span>)}</div></section>}</section></div><section id="new-video" className="video-launch"><div><p className="eyebrow">Standard video</p><h2>Develop another video</h2><p>The deterministic runner will create strategy, source-linked fixture research, a versioned script, and independent QA before pausing.</p><div className="launch-targets"><small>INHERITED TARGETS</small><TargetSummary targets={channel.preferences.distributionTargets} /></div></div><form onSubmit={create}><label>Video topic<input name="topic" required minLength={5} defaultValue="Why loyalty programs change the way customers make decisions" /></label><button className="button button-accent" disabled={busy}>Run to script review <ArrowRight size={16} /></button></form></section></>;
 }
 
 function ApprovedBusinessStrategy({ channel, busy, act }: { channel: Channel; busy: boolean; act: (a: WorkflowAction, s: string) => Promise<void> }) {
@@ -344,5 +467,5 @@ function DistributionPackage({ video, busy, act }: { video: VideoProject; busy: 
 
 function ActivityRail({ snapshot, channel }: { snapshot: ApiSnapshot; channel: Channel }) {
   const events = useMemo(() => snapshot.auditEvents.slice(-8).reverse(), [snapshot.auditEvents]);
-  return <aside className="activity-rail"><section><div className="rail-title"><p className="eyebrow">System ledger</p><span>{snapshot.agentRuns.length} RUNS</span></div><div className="metric-pair"><article><strong>${snapshot.agentRuns.reduce((sum, item) => sum + item.costUsd, 0).toFixed(2)}</strong><span>FIXTURE COST</span></article><article><strong>{channel.concepts.length}</strong><span>CONCEPT VERSIONS</span></article></div></section><section><div className="rail-title"><p className="eyebrow">Recent events</p><Clock3 size={14} /></div><div className="event-list">{events.map((event) => <div key={event.id}><i /><p>{event.type.replaceAll("_", " ")}<span>{new Date(event.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></p></div>)}</div></section><section className="boundary-note"><Search size={18} /><h3>Fixture boundary</h3><p>No live competitor, trend, or demand claims are made. Current provider research is required before publishing or spending.</p></section></aside>;
+  return <aside id="runs" className="activity-rail"><section><div className="rail-title"><p className="eyebrow">System ledger</p><span>{snapshot.agentRuns.length} RUNS</span></div><div className="metric-pair"><article><strong>${snapshot.agentRuns.reduce((sum, item) => sum + item.costUsd, 0).toFixed(2)}</strong><span>FIXTURE COST</span></article><article><strong>{channel.concepts.length}</strong><span>CONCEPT VERSIONS</span></article></div></section><section><div className="rail-title"><p className="eyebrow">Recent events</p><Clock3 size={14} /></div><div className="event-list">{events.map((event) => <div key={event.id}><i /><p>{event.type.replaceAll("_", " ")}<span>{new Date(event.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></p></div>)}</div></section><section className="boundary-note"><Search size={18} /><h3>Fixture boundary</h3><p>No live competitor, trend, or demand claims are made. Current provider research is required before publishing or spending.</p></section></aside>;
 }

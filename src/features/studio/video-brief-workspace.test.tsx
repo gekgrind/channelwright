@@ -81,7 +81,10 @@ describe("VideoBriefWorkspace", () => {
     // Longer than the 1000ms default: under full-suite parallel load the async
     // render + fetch settle can exceed it, which is load-sensitive test flakiness,
     // not a product defect.
-    const button = await screen.findByRole("button", { name: /start video brief/i }, { timeout: 5000 });
+    // The exact approved upstream is shown before anything can be started.
+    await screen.findByRole("region", { name: /selected approved backlog/i }, { timeout: 5000 });
+    const button = screen.getByRole("button", { name: /start video brief/i });
+    expect(button).toBeEnabled();
     fireEvent.click(button);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/workflows", expect.objectContaining({ method: "POST" })));
     const call = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
@@ -165,7 +168,7 @@ describe("VideoBriefWorkspace", () => {
     vi.stubGlobal("fetch", mockFetch({ brief: briefDetail("APPROVED") }));
     render(<VideoBriefWorkspace />);
     await waitFor(() => expect(screen.getByRole("heading", { name: BRIEF.source.workingConcept })).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /^approve$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /approve exact version/i })).not.toBeInTheDocument();
   });
 
   it("shows a sanitized error when the workflow list fails", async () => {

@@ -70,7 +70,10 @@ describe("VideoScriptWorkspace", () => {
     // Longer than the 1000ms default: under full-suite parallel load the async
     // render + fetch settle can exceed it, which is load-sensitive test flakiness,
     // not a product defect.
-    const button = await screen.findByRole("button", { name: /start video script/i }, { timeout: 5000 });
+    // The exact approved upstream is shown before anything can be started.
+    await screen.findByRole("region", { name: /selected approved brief/i }, { timeout: 5000 });
+    const button = screen.getByRole("button", { name: /start video script/i });
+    expect(button).toBeEnabled();
     fireEvent.click(button);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/workflows", expect.objectContaining({ method: "POST" })));
     const call = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
@@ -132,7 +135,7 @@ describe("VideoScriptWorkspace", () => {
     vi.stubGlobal("fetch", mockFetch({ script: scriptDetail("APPROVED") }));
     render(<VideoScriptWorkspace />);
     await waitFor(() => expect(screen.getByRole("heading", { name: SCRIPT.source.workingConcept })).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /^approve$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /approve exact version/i })).not.toBeInTheDocument();
   });
 
   it("shows the successor run's QA after a revision, never the predecessor's (defect #4)", async () => {
@@ -155,6 +158,108 @@ describe("VideoScriptWorkspace", () => {
     render(<VideoScriptWorkspace />);
     await waitFor(() => expect(screen.getByText(/QA 93\/100/)).toBeInTheDocument());
     expect(screen.queryByText(/QA 51\/100/)).not.toBeInTheDocument();
+  });
+
+  it("sends Reject only after the operator confirms the terminal consequence", async () => {
+    const fetchMock = mockFetch({});
+    vi.stubGlobal("fetch", fetchMock);
+    render(<VideoScriptWorkspace />);
+    const decisionCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("/approvals/ap1"));
+    fireEvent.click(await screen.findByRole("button", { name: /^reject/i }));
+    expect(screen.getByRole("alertdialog", { name: /reject and close this script/i })).toBeInTheDocument();
+    expect(decisionCalls()).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /keep reviewing/i }));
+    expect(decisionCalls()).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /^reject/i }));
+    fireEvent.click(screen.getByRole("button", { name: /reject and close/i }));
+    await waitFor(() => expect(decisionCalls()).toHaveLength(1));
+    expect(JSON.parse((decisionCalls()[0][1] as RequestInit).body as string)).toEqual({ decision: "REJECT" });
+  });
+
+  it("keeps a failed refresh visible and recoverable instead of swallowing it", async () => {
+    let healthy = true;
+    const healthyFetch = mockFetch({});
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => healthy
+      ? healthyFetch(url, init)
+      : ({ ok: false, json: async () => ({ error: { code: "DATABASE_ERROR", message: "The workflow store is unavailable." } }) }) as Response));
+    render(<VideoScriptWorkspace />);
+    await screen.findByRole("heading", { name: SCRIPT.source.workingConcept });
+    await screen.findByRole("region", { name: /selected approved brief/i });
+    healthy = false;
+    fireEvent.click(screen.getAllByRole("button", { name: /^refresh$/i })[0]);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/workflow store is unavailable/i);
+    expect(alert).toHaveTextContent(/may be out of date/i);
+    healthy = true;
+    fireEvent.click(screen.getByRole("button", { name: /retry now/i }));
+    await waitFor(() => expect(screen.queryByText(/workflow store is unavailable/i)).not.toBeInTheDocument());
+  });
+
+  it("retries a failed upstream resolution on the next refresh instead of staying stuck", async () => {
+    let briefHealthy = false;
+    const healthyFetch = mockFetch({});
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => url.includes(BRIEF_WORKFLOW_ID) && !briefHealthy
+      ? ({ ok: false, json: async () => ({ error: { code: "DATABASE_ERROR", message: "The approved brief could not be read." } }) }) as Response
+      : healthyFetch(url, init)));
+    render(<VideoScriptWorkspace />);
+    await screen.findByText(/approved brief could not be read/i);
+    expect(screen.getByRole("button", { name: /start video script/i })).toBeDisabled();
+
+    briefHealthy = true;
+    fireEvent.click(screen.getAllByRole("button", { name: /^refresh$/i })[0]);
+    await screen.findByRole("region", { name: /selected approved brief/i });
+    expect(screen.queryByText(/approved brief could not be read/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /start video script/i })).toBeEnabled();
+  });
+
+  it("shows which approved brief will be used and lets the operator choose another", async () => {
+    const OLDER_BRIEF_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2";
+    const OLDER_RUN_ID = "cccccccc-cccc-4ccc-8ccc-ccccccccccc2";
+    const briefOutput = (concept: string) => ({ schemaVersion: 1, source: { workingConcept: concept } });
+    const list = {
+      workflows: [
+        { id: BRIEF_WORKFLOW_ID, workflow_type: "CHANNEL_VIDEO_BRIEF", status: "COMPLETED", created_at: "2026-08-15T10:00:00.000Z", current_run_id: RUN_ID },
+        { id: OLDER_BRIEF_ID, workflow_type: "CHANNEL_VIDEO_BRIEF", status: "COMPLETED", created_at: "2026-08-10T10:00:00.000Z", current_run_id: OLDER_RUN_ID },
+        { id: "ffffffff-ffff-4fff-8fff-fffffffffff1", workflow_type: "CHANNEL_VIDEO_BRIEF", status: "WAITING_FOR_APPROVAL", created_at: "2026-08-17T10:00:00.000Z", current_run_id: "ffffffff-ffff-4fff-8fff-fffffffffff2" },
+      ],
+      runs: [
+        { id: RUN_ID, workflow_id: BRIEF_WORKFLOW_ID, status: "COMPLETED", output_payload: briefOutput("Why loyalty programs fail"), error_code: null, created_at: "2026-08-15T10:00:00.000Z", completed_at: "2026-08-15T12:00:00.000Z" },
+        { id: OLDER_RUN_ID, workflow_id: OLDER_BRIEF_ID, status: "COMPLETED", output_payload: briefOutput("How warranties make money"), error_code: null, created_at: "2026-08-10T10:00:00.000Z", completed_at: "2026-08-10T12:00:00.000Z" },
+      ],
+      pendingApprovals: [],
+    };
+    const detailFor = (id: string, runId: string, concept: string) => ({
+      workflow: { id, status: "COMPLETED", created_at: "2026-08-10T10:00:00.000Z", current_run_id: runId },
+      runs: [{ id: runId, status: "COMPLETED", input_payload: {}, context_payload: {}, output_payload: briefOutput(concept), error_code: null, artifact_hash: null, provenance_hash: null, created_at: "2026-08-10T10:00:00.000Z", completed_at: "2026-08-10T12:00:00.000Z" }],
+      steps: [], approvals: [],
+    });
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") return { ok: true, json: async () => ({ operationResult: { workflowId: SCRIPT_WORKFLOW_ID } }) } as Response;
+      if (url === "/api/workflows") return { ok: true, json: async () => ({ workflowEngine: list }) } as Response;
+      if (url.includes(OLDER_BRIEF_ID)) return { ok: true, json: async () => detailFor(OLDER_BRIEF_ID, OLDER_RUN_ID, "How warranties make money") } as Response;
+      if (url.includes(BRIEF_WORKFLOW_ID)) return { ok: true, json: async () => detailFor(BRIEF_WORKFLOW_ID, RUN_ID, "Why loyalty programs fail") } as Response;
+      return { ok: true, json: async () => scriptDetail() } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<VideoScriptWorkspace />);
+
+    const card = await screen.findByRole("region", { name: /selected approved brief/i });
+    expect(card).toHaveTextContent("Why loyalty programs fail");
+    expect(card).toHaveTextContent(/Brief v1 · approved/);
+    // Identifiers stay behind a provenance disclosure; no raw UUID entry exists.
+    expect(screen.queryByRole("textbox", { name: /workflow id|run id/i })).not.toBeInTheDocument();
+    const picker = screen.getByRole("combobox", { name: /use a different approved brief/i });
+    // Only approved briefs are offered; the one still awaiting approval is not.
+    expect(Array.from((picker as HTMLSelectElement).options).map((option) => option.value)).toEqual([BRIEF_WORKFLOW_ID, OLDER_BRIEF_ID]);
+
+    fireEvent.change(picker, { target: { value: OLDER_BRIEF_ID } });
+    await waitFor(() => expect(screen.getByRole("region", { name: /selected approved brief/i })).toHaveTextContent("How warranties make money"));
+    fireEvent.click(screen.getByRole("button", { name: /start video script/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/workflows", expect.objectContaining({ method: "POST" })));
+    const call = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
+    expect(JSON.parse((call?.[1] as RequestInit).body as string).input).toEqual({ videoBriefWorkflowId: OLDER_BRIEF_ID, videoBriefRunId: OLDER_RUN_ID });
   });
 
   it("surfaces a terminal run error code without exposing internals", async () => {

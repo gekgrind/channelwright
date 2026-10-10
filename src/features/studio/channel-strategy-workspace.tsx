@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, LoaderCircle, RefreshCcw, ShieldCheck, XCircle } from "lucide-react";
+import type { FormEvent } from "react";
+import { AlertTriangle, LoaderCircle, RefreshCcw, ShieldCheck } from "lucide-react";
 import {
   approvedResearchArtifactSchema,
   channelStrategyResultSchema,
@@ -11,19 +11,14 @@ import {
   type ChannelStrategyResult,
   type StrategyQAResult,
 } from "@/domain/production-workflows";
-import {
-  fetchWorkflowDetail,
-  fetchWorkflowList,
-  POLLING_WORKFLOW_STATUSES,
-  startWorkflow,
-  submitApprovalDecision,
-  type ApprovalDecision,
-  type WorkflowList,
-} from "./workflow-api";
+import { runVersionOf, type WorkflowList } from "./workflow-api";
+import { useWorkflowWorkspace } from "./use-workflow-workspace";
+import { parseObjectPayload, textAt, UpstreamCard, useApprovedUpstream } from "./upstream-selection";
+import { DecisionBar, WorkspaceFeedback } from "./workflow-controls";
 
 type WorkflowDetail = {
   workflow: { id: string; status: string; created_at: string; current_run_id: string };
-  runs: Array<{ id: string; status: string; input_payload: Record<string, unknown>; context_payload: Record<string, unknown>; output_payload: unknown; error_code: string | null; artifact_hash: string | null; provenance_hash: string | null }>;
+  runs: Array<{ id: string; status: string; input_payload: Record<string, unknown>; context_payload: Record<string, unknown>; output_payload: unknown; error_code: string | null; artifact_hash: string | null; provenance_hash: string | null; created_at?: string; completed_at?: string | null }>;
   steps: Array<{ id: string; workflow_run_id: string; step_key: string; status: string; output_payload: unknown; attempt_count: number; max_attempts: number; error_code: string | null }>;
   attempts: unknown[];
   approvals: Array<{ id: string; workflow_run_id: string; status: string; decision_note: string | null; requested_at: string; decided_at: string | null }>;
@@ -32,70 +27,30 @@ type WorkflowDetail = {
   researchUsageOperations: unknown[];
 };
 
+/** Research runs are named by the concept they evaluated and the verdict they reached. */
+const describeResearch = (output: Record<string, unknown>) => {
+  const verdict = textAt(output, ["recommendation", "verdict"]);
+  return { title: textAt(output, ["concept", "normalizedConcept"]) ?? "Approved channel research", detail: verdict ? `Verdict: ${verdict.replaceAll("_", " ").toLowerCase()}` : undefined };
+};
+
 export function ChannelStrategyWorkspace({ initial }: { initial?: WorkflowList }) {
-  const [engine, setEngine] = useState(initial);
-  const [detail, setDetail] = useState<WorkflowDetail | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [revisionNote, setRevisionNote] = useState("");
-  const strategyWorkflows = useMemo(() => engine?.workflows.filter((item) => item.workflow_type === "CHANNEL_STRATEGY") ?? [], [engine]);
-  const approvedResearch = useMemo(() => engine?.workflows.find((item) => item.workflow_type === "CHANNEL_RESEARCH" && item.status === "COMPLETED"), [engine]);
-  const activeId = detail?.workflow.id ?? strategyWorkflows[0]?.id;
-
-  const load = async (workflowId?: string) => {
-    const listPayload = await fetchWorkflowList("Could not refresh strategy workflows.");
-    setEngine(listPayload.workflowEngine);
-    const selected = workflowId ?? detail?.workflow.id ?? listPayload.workflowEngine.workflows.find((item) => item.workflow_type === "CHANNEL_STRATEGY")?.id;
-    if (!selected) return;
-    setDetail(await fetchWorkflowDetail<WorkflowDetail>(selected, "Could not load the strategy workflow."));
-  };
-
-  useEffect(() => {
-    if (!activeId) return;
-    let disposed = false;
-    const refresh = () => load(activeId).catch((cause: unknown) => { if (!disposed) setError(cause instanceof Error ? cause.message : "Could not refresh strategy."); });
-    void refresh();
-    const status = detail?.workflow.status ?? strategyWorkflows[0]?.status ?? "";
-    const timer = POLLING_WORKFLOW_STATUSES.includes(status) ? setInterval(refresh, 4_000) : undefined;
-    return () => { disposed = true; if (timer) clearInterval(timer); };
-    // Polling intentionally follows durable workflow identity and status.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, detail?.workflow.status]);
+  const workspace = useWorkflowWorkspace<WorkflowDetail>({ initial, workflowType: "CHANNEL_STRATEGY", label: "strategy" });
+  const { detail, busy } = workspace;
+  const strategyWorkflows = workspace.workflows;
+  const activeId = workspace.activeId;
+  const selection = useApprovedUpstream({ engine: workspace.engine, workflowType: "CHANNEL_RESEARCH", label: "channel research", parse: parseObjectPayload, describe: describeResearch });
+  const research = selection.upstream;
 
   const start = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    setBusy(true); setError(null); setNotice(null);
-    try {
-      const payload = await startWorkflow(
-        "CHANNEL_STRATEGY",
-        { researchWorkflowId: String(form.get("researchWorkflowId")), researchRunId: String(form.get("researchRunId")) },
-        "Could not start channel strategy.",
-      );
-      await load(payload.operationResult.workflowId);
-      setNotice("Strategy queued from the exact approved research run. The server persisted its immutable integrity snapshot.");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not start channel strategy."); }
-    finally { setBusy(false); }
+    if (!research) return;
+    await workspace.start(
+      { researchWorkflowId: research.workflowId, researchRunId: research.runId },
+      "Strategy queued from the exact approved research run. The server persisted its immutable integrity snapshot.",
+    );
   };
 
-  const decide = async (decision: ApprovalDecision) => {
-    const run = detail?.runs[0];
-    const approval = detail?.approvals.find((item) => item.workflow_run_id === run?.id && item.status === "PENDING");
-    if (!approval || !detail) return;
-    const note = decision === "REQUEST_REVISION" ? revisionNote.trim() : undefined;
-    if (decision === "REQUEST_REVISION" && !note) return;
-    setBusy(true); setError(null);
-    try {
-      await submitApprovalDecision(detail.workflow.id, approval.id, decision, note, "Could not record the strategy decision.");
-      await load(detail.workflow.id);
-      if (decision === "REQUEST_REVISION") setRevisionNote("");
-      setNotice(`${decision.replaceAll("_", " ")} recorded. Exact-version lineage remains immutable.`);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not record the strategy decision."); }
-    finally { setBusy(false); }
-  };
-
-  const run = detail?.runs[0];
+  const run = workspace.currentRun;
   const currentSteps = detail?.steps.filter((item) => item.workflow_run_id === run?.id) ?? [];
   const step = (key: string) => currentSteps.find((item) => item.step_key === key)?.output_payload;
   const upstream = approvedResearchArtifactSchema.safeParse(step("validate-approved-research"));
@@ -105,22 +60,29 @@ export function ChannelStrategyWorkspace({ initial }: { initial?: WorkflowList }
   const finalQa = strategyQAResultSchema.safeParse(step("final-strategy-qa"));
   const result = channelStrategyResultSchema.safeParse(run?.output_payload);
   const budget = detail?.researchBudgets.find((item) => item.workflow_run_id === run?.id);
-  const pendingApproval = detail?.approvals.some((item) => item.workflow_run_id === run?.id && item.status === "PENDING");
+  const version = detail && run ? runVersionOf(detail, run.id) : undefined;
 
   return <div className="research-workspace strategy-workspace">
     <section className="research-hero"><div><p className="eyebrow">Approved research → channel strategy</p><h2>Build one auditable strategy</h2><p>Channelwright consumes an exact approved research run, preserves its integrity snapshot, and pauses after independent QA for your decision.</p></div><span>NO DOWNSTREAM CONTENT</span></section>
-    {error && <div className="error-banner" role="alert"><AlertTriangle size={17} /> {error}</div>}
-    {notice && <div className="success-banner" role="status"><Check size={17} /> {notice}</div>}
-    <form className="research-request" onSubmit={start}>
-      <div><label>Approved research workflow ID<input name="researchWorkflowId" required defaultValue={approvedResearch?.id ?? ""} /></label><label>Exact approved research run ID<input name="researchRunId" required defaultValue={approvedResearch?.current_run_id ?? ""} /></label></div>
+    <WorkspaceFeedback label="strategy" loading={workspace.loading} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
+    {selection.eligible.length > 0 ? <form className="research-request" onSubmit={start}>
+      <UpstreamCard heading="Build a strategy from" kindLabel="Research" selection={selection} disabled={busy} />
       <p><ShieldCheck size={15} /> The server rejects unapproved, cross-owner, mutable, malformed, missing, or integrity-mismatched research. It never selects “latest” silently.</p>
-      <button className="button button-accent" disabled={busy || !approvedResearch}>{busy ? <LoaderCircle className="spin" size={15} /> : <ShieldCheck size={15} />} Start bounded strategy</button>
-    </form>
-    {!approvedResearch && <div className="error-banner"><AlertTriangle size={17} /> Approve an exact CHANNEL_RESEARCH run before starting strategy.</div>}
-    {strategyWorkflows.length > 0 && <section className="research-history"><header><h3>Strategy ledger</h3><button type="button" className="button button-quiet" onClick={() => void load()}><RefreshCcw size={14} /> Refresh</button></header>{strategyWorkflows.slice(0, 8).map((workflow) => <button type="button" key={workflow.id} className={workflow.id === activeId ? "selected" : ""} onClick={() => void load(workflow.id)}><span>{new Date(workflow.created_at).toLocaleString()}</span><b>{workflow.status.replaceAll("_", " ")}</b><small>{workflow.id}</small></button>)}</section>}
+      <button className="button button-accent" disabled={busy || !research}>{busy ? <LoaderCircle className="spin" size={15} /> : <ShieldCheck size={15} />} Start bounded strategy</button>
+    </form> : !workspace.loading && <p className="upstream-empty">Approve an exact research run above before starting strategy. Strategy is only built from approved research.</p>}
+    {strategyWorkflows.length > 0 && <section className="research-history"><header><h3>Strategy ledger</h3><button type="button" className="button button-quiet" disabled={busy} onClick={() => void workspace.refresh()}><RefreshCcw size={14} /> Refresh</button></header>{strategyWorkflows.slice(0, 8).map((workflow) => <button type="button" key={workflow.id} className={workflow.id === activeId ? "selected" : ""} aria-pressed={workflow.id === activeId} onClick={() => workspace.select(workflow.id)}><span>{new Date(workflow.created_at).toLocaleString()}</span><b>{workflow.status.replaceAll("_", " ")}</b><small>{workflow.id}</small></button>)}</section>}
     {detail && <section className="research-run"><header><div><p className="eyebrow">Durable strategy execution</p><h2>{detail.workflow.status.replaceAll("_", " ")}</h2></div><small>{run?.id}</small></header><div className="research-steps">{currentSteps.map((item) => <span key={item.id} className={item.status === "COMPLETED" ? "done" : item.status === "FAILED" ? "failed" : ""}><b>{item.step_key.replaceAll("-", " ")}</b><small>{item.status.replaceAll("_", " ")} · {item.attempt_count}/{item.max_attempts}</small></span>)}</div>{run?.error_code && <p className="research-failure"><AlertTriangle size={15} /> Failed closed: {run.error_code}</p>}</section>}
     {result.success && <StrategyResultReview result={result.data} upstream={upstream.success ? upstream.data : undefined} initialQa={initialQa.success ? initialQa.data : undefined} finalQa={finalQa.success ? finalQa.data : undefined} revised={revision.success && revision.data.attempted} budget={budget} artifactHash={run?.artifact_hash ?? null} provenanceHash={run?.provenance_hash ?? null} />}
-    {pendingApproval && <section className="research-decision"><div><p className="eyebrow">Human strategy decision required</p><h3>Approve, reject, or create a separately budgeted successor.</h3><label>Revision note<textarea rows={2} maxLength={2000} value={revisionNote} onChange={(event) => setRevisionNote(event.target.value)} placeholder="Required for a linked successor strategy run." /></label></div><div><button className="button" disabled={busy || !revisionNote.trim()} onClick={() => void decide("REQUEST_REVISION")}><RefreshCcw size={14} /> Request revision</button><button className="button" disabled={busy} onClick={() => void decide("REJECT")}><XCircle size={14} /> Reject</button><button className="button button-accent" disabled={busy} onClick={() => void decide("APPROVE")}><Check size={14} /> Approve exact strategy</button></div></section>}
+    {workspace.pendingApproval && <DecisionBar
+      busy={busy}
+      title="Human strategy decision required"
+      explanation="Approve this exact strategy, reject it, or create a separately budgeted successor run. Exact-version lineage remains immutable."
+      versionLabel={version ? `Strategy run v${version}` : undefined}
+      approveLabel="Approve exact strategy"
+      revisionPlaceholder="Required for a linked successor strategy run."
+      artifactLabel="strategy"
+      onDecide={(decision, note) => workspace.decide(decision, note, `${decision.replaceAll("_", " ")} recorded. Exact-version lineage remains immutable.`)}
+    />}
     {!result.success && draft.success && <p className="success-banner">Strategy draft persisted; final QA and human review are still pending.</p>}
   </div>;
 }

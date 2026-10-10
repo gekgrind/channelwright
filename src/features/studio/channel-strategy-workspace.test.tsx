@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import "@testing-library/jest-dom/vitest";
 import { channelStrategyResultSchema } from "@/domain/production-workflows";
-import { StrategyResultReview } from "./channel-strategy-workspace";
+import { ChannelStrategyWorkspace, StrategyResultReview } from "./channel-strategy-workspace";
 import { approvedResearchArtifactFixture, strategyResultFixture } from "@/server/workflows/strategy-fixtures.test-helper";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("CHANNEL_STRATEGY review surface", () => {
   it("makes upstream identity, recommendation, uncertainty, hypotheses, QA, usage, and lineage visible", () => {
@@ -48,5 +49,32 @@ describe("CHANNEL_STRATEGY review surface", () => {
     expect(channelStrategyResultSchema.safeParse(undefined).success).toBe(false);
     // An intermediate step output must never satisfy the final artifact contract.
     expect(channelStrategyResultSchema.safeParse({ attempted: false, reason: "no revision", result: strategyResultFixture }).success).toBe(false);
+  });
+});
+
+describe("CHANNEL_STRATEGY start", () => {
+  const RESEARCH_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
+  const RESEARCH_RUN_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1";
+  const researchOutput = { concept: { normalizedConcept: "Hidden systems behind everyday businesses" }, recommendation: { verdict: "PROCEED_WITH_CONDITIONS" } };
+
+  it("identifies the approved research in plain language instead of asking for raw UUIDs", async () => {
+    const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") return new Response(JSON.stringify({ operationResult: { workflowId: "cccccccc-cccc-4ccc-8ccc-ccccccccccc1" } }), { status: 202 });
+      if (url === "/api/workflows") return new Response(JSON.stringify({ workflowEngine: { workflows: [], runs: [], pendingApprovals: [] } }), { status: 200 });
+      if (url.includes(RESEARCH_ID)) return new Response(JSON.stringify({ workflow: { id: RESEARCH_ID, status: "COMPLETED", created_at: "2026-08-13T10:00:00.000Z", current_run_id: RESEARCH_RUN_ID }, runs: [{ id: RESEARCH_RUN_ID, status: "COMPLETED", output_payload: researchOutput, error_code: null, created_at: "2026-08-13T10:00:00.000Z", completed_at: "2026-08-13T11:00:00.000Z" }], steps: [], approvals: [], researchBudgets: [] }), { status: 200 });
+      return new Response(JSON.stringify({ workflow: { id: "cccccccc-cccc-4ccc-8ccc-ccccccccccc1", status: "QUEUED", created_at: "2026-08-14T10:00:00.000Z" }, runs: [], steps: [], approvals: [], researchBudgets: [] }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(<ChannelStrategyWorkspace initial={{ workflows: [{ id: RESEARCH_ID, workflow_type: "CHANNEL_RESEARCH", status: "COMPLETED", created_at: "2026-08-13T10:00:00.000Z", current_run_id: RESEARCH_RUN_ID }], runs: [], pendingApprovals: [] }} />);
+
+    const card = await screen.findByRole("region", { name: /selected approved research/i });
+    expect(card).toHaveTextContent("Hidden systems behind everyday businesses");
+    expect(card).toHaveTextContent(/verdict: proceed with conditions/i);
+    expect(screen.queryByRole("textbox", { name: /workflow id|run id/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /start bounded strategy/i }));
+    await waitFor(() => expect(fetcher.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toBe(true));
+    const post = fetcher.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
+    expect(JSON.parse(String((post?.[1] as RequestInit).body)).input).toEqual({ researchWorkflowId: RESEARCH_ID, researchRunId: RESEARCH_RUN_ID });
   });
 });
