@@ -3,11 +3,27 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { DecisionBar, StageList } from "./workflow-controls";
+import type { DecisionTarget } from "./workflow-api";
 
 afterEach(cleanup);
 
-function renderBar(onDecide = vi.fn(async () => true)) {
+const TARGET_A: DecisionTarget = { workflowId: "wf-a", runId: "run-a", approvalId: "ap-a", key: "wf-a:run-a:ap-a" };
+const TARGET_B: DecisionTarget = { workflowId: "wf-b", runId: "run-b", approvalId: "ap-b", key: "wf-b:run-b:ap-b" };
+
+const bar = (target: DecisionTarget, onDecide: (...args: unknown[]) => Promise<boolean>) => <DecisionBar
+  target={target}
+  busy={false}
+  explanation="Approving accepts the script."
+  versionLabel="Script v2"
+  approveLabel="Approve exact version"
+  revisionPlaceholder="What should change?"
+  artifactLabel="script"
+  onDecide={onDecide}
+/>;
+
+function renderBar(onDecide = vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true)) {
   render(<DecisionBar
+    target={TARGET_A}
     busy={false}
     explanation="Approving accepts the script."
     versionLabel="Script v2"
@@ -24,7 +40,7 @@ describe("DecisionBar", () => {
     const onDecide = renderBar();
     expect(screen.getByText(/approval binds to/i)).toHaveTextContent("Script v2");
     fireEvent.click(screen.getByRole("button", { name: /approve exact version/i }));
-    await waitFor(() => expect(onDecide).toHaveBeenCalledWith("APPROVE", undefined));
+    await waitFor(() => expect(onDecide).toHaveBeenCalledWith(TARGET_A, "APPROVE", undefined));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
@@ -36,7 +52,7 @@ describe("DecisionBar", () => {
     expect(revise).toBeDisabled();
     fireEvent.change(screen.getByLabelText(/revision note/i), { target: { value: "Cut the second example." } });
     fireEvent.click(revise);
-    await waitFor(() => expect(onDecide).toHaveBeenCalledWith("REQUEST_REVISION", "Cut the second example."));
+    await waitFor(() => expect(onDecide).toHaveBeenCalledWith(TARGET_A, "REQUEST_REVISION", "Cut the second example."));
   });
 
   it("does not reject on the first click; it explains the terminal consequence first", () => {
@@ -69,7 +85,7 @@ describe("DecisionBar", () => {
 
   it("confirming sends exactly one Reject, with the optional reason when given", async () => {
     let resolve: (value: boolean) => void = () => undefined;
-    const onDecide = vi.fn(() => new Promise<boolean>((done) => { resolve = done; }));
+    const onDecide = vi.fn<(...args: unknown[]) => Promise<boolean>>(() => new Promise<boolean>((done) => { resolve = done; }));
     renderBar(onDecide);
     fireEvent.click(screen.getByRole("button", { name: /reject/i }));
     fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: "Wrong audience entirely." } });
@@ -77,7 +93,7 @@ describe("DecisionBar", () => {
     fireEvent.click(confirm);
     fireEvent.click(confirm);
     expect(onDecide).toHaveBeenCalledTimes(1);
-    expect(onDecide).toHaveBeenCalledWith("REJECT", "Wrong audience entirely.");
+    expect(onDecide).toHaveBeenCalledWith(TARGET_A, "REJECT", "Wrong audience entirely.");
     resolve(true);
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
   });
@@ -86,7 +102,7 @@ describe("DecisionBar", () => {
     const onDecide = renderBar();
     fireEvent.click(screen.getByRole("button", { name: /reject/i }));
     fireEvent.click(screen.getByRole("button", { name: /reject and close/i }));
-    await waitFor(() => expect(onDecide).toHaveBeenCalledWith("REJECT", undefined));
+    await waitFor(() => expect(onDecide).toHaveBeenCalledWith(TARGET_A, "REJECT", undefined));
   });
 
   it("styles destructive actions distinctly from revision", () => {
@@ -97,6 +113,46 @@ describe("DecisionBar", () => {
     expect(revise).not.toHaveClass("button-danger");
     fireEvent.click(reject);
     expect(screen.getByRole("button", { name: /reject and close/i })).toHaveClass("button-danger-solid");
+  });
+});
+
+describe("DecisionBar target identity", () => {
+  it("never carries an open Reject confirmation, its reason, or a revision note to a different target", () => {
+    const onDecide = vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true);
+    const { rerender } = render(bar(TARGET_A, onDecide));
+    fireEvent.change(screen.getByLabelText(/revision note/i), { target: { value: "Notes meant for run A." } });
+    fireEvent.click(screen.getByRole("button", { name: /reject/i }));
+    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: "Reason meant for run A." } });
+
+    rerender(bar(TARGET_B, onDecide));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/revision note/i)).toHaveValue("");
+    expect(screen.getByRole("button", { name: /request revision/i })).toBeDisabled();
+    expect(onDecide).not.toHaveBeenCalled();
+
+    // A fresh confirmation for B starts empty and sends B.
+    fireEvent.click(screen.getByRole("button", { name: /reject/i }));
+    expect(screen.getByLabelText(/reason/i)).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: /reject and close/i }));
+    expect(onDecide).toHaveBeenCalledTimes(1);
+    expect(onDecide).toHaveBeenCalledWith(TARGET_B, "REJECT", undefined);
+  });
+
+  it("an in-flight submission is never inherited by the next target's controls", async () => {
+    let finish: (value: boolean) => void = () => undefined;
+    const onDecide = vi.fn<(...args: unknown[]) => Promise<boolean>>(() => new Promise<boolean>((done) => { finish = done; }));
+    const { rerender } = render(bar(TARGET_A, onDecide));
+    fireEvent.click(screen.getByRole("button", { name: /approve exact version/i }));
+    expect(onDecide).toHaveBeenCalledWith(TARGET_A, "APPROVE", undefined);
+    expect(screen.getByRole("button", { name: /approve exact version/i })).toBeDisabled();
+
+    rerender(bar(TARGET_B, onDecide));
+    // B's controls are not locked by A's pending request...
+    expect(screen.getByRole("button", { name: /approve exact version/i })).toBeEnabled();
+    // ...and A's late completion does not touch B's state.
+    fireEvent.change(screen.getByLabelText(/revision note/i), { target: { value: "Draft for B." } });
+    finish(true);
+    await waitFor(() => expect(screen.getByLabelText(/revision note/i)).toHaveValue("Draft for B."));
   });
 });
 

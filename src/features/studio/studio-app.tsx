@@ -369,9 +369,10 @@ function ReadyWorkspace({ channel, videos, builds, media, busy, act }: { channel
   const focusedVideo = focus?.kind === "video" ? videos.find((item) => item.id === focus.id) : undefined;
   return <>
     <ChannelWork videos={videos} builds={builds} focus={focus} onFocus={setFocus} />
-    {focusedBuild && <BuildWorkspace project={focusedBuild} busy={busy} act={act} />}
+    {/* Keyed by item: drafts (feedback, selected assets, QA findings) never carry over to other work. */}
+    {focusedBuild && <BuildWorkspace key={focusedBuild.id} project={focusedBuild} busy={busy} act={act} />}
     {focusedVideo && (focusedVideo.scripts.length > 0
-      ? <><VideoReview video={focusedVideo} busy={busy} act={act} /><MediaProductionPanel video={focusedVideo} media={media} busy={busy} act={act} /><MediaHumanQaPanel video={focusedVideo} media={media} busy={busy} act={act} /></>
+      ? <><VideoReview key={focusedVideo.id} video={focusedVideo} busy={busy} act={act} /><MediaProductionPanel key={`media-${focusedVideo.id}`} video={focusedVideo} media={media} busy={busy} act={act} /><MediaHumanQaPanel key={`qa-${focusedVideo.id}`} video={focusedVideo} media={media} busy={busy} act={act} /></>
       : <section className="build-workspace" role="status"><p>This video has no script version to review ({focusedVideo.state.replaceAll("_", " ").toLowerCase()}). Its runs are recorded in the activity ledger; develop another video below to continue.</p></section>)}
     <ChannelHome channel={channel} busy={busy} act={act} />
   </>;

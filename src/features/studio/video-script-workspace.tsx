@@ -40,7 +40,7 @@ const formatDuration = (seconds: number) => {
 
 export function VideoScriptWorkspace({ initial }: { initial?: WorkflowList }) {
   const workspace = useWorkflowWorkspace<WorkflowDetail>({ initial, workflowType: "CHANNEL_VIDEO_SCRIPT", label: "video script" });
-  const { detail, currentRun, pendingApproval, busy } = workspace;
+  const { detail, currentRun, decisionTarget, busy } = workspace;
   const selection = useApprovedUpstream({
     engine: workspace.engine,
     workflowType: "CHANNEL_VIDEO_BRIEF",
@@ -75,7 +75,7 @@ export function VideoScriptWorkspace({ initial }: { initial?: WorkflowList }) {
         </button>
       </header>
 
-      <WorkspaceFeedback label="video script" loading={workspace.loading} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
+      <WorkspaceFeedback label="video script" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
 
       {selection.eligible.length === 0 && !workspace.loading && (
         <p className="muted">Approve a video brief first. A video script can only be written from an approved brief.</p>
@@ -106,8 +106,9 @@ export function VideoScriptWorkspace({ initial }: { initial?: WorkflowList }) {
 
       {script && <ScriptDocument script={script} qa={finalQa} />}
 
-      {script && pendingApproval && (
+      {script && decisionTarget && (
         <DecisionBar
+          target={decisionTarget}
           busy={busy}
           title="Review this script"
           explanation="Approving accepts the script. It does not mean the video is ready to package, render, or publish."
@@ -115,7 +116,7 @@ export function VideoScriptWorkspace({ initial }: { initial?: WorkflowList }) {
           approveLabel="Approve exact version"
           revisionPlaceholder="What should the revised script change?"
           artifactLabel="script"
-          onDecide={(decision, note) => workspace.decide(decision, note, `${decision.replaceAll("_", " ")} recorded. The original script and its lineage are preserved.`)}
+          onDecide={(target, decision, note) => workspace.decide(target, decision, note, `${decision.replaceAll("_", " ")} recorded. The original script and its lineage are preserved.`)}
         />
       )}
     </section>

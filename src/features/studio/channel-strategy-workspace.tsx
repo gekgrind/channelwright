@@ -64,7 +64,7 @@ export function ChannelStrategyWorkspace({ initial }: { initial?: WorkflowList }
 
   return <div className="research-workspace strategy-workspace">
     <section className="research-hero"><div><p className="eyebrow">Approved research → channel strategy</p><h2>Build one auditable strategy</h2><p>Channelwright consumes an exact approved research run, preserves its integrity snapshot, and pauses after independent QA for your decision.</p></div><span>NO DOWNSTREAM CONTENT</span></section>
-    <WorkspaceFeedback label="strategy" loading={workspace.loading} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
+    <WorkspaceFeedback label="strategy" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
     {selection.eligible.length > 0 ? <form className="research-request" onSubmit={start}>
       <UpstreamCard heading="Build a strategy from" kindLabel="Research" selection={selection} disabled={busy} />
       <p><ShieldCheck size={15} /> The server rejects unapproved, cross-owner, mutable, malformed, missing, or integrity-mismatched research. It never selects “latest” silently.</p>
@@ -73,7 +73,8 @@ export function ChannelStrategyWorkspace({ initial }: { initial?: WorkflowList }
     {strategyWorkflows.length > 0 && <section className="research-history"><header><h3>Strategy ledger</h3><button type="button" className="button button-quiet" disabled={busy} onClick={() => void workspace.refresh()}><RefreshCcw size={14} /> Refresh</button></header>{strategyWorkflows.slice(0, 8).map((workflow) => <button type="button" key={workflow.id} className={workflow.id === activeId ? "selected" : ""} aria-pressed={workflow.id === activeId} onClick={() => workspace.select(workflow.id)}><span>{new Date(workflow.created_at).toLocaleString()}</span><b>{workflow.status.replaceAll("_", " ")}</b><small>{workflow.id}</small></button>)}</section>}
     {detail && <section className="research-run"><header><div><p className="eyebrow">Durable strategy execution</p><h2>{detail.workflow.status.replaceAll("_", " ")}</h2></div><small>{run?.id}</small></header><div className="research-steps">{currentSteps.map((item) => <span key={item.id} className={item.status === "COMPLETED" ? "done" : item.status === "FAILED" ? "failed" : ""}><b>{item.step_key.replaceAll("-", " ")}</b><small>{item.status.replaceAll("_", " ")} · {item.attempt_count}/{item.max_attempts}</small></span>)}</div>{run?.error_code && <p className="research-failure"><AlertTriangle size={15} /> Failed closed: {run.error_code}</p>}</section>}
     {result.success && <StrategyResultReview result={result.data} upstream={upstream.success ? upstream.data : undefined} initialQa={initialQa.success ? initialQa.data : undefined} finalQa={finalQa.success ? finalQa.data : undefined} revised={revision.success && revision.data.attempted} budget={budget} artifactHash={run?.artifact_hash ?? null} provenanceHash={run?.provenance_hash ?? null} />}
-    {workspace.pendingApproval && <DecisionBar
+    {workspace.decisionTarget && <DecisionBar
+      target={workspace.decisionTarget}
       busy={busy}
       title="Human strategy decision required"
       explanation="Approve this exact strategy, reject it, or create a separately budgeted successor run. Exact-version lineage remains immutable."
@@ -81,7 +82,7 @@ export function ChannelStrategyWorkspace({ initial }: { initial?: WorkflowList }
       approveLabel="Approve exact strategy"
       revisionPlaceholder="Required for a linked successor strategy run."
       artifactLabel="strategy"
-      onDecide={(decision, note) => workspace.decide(decision, note, `${decision.replaceAll("_", " ")} recorded. Exact-version lineage remains immutable.`)}
+      onDecide={(target, decision, note) => workspace.decide(target, decision, note, `${decision.replaceAll("_", " ")} recorded. Exact-version lineage remains immutable.`)}
     />}
     {!result.success && draft.success && <p className="success-banner">Strategy draft persisted; final QA and human review are still pending.</p>}
   </div>;

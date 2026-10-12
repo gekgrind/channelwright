@@ -91,6 +91,25 @@ describe("StudioApp fixture channel home", () => {
     expect(screen.queryByText(/independent script qa/i)).toBeNull();
   });
 
+  it("never carries typed review feedback from one video to another when switching", async () => {
+    await fixtureStudio(async (orchestrator) => {
+      const channelId = await readyChannel(orchestrator);
+      await orchestrator.execute("user-1", "video-1", { type: "CREATE_VIDEO", channelId, topic: "Why loyalty programs change decisions" });
+      await orchestrator.execute("user-1", "video-2", { type: "CREATE_VIDEO", channelId, topic: "How warranties quietly make money" });
+    });
+    render(<StudioApp user={{ email: "demo@example.com", mode: "mock" }} />);
+
+    const work = await screen.findByRole("region", { name: /videos and builds/i });
+    const [newest, older] = within(work).getAllByRole("button", { name: /^video/i });
+    expect(newest).toHaveAttribute("aria-pressed", "true");
+    fireEvent.change(screen.getByRole("textbox", { name: /revision feedback/i }), { target: { value: "Feedback about the newest video only." } });
+
+    fireEvent.click(older);
+    expect(older).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("textbox", { name: /revision feedback/i })).toHaveValue("");
+    expect(screen.getByRole("button", { name: /request changes/i })).toBeDisabled();
+  });
+
   it("lists builds beside videos and lets the operator switch between them", async () => {
     await fixtureStudio(async (orchestrator) => {
       const channelId = await readyChannel(orchestrator);

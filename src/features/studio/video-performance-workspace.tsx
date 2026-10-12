@@ -25,6 +25,9 @@ type WorkflowDetail = {
 const gateTone = (gate: ViewerValueGate) => gate === "PASS" ? "done" : gate === "REVISE" ? "warning" : "failed";
 const verdictTone = (verdict: string) => verdict === "SUPPORTED" ? "done" : verdict === "REFUTED" ? "failed" : "warning";
 
+/** The exact approved release run a performance snapshot was entered for. */
+type DraftOwner = { workflowId: string; runId: string; title: string };
+
 /** The operator-entered metric fields. Every one is optional: the operator supplies what they have. */
 const METRIC_FIELDS = [
   ["impressions", "Impressions", "int"],
@@ -45,7 +48,7 @@ const METRIC_FIELDS = [
 
 export function VideoPerformanceWorkspace({ initial }: { initial?: WorkflowList }) {
   const workspace = useWorkflowWorkspace<WorkflowDetail>({ initial, workflowType: "CHANNEL_VIDEO_PERFORMANCE", label: "video performance" });
-  const { detail, currentRun, pendingApproval, busy } = workspace;
+  const { detail, currentRun, decisionTarget, busy } = workspace;
   const selection = useApprovedUpstream({
     engine: workspace.engine,
     workflowType: "CHANNEL_VIDEO_RELEASE",
@@ -65,6 +68,22 @@ export function VideoPerformanceWorkspace({ initial }: { initial?: WorkflowList 
   const [daysSincePublish, setDaysSincePublish] = useState("");
   const [videoDurationSeconds, setVideoDurationSeconds] = useState("");
   const [operatorContext, setOperatorContext] = useState("");
+  // The snapshot is evidence about one exact approved release run. It is bound
+  // to that run on first edit and never follows a different selection silently.
+  const [draftOwner, setDraftOwner] = useState<DraftOwner | null>(null);
+  const draftMismatch = Boolean(draftOwner && (selection.selectedId !== draftOwner.workflowId || (release && release.runId !== draftOwner.runId)));
+  const editable = Boolean(release) && !busy && !draftMismatch;
+  /** Wraps every field change so the draft is bound to the release it was entered for. */
+  const edit = <T,>(apply: (value: T) => void) => (value: T) => {
+    if (!release || draftMismatch) return;
+    if (!draftOwner) setDraftOwner({ workflowId: release.workflowId, runId: release.runId, title: release.title });
+    apply(value);
+  };
+  const clearDraft = () => {
+    setMetrics({}); setSourceNote(""); setMeasurementSource("MANUAL_ENTRY"); setWindowStart(""); setWindowEnd("");
+    setDaysSincePublish(""); setVideoDurationSeconds(""); setOperatorContext(""); setDraftOwner(null);
+  };
+  const ownerStillEligible = Boolean(draftOwner && selection.eligible.some((item) => item.id === draftOwner.workflowId));
 
   const numeric = (raw: string | undefined, kind: "int" | "num"): number | null => {
     const trimmed = (raw ?? "").trim();
@@ -77,6 +96,11 @@ export function VideoPerformanceWorkspace({ initial }: { initial?: WorkflowList 
   const start = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!release) return;
+    // Verify, at send time, that the snapshot was entered for this exact release run.
+    if (!draftOwner || draftMismatch || draftOwner.workflowId !== release.workflowId || draftOwner.runId !== release.runId) {
+      workspace.setError("Nothing was started: this snapshot was entered for a different release. Switch back, re-bind it explicitly, or clear it.");
+      return;
+    }
     let performanceSnapshot: Record<string, unknown>;
     try {
       performanceSnapshot = {
@@ -113,7 +137,7 @@ export function VideoPerformanceWorkspace({ initial }: { initial?: WorkflowList 
   // the predecessor run's final QA, which must not appear beside the new record.
   const finalQa = safeQa(detail?.steps.find((step) => step.workflow_run_id === currentRun?.id && step.step_key === "final-video-performance-qa")?.output_payload);
   const version = detail && currentRun ? runVersionOf(detail, currentRun.id) : undefined;
-  const canStart = release && sourceNote.trim() !== "" && windowStart !== "" && windowEnd !== "" && videoDurationSeconds.trim() !== "";
+  const canStart = release && !draftMismatch && sourceNote.trim() !== "" && windowStart !== "" && windowEnd !== "" && videoDurationSeconds.trim() !== "";
 
   return (
     <section className="workspace-section" aria-label="Video performance">
@@ -127,7 +151,7 @@ export function VideoPerformanceWorkspace({ initial }: { initial?: WorkflowList 
         </button>
       </header>
 
-      <WorkspaceFeedback label="video performance" loading={workspace.loading} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
+      <WorkspaceFeedback label="video performance" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
 
       {selection.eligible.length === 0 && !workspace.loading && (
         <p className="muted">Approve a video release first. Performance can only be measured against an approved release.</p>
@@ -136,11 +160,22 @@ export function VideoPerformanceWorkspace({ initial }: { initial?: WorkflowList 
       {selection.eligible.length > 0 && (
         <form className="stack-form" onSubmit={start}>
           <UpstreamCard heading="Measure performance for" kindLabel="Release" selection={selection} disabled={busy} />
+          {draftOwner && draftMismatch && (
+            <div className="callout callout-warning" role="alert">
+              <strong>This snapshot was entered for “{draftOwner.title}”</strong>
+              <p>The numbers below have not been applied to the release now selected. Nothing can be started until you choose what they belong to.</p>
+              <div className="button-row">
+                {ownerStillEligible && <button type="button" className="button" onClick={() => { workspace.setError(null); selection.choose(draftOwner.workflowId); }}>Switch back to “{draftOwner.title}”</button>}
+                {release && <button type="button" className="button" onClick={() => { workspace.setError(null); setDraftOwner({ workflowId: release.workflowId, runId: release.runId, title: release.title }); }}>Use these numbers for “{release.title}”</button>}
+                <button type="button" className="button button-danger" onClick={() => { workspace.setError(null); clearDraft(); }}>Clear the snapshot</button>
+              </div>
+            </div>
+          )}
           <p className="muted">Enter what you have from YouTube Studio (manual, CSV export, or a pasted API snapshot). Leave any metric blank if you do not have it — a hypothesis with no data is marked NOT&nbsp;ENOUGH&nbsp;DATA rather than guessed.</p>
 
           <div className="field-row">
             <label>Source
-              <select value={measurementSource} onChange={(event) => setMeasurementSource(event.target.value as typeof measurementSource)} disabled={busy}>
+              <select value={measurementSource} onChange={(event) => edit(setMeasurementSource)(event.target.value as typeof measurementSource)} disabled={!editable}>
                 <option value="MANUAL_ENTRY">Manual entry</option>
                 <option value="CSV_EXPORT">CSV export</option>
                 <option value="API_SNAPSHOT_PASTED">Pasted API snapshot</option>
@@ -148,39 +183,39 @@ export function VideoPerformanceWorkspace({ initial }: { initial?: WorkflowList 
               </select>
             </label>
             <label>Video duration (s)
-              <input type="number" min={1} value={videoDurationSeconds} onChange={(event) => setVideoDurationSeconds(event.target.value)} disabled={busy} required />
+              <input type="number" min={1} value={videoDurationSeconds} onChange={(event) => edit(setVideoDurationSeconds)(event.target.value)} disabled={!editable} required />
             </label>
             <label>Days since publish
-              <input type="number" min={0} value={daysSincePublish} onChange={(event) => setDaysSincePublish(event.target.value)} disabled={busy} />
+              <input type="number" min={0} value={daysSincePublish} onChange={(event) => edit(setDaysSincePublish)(event.target.value)} disabled={!editable} />
             </label>
           </div>
 
           <div className="field-row">
             <label>Observation window start
-              <input type="datetime-local" value={windowStart} onChange={(event) => setWindowStart(event.target.value)} disabled={busy} required />
+              <input type="datetime-local" value={windowStart} onChange={(event) => edit(setWindowStart)(event.target.value)} disabled={!editable} required />
             </label>
             <label>Observation window end
-              <input type="datetime-local" value={windowEnd} onChange={(event) => setWindowEnd(event.target.value)} disabled={busy} required />
+              <input type="datetime-local" value={windowEnd} onChange={(event) => edit(setWindowEnd)(event.target.value)} disabled={!editable} required />
             </label>
           </div>
 
           <label>How you obtained these numbers
-            <textarea value={sourceNote} onChange={(event) => setSourceNote(event.target.value)} maxLength={600} required
-              placeholder="e.g. Exported the Studio 'Reach' and 'Engagement' tabs on day 14, pasted below." disabled={busy} />
+            <textarea value={sourceNote} onChange={(event) => edit(setSourceNote)(event.target.value)} maxLength={600} required
+              placeholder="e.g. Exported the Studio 'Reach' and 'Engagement' tabs on day 14, pasted below." disabled={!editable} />
           </label>
 
           <fieldset className="metric-grid">
             <legend>Metrics (enter what you have)</legend>
             {METRIC_FIELDS.map(([key, label]) => (
               <label key={key}>{label}
-                <input type="number" value={metrics[key] ?? ""} onChange={(event) => setMetrics((prev) => ({ ...prev, [key]: event.target.value }))} disabled={busy} />
+                <input type="number" value={metrics[key] ?? ""} onChange={(event) => edit((value: string) => setMetrics((prev) => ({ ...prev, [key]: value })))(event.target.value)} disabled={!editable} />
               </label>
             ))}
           </fieldset>
 
           <label>Context that matters for reading these numbers <span className="muted">(optional)</span>
-            <textarea value={operatorContext} onChange={(event) => setOperatorContext(event.target.value)} maxLength={1200}
-              placeholder="e.g. This video was featured on the channel homepage for three days; a competitor posted the same topic on day 2." disabled={busy} />
+            <textarea value={operatorContext} onChange={(event) => edit(setOperatorContext)(event.target.value)} maxLength={1200}
+              placeholder="e.g. This video was featured on the channel homepage for three days; a competitor posted the same topic on day 2." disabled={!editable} />
           </label>
 
           <button className="button button-accent" type="submit" disabled={busy || !canStart}>
@@ -204,8 +239,9 @@ export function VideoPerformanceWorkspace({ initial }: { initial?: WorkflowList 
 
       {record && <PerformanceDocument record={record} qa={finalQa} />}
 
-      {record && pendingApproval && (
+      {record && decisionTarget && (
         <DecisionBar
+          target={decisionTarget}
           busy={busy}
           title="Review this performance record"
           explanation="Approving records the immutable performance learning record. Any strategy change it recommends is for you to act on later; approval changes nothing about the published video."
@@ -213,7 +249,7 @@ export function VideoPerformanceWorkspace({ initial }: { initial?: WorkflowList 
           approveLabel="Approve exact version"
           revisionPlaceholder="What should the revised interpretation change?"
           artifactLabel="performance record"
-          onDecide={(decision, note) => workspace.decide(decision, note, `${decision.replaceAll("_", " ")} recorded. The original performance record, the operator snapshot, and their lineage are preserved.`)}
+          onDecide={(target, decision, note) => workspace.decide(target, decision, note, `${decision.replaceAll("_", " ")} recorded. The original performance record, the operator snapshot, and their lineage are preserved.`)}
         />
       )}
     </section>

@@ -32,7 +32,7 @@ const formatTimestamp = (seconds: number) => {
 
 export function VideoPackagingWorkspace({ initial }: { initial?: WorkflowList }) {
   const workspace = useWorkflowWorkspace<WorkflowDetail>({ initial, workflowType: "CHANNEL_VIDEO_PACKAGING", label: "video packaging" });
-  const { detail, currentRun, pendingApproval, busy } = workspace;
+  const { detail, currentRun, decisionTarget, busy } = workspace;
   const selection = useApprovedUpstream({
     engine: workspace.engine,
     workflowType: "CHANNEL_VIDEO_SCRIPT",
@@ -67,7 +67,7 @@ export function VideoPackagingWorkspace({ initial }: { initial?: WorkflowList })
         </button>
       </header>
 
-      <WorkspaceFeedback label="video packaging" loading={workspace.loading} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
+      <WorkspaceFeedback label="video packaging" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
 
       {selection.eligible.length === 0 && !workspace.loading && (
         <p className="muted">Approve a video script first. Packaging can only be built from an approved script.</p>
@@ -98,8 +98,9 @@ export function VideoPackagingWorkspace({ initial }: { initial?: WorkflowList })
 
       {packaging && <PackagingDocument packaging={packaging} qa={finalQa} />}
 
-      {packaging && pendingApproval && (
+      {packaging && decisionTarget && (
         <DecisionBar
+          target={decisionTarget}
           busy={busy}
           title="Review this packaging"
           explanation="Approving accepts the packaging direction. It does not choose a title, generate a thumbnail, or publish anything."
@@ -107,7 +108,7 @@ export function VideoPackagingWorkspace({ initial }: { initial?: WorkflowList })
           approveLabel="Approve exact version"
           revisionPlaceholder="What should the revised packaging change?"
           artifactLabel="packaging"
-          onDecide={(decision, note) => workspace.decide(decision, note, `${decision.replaceAll("_", " ")} recorded. The original packaging and its lineage are preserved.`)}
+          onDecide={(target, decision, note) => workspace.decide(target, decision, note, `${decision.replaceAll("_", " ")} recorded. The original packaging and its lineage are preserved.`)}
         />
       )}
     </section>

@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Check, LoaderCircle, RefreshCcw, XCircle } from "lucide-react";
-import type { ApprovalDecision, WorkflowList } from "./workflow-api";
+import type { ApprovalDecision, DecisionTarget, WorkflowList } from "./workflow-api";
 
 /** Loading, refresh-failure, action-error, notice, and live-polling feedback for one workspace. */
 export function WorkspaceFeedback({ label, loading, busy, error, refreshError, notice, polling, onRetry }: {
@@ -66,7 +66,9 @@ export function StageList({ steps }: { steps: Array<{ id: string; step_key: stri
  * approval, run, and workflow are canceled), so it requires an explicit
  * confirmation that states that consequence before anything is sent.
  */
-export function DecisionBar({ busy, title = "Human decision required", explanation, versionLabel, approveLabel, revisionPlaceholder, artifactLabel, onDecide }: {
+type DecisionBarProps = {
+  /** The exact workflow/run/approval this decision is bound to. */
+  target: DecisionTarget;
   busy: boolean;
   title?: string;
   explanation: ReactNode;
@@ -76,8 +78,21 @@ export function DecisionBar({ busy, title = "Human decision required", explanati
   revisionPlaceholder: string;
   /** Lowercase noun for the reviewed artifact, e.g. "brief". */
   artifactLabel: string;
-  onDecide: (decision: ApprovalDecision, note: string | undefined) => Promise<boolean>;
-}) {
+  /** Always receives the target this bar was rendered for, never a newer selection. */
+  onDecide: (target: DecisionTarget, decision: ApprovalDecision, note: string | undefined) => Promise<boolean>;
+};
+
+/**
+ * Keyed by the decision target: when the selected workflow, run, or approval
+ * changes, the bar remounts, so an open Reject confirmation, a typed reason or
+ * revision note, and in-flight submission state can never carry over to a
+ * different artifact.
+ */
+export function DecisionBar(props: DecisionBarProps) {
+  return <DecisionBarForTarget key={props.target.key} {...props} />;
+}
+
+function DecisionBarForTarget({ target, busy, title = "Human decision required", explanation, versionLabel, approveLabel, revisionPlaceholder, artifactLabel, onDecide }: DecisionBarProps) {
   const id = useId();
   const [revisionNote, setRevisionNote] = useState("");
   const [confirmingReject, setConfirmingReject] = useState(false);
@@ -98,7 +113,7 @@ export function DecisionBar({ busy, title = "Human decision required", explanati
     if (submitting) return;
     setSubmitting(true);
     try {
-      const recorded = await onDecide(decision, note);
+      const recorded = await onDecide(target, decision, note);
       if (recorded && decision === "REQUEST_REVISION") setRevisionNote("");
       if (recorded && decision === "REJECT") { setConfirmingReject(false); setRejectReason(""); }
     } finally {

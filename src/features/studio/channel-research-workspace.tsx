@@ -88,7 +88,7 @@ export function ChannelResearchWorkspace({ initial, media }: { initial?: Workflo
 
   return <div className="research-workspace">
     <section className="research-hero"><div><p className="eyebrow">Provider-backed strategy</p><h2>Research a YouTube channel concept</h2><p>Current public YouTube evidence is normalized, cited, independently checked, and held for your decision. Provider data is evidence, never instructions.</p></div><span>HUMAN REVIEW REQUIRED</span></section>
-    <WorkspaceFeedback label="research" loading={workspace.loading} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
+    <WorkspaceFeedback label="research" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
     <form className="research-request" onSubmit={start}>
       <label>Channel concept<textarea name="channelConcept" minLength={10} maxLength={2000} required rows={3} placeholder="e.g. Visual investigations of the hidden systems behind everyday businesses" /></label>
       <div><label>Niche <small>Optional</small><input name="niche" maxLength={500} placeholder="Business education" /></label><label>Target audience <small>Optional</small><input name="targetAudience" maxLength={1000} placeholder="Curious aspiring operators" /></label></div>
@@ -101,7 +101,8 @@ export function ChannelResearchWorkspace({ initial, media }: { initial?: Workflo
     {researchWorkflows.length > 0 && <section className="research-history"><header><h3>Research ledger</h3><button type="button" className="button button-quiet" disabled={busy} onClick={() => void workspace.refresh()}><RefreshCcw size={14} /> Refresh</button></header>{researchWorkflows.slice(0, 8).map((workflow) => <button type="button" key={workflow.id} className={workflow.id === activeId ? "selected" : ""} aria-pressed={workflow.id === activeId} onClick={() => workspace.select(workflow.id)}><span>{new Date(workflow.created_at).toLocaleString()}</span><b>{workflow.status.replaceAll("_", " ")}</b><small>{workflow.id}</small></button>)}</section>}
     {detail && <section className="research-run"><header><div><p className="eyebrow">Durable execution</p><h2>{detail.workflow.status.replaceAll("_", " ")}</h2></div><small>{detail.workflow.id}</small></header><div className="research-steps">{currentSteps.map((item) => <span key={item.id} className={item.status === "COMPLETED" ? "done" : item.status === "FAILED" ? "failed" : ""}><b>{item.step_key.replaceAll("-", " ")}</b><small>{item.status.replaceAll("_", " ")} · {item.attempt_count}/{item.max_attempts}</small></span>)}</div>{run?.error_code && <p className="research-failure"><AlertTriangle size={15} /> Failed safely: {run.error_code}. No recommendation was accepted.</p>}</section>}
     {result && <ResearchResult result={result} bundle={bundle} initialQa={initialQa} finalQa={finalQa} usage={{ totalInput, totalOutput, revised: revision?.attempted ?? false }} durableBudget={durableBudget} />}
-    {workspace.pendingApproval && <DecisionBar
+    {workspace.decisionTarget && <DecisionBar
+      target={workspace.decisionTarget}
       busy={busy}
       title="The recommendation is not accepted until you decide."
       explanation="Approving accepts this exact research run as the evidence base for strategy. Requesting a revision creates a linked, separately budgeted successor run."
@@ -109,7 +110,7 @@ export function ChannelResearchWorkspace({ initial, media }: { initial?: Workflo
       approveLabel="Approve exact run"
       revisionPlaceholder="Required only when requesting a linked successor run."
       artifactLabel="research run"
-      onDecide={(decision, note) => workspace.decide(decision, note, `${decision.replaceAll("_", " ")} recorded on the exact research run.`)}
+      onDecide={(target, decision, note) => workspace.decide(target, decision, note, `${decision.replaceAll("_", " ")} recorded on the exact research run.`)}
     />}
     <section className="production-capability"><p className="eyebrow">Existing media boundary</p><h2>Transactional media records remain separate</h2><div><span>{media.assets.length}<b>ASSET VERSIONS</b></span><span>{media.renderJobs.length}<b>RENDER JOBS</b></span><span>{media.masters.length}<b>MASTER VERSIONS</b></span></div><small>RESEARCH DOES NOT RENDER OR PUBLISH MEDIA</small></section>
   </div>;

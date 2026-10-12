@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { VideoScriptWorkspace } from "./video-script-workspace";
 import { videoScriptResultFixture } from "@/server/workflows/video-script-fixtures.test-helper";
@@ -176,6 +176,55 @@ describe("VideoScriptWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: /reject and close/i }));
     await waitFor(() => expect(decisionCalls()).toHaveLength(1));
     expect(JSON.parse((decisionCalls()[0][1] as RequestInit).body as string)).toEqual({ decision: "REJECT" });
+  });
+
+  it("never carries a Reject confirmation or revision note from one script run to another", async () => {
+    const SCRIPT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2";
+    const RUN_B = "cccccccc-cccc-4ccc-8ccc-ccccccccccc2";
+    const detailB = scriptDetail();
+    detailB.workflow = { ...detailB.workflow, id: SCRIPT_B, current_run_id: RUN_B };
+    detailB.runs = detailB.runs.map((run) => ({ ...run, id: RUN_B }));
+    detailB.steps = detailB.steps.map((step) => ({ ...step, workflow_run_id: RUN_B }));
+    detailB.approvals = [{ ...detailB.approvals[0], id: "apB", workflow_run_id: RUN_B }];
+    const list = {
+      workflows: [
+        ...workflowList().workflows,
+        { id: SCRIPT_B, workflow_type: "CHANNEL_VIDEO_SCRIPT", status: "WAITING_FOR_APPROVAL", created_at: "2026-08-17T10:00:00.000Z", current_run_id: RUN_B },
+      ],
+    };
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") return { ok: true, json: async () => ({ operationResult: {} }) } as Response;
+      if (url === "/api/workflows") return { ok: true, json: async () => ({ workflowEngine: list }) } as Response;
+      if (url.includes(BRIEF_WORKFLOW_ID)) return { ok: true, json: async () => briefDetail() } as Response;
+      if (url.includes(SCRIPT_B)) return { ok: true, json: async () => detailB } as Response;
+      return { ok: true, json: async () => scriptDetail() } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<VideoScriptWorkspace />);
+
+    await screen.findByRole("button", { name: /approve exact version/i });
+    fireEvent.change(screen.getByLabelText(/revision note/i), { target: { value: "Notes written about run A." } });
+    fireEvent.click(screen.getByRole("button", { name: /^reject/i }));
+    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: "Reason written about run A." } });
+
+    const runs = within(screen.getByRole("navigation", { name: /video script runs/i })).getAllByRole("button");
+    fireEvent.click(runs[1]);
+    // While B loads, nothing from A can be acted on.
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /approve exact version/i })).not.toBeInTheDocument();
+
+    await waitFor(() => expect(runs[1]).toHaveAttribute("aria-pressed", "true"));
+    await screen.findByRole("button", { name: /approve exact version/i });
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/revision note/i)).toHaveValue("");
+
+    fireEvent.click(screen.getByRole("button", { name: /^reject/i }));
+    expect(screen.getByLabelText(/reason/i)).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: /reject and close/i }));
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toHaveLength(1));
+    const [url, init] = fetchMock.mock.calls.find(([, call]) => (call as RequestInit | undefined)?.method === "POST")!;
+    expect(url).toBe(`/api/workflows/${SCRIPT_B}/approvals/apB`);
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ decision: "REJECT" });
   });
 
   it("keeps a failed refresh visible and recoverable instead of swallowing it", async () => {

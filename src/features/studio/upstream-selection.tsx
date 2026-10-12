@@ -119,8 +119,17 @@ export function UpstreamCard<T>({ heading, kindLabel, selection, disabled }: {
 }) {
   const { eligible, selectedId, upstream, loading, error } = selection;
   if (!selectedId) return null;
-  if (loading) return <p className="upstream-empty" role="status">Loading the approved {kindLabel.toLowerCase()}…</p>;
-  if (error || !upstream) return <div className="error-banner" role="alert">{error ?? `The approved ${kindLabel.toLowerCase()} could not be resolved.`}</div>;
+  // The picker stays available while a choice loads or fails, so the operator can change course.
+  const picker = eligible.length > 1 && (
+    <label>
+      Use a different approved {kindLabel.toLowerCase()}
+      <select value={selectedId} onChange={(event) => selection.choose(event.target.value)} disabled={disabled}>
+        {eligible.map((item, index) => <option key={item.id} value={item.id}>{selection.optionLabel(item)}{index === 0 ? " (newest)" : ""}</option>)}
+      </select>
+    </label>
+  );
+  if (loading) return <><p className="upstream-empty" role="status">Loading the approved {kindLabel.toLowerCase()}…</p>{picker}</>;
+  if (error || !upstream) return <><div className="error-banner" role="alert">{error ?? `The approved ${kindLabel.toLowerCase()} could not be resolved.`}</div>{picker}</>;
   return (
     <section className="upstream-card" aria-label={`Selected approved ${kindLabel.toLowerCase()}`}>
       <p className="eyebrow">{heading}</p>
@@ -130,14 +139,7 @@ export function UpstreamCard<T>({ heading, kindLabel, selection, disabled }: {
         {upstream.detail && <span>{upstream.detail}</span>}
         {eligible.length > 1 && <span>{eligible.length} approved {kindLabel.toLowerCase()}s available</span>}
       </p>
-      {eligible.length > 1 && (
-        <label>
-          Use a different approved {kindLabel.toLowerCase()}
-          <select value={selectedId} onChange={(event) => selection.choose(event.target.value)} disabled={disabled}>
-            {eligible.map((item, index) => <option key={item.id} value={item.id}>{selection.optionLabel(item)}{index === 0 ? " (newest)" : ""}</option>)}
-          </select>
-        </label>
-      )}
+      {picker}
       <details>
         <summary>Technical provenance</summary>
         <dl>

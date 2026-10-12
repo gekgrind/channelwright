@@ -42,8 +42,10 @@ export function describeContentBacklog(result: ChannelContentIntelligenceResult)
 
 export function VideoBriefWorkspace({ initial }: { initial?: WorkflowList }) {
   const workspace = useWorkflowWorkspace<WorkflowDetail>({ initial, workflowType: "CHANNEL_VIDEO_BRIEF", label: "video brief" });
-  const { detail, currentRun, pendingApproval, busy } = workspace;
-  const [selectedTopicId, setSelectedTopicId] = useState("");
+  const { detail, currentRun, decisionTarget, busy } = workspace;
+  // A topic choice is only meaningful for the exact approved content run it was
+  // made from; it is bound to that run and never carried to another backlog.
+  const [topicChoice, setTopicChoice] = useState<{ upstreamKey: string; topicId: string } | null>(null);
   const selection = useApprovedUpstream({
     engine: workspace.engine,
     workflowType: "CHANNEL_CONTENT_INTELLIGENCE",
@@ -52,6 +54,11 @@ export function VideoBriefWorkspace({ initial }: { initial?: WorkflowList }) {
     describe: describeContentBacklog,
   });
   const upstream = selection.upstream;
+  const upstreamKey = upstream ? `${upstream.workflowId}:${upstream.runId}` : null;
+  const eligibleTopics = upstream?.output.backlog.filter((entry) => upstream.output.topics.find((topic) => topic.topicId === entry.topicId)?.viewerValue.gate === "PASS") ?? [];
+  const choiceIsCurrent = Boolean(topicChoice && topicChoice.upstreamKey === upstreamKey && eligibleTopics.some((entry) => entry.topicId === topicChoice.topicId));
+  const selectedTopicId = choiceIsCurrent ? topicChoice!.topicId : "";
+  const topicChoiceInvalidated = Boolean(topicChoice && upstreamKey && !choiceIsCurrent);
 
   const start = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -61,7 +68,8 @@ export function VideoBriefWorkspace({ initial }: { initial?: WorkflowList }) {
       contentIntelligenceWorkflowId: upstream.workflowId,
       contentIntelligenceRunId: upstream.runId,
     };
-    if (selectedTopicId) input.topicId = selectedTopicId;
+    // Only a topic chosen from this exact backlog run is sent; the server re-verifies eligibility.
+    if (choiceIsCurrent && topicChoice?.upstreamKey === `${upstream.workflowId}:${upstream.runId}`) input.topicId = topicChoice.topicId;
     await workspace.start(input, "Video brief queued from the exact approved topic. The server persisted its immutable upstream reference.");
   };
 
@@ -83,7 +91,7 @@ export function VideoBriefWorkspace({ initial }: { initial?: WorkflowList }) {
         </button>
       </header>
 
-      <WorkspaceFeedback label="video brief" loading={workspace.loading} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
+      <WorkspaceFeedback label="video brief" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
 
       {selection.eligible.length === 0 && !workspace.loading && (
         <p className="muted">Approve a content-intelligence backlog first. A video brief can only be built from an approved topic.</p>
@@ -103,10 +111,9 @@ export function VideoBriefWorkspace({ initial }: { initial?: WorkflowList }) {
             <>
               <label>
                 Topic
-                <select value={selectedTopicId} onChange={(event) => setSelectedTopicId(event.target.value)} disabled={busy}>
+                <select value={selectedTopicId} onChange={(event) => setTopicChoice(upstreamKey && event.target.value ? { upstreamKey, topicId: event.target.value } : null)} disabled={busy}>
                   <option value="">Use the recommended next video</option>
-                  {upstream.output.backlog
-                    .filter((entry) => upstream.output.topics.find((topic) => topic.topicId === entry.topicId)?.viewerValue.gate === "PASS")
+                  {eligibleTopics
                     .map((entry) => (
                       <option key={entry.topicId} value={entry.topicId}>
                         #{entry.rank} · {upstream.output.topics.find((topic) => topic.topicId === entry.topicId)?.workingConcept ?? entry.topicId}
@@ -114,6 +121,7 @@ export function VideoBriefWorkspace({ initial }: { initial?: WorkflowList }) {
                     ))}
                 </select>
               </label>
+              {topicChoiceInvalidated && <p className="callout callout-warning" role="status">Your earlier topic choice belonged to a different backlog, so it was cleared. The recommended next video from this backlog will be used unless you choose again.</p>}
               <p className="muted">Only topics that passed the Viewer Value gate upstream are eligible. The server re-verifies the topic against the approved artifact.</p>
             </>
           )}
@@ -138,8 +146,9 @@ export function VideoBriefWorkspace({ initial }: { initial?: WorkflowList }) {
 
       {brief && <BriefDocument brief={brief} qa={finalQa} />}
 
-      {brief && pendingApproval && (
+      {brief && decisionTarget && (
         <DecisionBar
+          target={decisionTarget}
           busy={busy}
           title="Review this brief"
           explanation="Approving accepts the creative and production direction. It does not mean the video is ready to produce, export, or publish."
@@ -147,7 +156,7 @@ export function VideoBriefWorkspace({ initial }: { initial?: WorkflowList }) {
           approveLabel="Approve exact version"
           revisionPlaceholder="What should the revised brief change?"
           artifactLabel="brief"
-          onDecide={(decision, note) => workspace.decide(decision, note, `${decision.replaceAll("_", " ")} recorded. The original brief and its lineage are preserved.`)}
+          onDecide={(target, decision, note) => workspace.decide(target, decision, note, `${decision.replaceAll("_", " ")} recorded. The original brief and its lineage are preserved.`)}
         />
       )}
     </section>

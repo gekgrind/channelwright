@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { VideoBriefWorkspace } from "./video-brief-workspace";
 import { videoBriefResultFixture, approvedContentArtifactFixture } from "@/server/workflows/video-brief-fixtures.test-helper";
@@ -98,6 +98,82 @@ describe("VideoBriefWorkspace", () => {
     // No topic object, content result, hash, or QA state may cross the boundary.
     expect(JSON.stringify(body)).not.toMatch(/viewerValue|contractHash|artifactHash|finalQaScore|backlog/);
     expect((call?.[1] as RequestInit).headers).toMatchObject({ "idempotency-key": expect.any(String) });
+  });
+
+  describe("topic identity across backlogs", () => {
+    const CONTENT_B = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2";
+    const RUN_B = "cccccccc-cccc-4ccc-8ccc-ccccccccccc2";
+    const twoBacklogs = { workflows: [
+      { id: CONTENT_WORKFLOW_ID, workflow_type: "CHANNEL_CONTENT_INTELLIGENCE", status: "COMPLETED", created_at: "2026-08-15T10:00:00.000Z", current_run_id: RUN_ID },
+      { id: CONTENT_B, workflow_type: "CHANNEL_CONTENT_INTELLIGENCE", status: "COMPLETED", created_at: "2026-08-10T10:00:00.000Z", current_run_id: RUN_B },
+    ] };
+    const contentB = () => {
+      const detailB = contentDetail();
+      detailB.workflow = { ...detailB.workflow, id: CONTENT_B, current_run_id: RUN_B };
+      detailB.runs = detailB.runs.map((run) => ({ ...run, id: RUN_B }));
+      return detailB;
+    };
+    const postedInput = (fetchMock: ReturnType<typeof vi.fn>) => {
+      const call = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
+      return call ? JSON.parse((call[1] as RequestInit).body as string).input : undefined;
+    };
+    const eligibleTopic = () => approvedContentArtifactFixture.contentResult.backlog.find((entry) => approvedContentArtifactFixture.contentResult.topics.find((topic) => topic.topicId === entry.topicId)?.viewerValue.gate === "PASS")!.topicId;
+
+    it("clears a topic chosen from one backlog when another backlog is selected, even if it lists the same topic", async () => {
+      const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes(CONTENT_B) && init?.method !== "POST") return { ok: true, json: async () => contentB() } as Response;
+        return mockFetch({ list: twoBacklogs })(url, init);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      render(<VideoBriefWorkspace />);
+      const topic = await screen.findByRole("combobox", { name: /^topic/i }, { timeout: 5000 });
+      fireEvent.change(topic, { target: { value: eligibleTopic() } });
+      expect(topic).toHaveValue(eligibleTopic());
+
+      fireEvent.change(screen.getByRole("combobox", { name: /use a different approved backlog/i }), { target: { value: CONTENT_B } });
+      await waitFor(() => expect(screen.getByRole("combobox", { name: /^topic/i })).toHaveValue(""));
+      expect(screen.getByText(/earlier topic choice belonged to a different backlog/i)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /start video brief/i }));
+      await waitFor(() => expect(postedInput(fetchMock)).toBeDefined());
+      // No stale topic id crosses into the newly selected plan.
+      expect(postedInput(fetchMock)).toEqual({ contentIntelligenceWorkflowId: CONTENT_B, contentIntelligenceRunId: RUN_B });
+    });
+
+    it("keeps a topic choice while its backlog stays selected", async () => {
+      const fetchMock = mockFetch({});
+      vi.stubGlobal("fetch", fetchMock);
+      render(<VideoBriefWorkspace />);
+      const topic = await screen.findByRole("combobox", { name: /^topic/i }, { timeout: 5000 });
+      fireEvent.change(topic, { target: { value: eligibleTopic() } });
+      fireEvent.click(screen.getByRole("button", { name: /start video brief/i }));
+      await waitFor(() => expect(postedInput(fetchMock)).toBeDefined());
+      expect(postedInput(fetchMock)).toEqual({ contentIntelligenceWorkflowId: CONTENT_WORKFLOW_ID, contentIntelligenceRunId: RUN_ID, topicId: eligibleTopic() });
+    });
+
+    it("never lets a slow response for a previously chosen backlog replace the current one", async () => {
+      let releaseB: (response: Response) => void = () => undefined;
+      let contentACalls = 0;
+      const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes(CONTENT_B) && init?.method !== "POST") return new Promise<Response>((resolve) => { releaseB = resolve; });
+        if (url.includes(CONTENT_WORKFLOW_ID) && init?.method !== "POST") contentACalls += 1;
+        return mockFetch({ list: twoBacklogs })(url, init);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      render(<VideoBriefWorkspace />);
+      const card = await screen.findByRole("region", { name: /selected approved backlog/i }, { timeout: 5000 });
+      fireEvent.change(within(card).getByRole("combobox", { name: /use a different approved backlog/i }), { target: { value: CONTENT_B } });
+      await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes(CONTENT_B))).toBe(true));
+      const callsBefore = contentACalls;
+      fireEvent.change(screen.getByRole("combobox", { name: /use a different approved backlog/i }), { target: { value: CONTENT_WORKFLOW_ID } });
+      await waitFor(() => expect(contentACalls).toBeGreaterThan(callsBefore));
+      await screen.findByRole("region", { name: /selected approved backlog/i });
+
+      releaseB({ ok: true, json: async () => contentB() } as Response);
+      fireEvent.click(await screen.findByRole("button", { name: /start video brief/i }));
+      await waitFor(() => expect(postedInput(fetchMock)).toBeDefined());
+      expect(postedInput(fetchMock)).toEqual({ contentIntelligenceWorkflowId: CONTENT_WORKFLOW_ID, contentIntelligenceRunId: RUN_ID });
+    });
   });
 
   it("renders the brief as a readable document rather than raw JSON", async () => {

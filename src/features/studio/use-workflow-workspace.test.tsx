@@ -130,7 +130,128 @@ describe("useWorkflowWorkspace", () => {
       return url === "/api/workflows" ? json(list("COMPLETED")) : json({ ...detail("WAITING_FOR_APPROVAL"), approvals: [{ id: "ap1", workflow_run_id: RUN_ID, status: "PENDING" }] });
     });
     await act(async () => { await sibling.result.current.refresh(); });
-    await act(async () => { await sibling.result.current.decide("APPROVE", undefined, "Approved."); });
+    const target = sibling.result.current.decisionTarget!;
+    await act(async () => { await sibling.result.current.decide(target, "APPROVE", undefined, "Approved."); });
     await waitFor(() => expect(observer.result.current.engine?.workflows).toHaveLength(1));
+  });
+
+  it("only lets the newest refresh set or clear the visible error (older success cannot erase a newer failure)", async () => {
+    let releaseOlder: (response: Response) => void = () => undefined;
+    const fetcher = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { releaseOlder = resolve; }))
+      .mockImplementationOnce(async () => json({ error: { code: "DATABASE_ERROR", message: "Newer refresh failed." } }, false));
+    vi.stubGlobal("fetch", fetcher);
+    const { result } = renderHook(() => useWorkflowWorkspace<WorkflowDetailBase>({ initial: { workflows: [], runs: [], pendingApprovals: [] }, workflowType: "CHANNEL_VIDEO_SCRIPT", label: "video script" }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let older: Promise<void> = Promise.resolve();
+    act(() => { older = result.current.refresh(); });
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.refreshError).toBe("Newer refresh failed.");
+
+    fetcher.mockImplementation(async () => json(detail("COMPLETED")));
+    await act(async () => { releaseOlder(json({ workflowEngine: { workflows: [], runs: [], pendingApprovals: [] } })); await older; });
+    expect(result.current.refreshError).toBe("Newer refresh failed.");
+  });
+
+  it("only lets the newest refresh set or clear the visible error (older failure cannot overwrite a newer recovery)", async () => {
+    let failOlder: (response: Response) => void = () => undefined;
+    const fetcher = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { failOlder = resolve; }))
+      .mockImplementationOnce(async () => json({ workflowEngine: { workflows: [], runs: [], pendingApprovals: [] } }));
+    vi.stubGlobal("fetch", fetcher);
+    const { result } = renderHook(() => useWorkflowWorkspace<WorkflowDetailBase>({ initial: { workflows: [], runs: [], pendingApprovals: [] }, workflowType: "CHANNEL_VIDEO_SCRIPT", label: "video script" }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let older: Promise<void> = Promise.resolve();
+    act(() => { older = result.current.refresh(); });
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.refreshError).toBeNull();
+
+    await act(async () => { failOlder(json({ error: { code: "DATABASE_ERROR", message: "Older refresh failed." } }, false)); await older; });
+    expect(result.current.refreshError).toBeNull();
+  });
+});
+
+describe("useWorkflowWorkspace decision identity", () => {
+  const A = "aaaaaaaa-aaaa-4aaa-8aaa-00000000000a";
+  const B = "aaaaaaaa-aaaa-4aaa-8aaa-00000000000b";
+  const runOf = (id: string) => `run-${id.slice(-1)}`;
+  const pending = (id: string) => ({
+    workflow: { id, status: "WAITING_FOR_APPROVAL", created_at: "2026-09-01T10:00:00.000Z", current_run_id: runOf(id) },
+    runs: [{ id: runOf(id), status: "WAITING_FOR_APPROVAL", output_payload: null, error_code: null }],
+    approvals: [{ id: `approval-${id.slice(-1)}`, workflow_run_id: runOf(id), status: "PENDING" }],
+  });
+  const twoPending = { workflows: [A, B].map((id) => ({ id, workflow_type: "CHANNEL_VIDEO_SCRIPT", status: "WAITING_FOR_APPROVAL", created_at: "2026-09-01T10:00:00.000Z", current_run_id: runOf(id) })), runs: [], pendingApprovals: [] };
+
+  function serve(onDecision?: () => Promise<Response>) {
+    const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") return onDecision ? onDecision() : json({ operationResult: {} });
+      if (url === "/api/workflows") return json({ workflowEngine: twoPending });
+      return json(pending(url.includes(B) ? B : A));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    return fetcher;
+  }
+  const decisionPosts = (fetcher: ReturnType<typeof vi.fn>) => fetcher.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === "POST");
+
+  it("clears the previous workflow's detail immediately when another workflow is selected", async () => {
+    let releaseB: (response: Response) => void = () => undefined;
+    const fetcher = serve();
+    const { result } = renderHook(() => useWorkflowWorkspace<WorkflowDetailBase>({ initial: twoPending, workflowType: "CHANNEL_VIDEO_SCRIPT", label: "video script" }));
+    await waitFor(() => expect(result.current.decisionTarget?.workflowId).toBe(A));
+
+    fetcher.mockImplementation(async (url: string) => url === "/api/workflows"
+      ? json({ workflowEngine: twoPending })
+      : new Promise<Response>((resolve) => { releaseB = resolve; }));
+    act(() => { result.current.select(B); });
+    // Nothing from A remains actionable while B loads.
+    expect(result.current.detail).toBeNull();
+    expect(result.current.decisionTarget).toBeNull();
+    expect(result.current.switching).toBe(true);
+    expect(result.current.activeId).toBe(B);
+
+    await waitFor(() => expect(fetcher.mock.calls.some(([url]) => String(url) === `/api/workflows/${B}`)).toBe(true));
+    await act(async () => { releaseB(json(pending(B))); });
+    await waitFor(() => expect(result.current.decisionTarget?.workflowId).toBe(B));
+    expect(result.current.switching).toBe(false);
+  });
+
+  it("refuses to send a decision whose target is no longer the selected gate", async () => {
+    const fetcher = serve();
+    const { result } = renderHook(() => useWorkflowWorkspace<WorkflowDetailBase>({ initial: twoPending, workflowType: "CHANNEL_VIDEO_SCRIPT", label: "video script" }));
+    await waitFor(() => expect(result.current.decisionTarget?.workflowId).toBe(A));
+    const targetA = result.current.decisionTarget!;
+
+    act(() => { result.current.select(B); });
+    await waitFor(() => expect(result.current.decisionTarget?.workflowId).toBe(B));
+
+    let sent = true;
+    await act(async () => { sent = await result.current.decide(targetA, "REJECT", "Meant for A", "Rejected."); });
+    expect(sent).toBe(false);
+    expect(decisionPosts(fetcher)).toHaveLength(0);
+    expect(result.current.error).toMatch(/nothing was recorded/i);
+  });
+
+  it("sends an in-flight decision to its own target and does not pull the view back after the operator moves on", async () => {
+    let finishDecision: (response: Response) => void = () => undefined;
+    const fetcher = serve(() => new Promise<Response>((resolve) => { finishDecision = resolve; }));
+    const { result } = renderHook(() => useWorkflowWorkspace<WorkflowDetailBase>({ initial: twoPending, workflowType: "CHANNEL_VIDEO_SCRIPT", label: "video script" }));
+    await waitFor(() => expect(result.current.decisionTarget?.workflowId).toBe(A));
+    const targetA = result.current.decisionTarget!;
+
+    let decision: Promise<boolean> = Promise.resolve(false);
+    act(() => { decision = result.current.decide(targetA, "APPROVE", undefined, "Approved."); });
+    act(() => { result.current.select(B); });
+    await waitFor(() => expect(result.current.decisionTarget?.workflowId).toBe(B));
+
+    await act(async () => { finishDecision(json({ operationResult: {} })); await decision; });
+    const posts = decisionPosts(fetcher);
+    expect(posts).toHaveLength(1);
+    expect(String(posts[0][0])).toBe(`/api/workflows/${A}/approvals/approval-a`);
+    // The view stays on B, which remains actionable, and the notice names what happened.
+    expect(result.current.detail?.workflow.id).toBe(B);
+    expect(result.current.decisionTarget?.workflowId).toBe(B);
+    expect(result.current.notice).toMatch(/previously selected workflow/i);
   });
 });

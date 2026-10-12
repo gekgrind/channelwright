@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import {
   announceWorkflowsChanged,
   currentRunOf,
+  decisionTargetOf,
   fetchWorkflowDetail,
   fetchWorkflowList,
   onWorkflowsChanged,
@@ -13,6 +14,7 @@ import {
   submitApprovalDecision,
   WORKFLOW_POLL_INTERVAL_MS,
   type ApprovalDecision,
+  type DecisionTarget,
   type WorkflowDetailBase,
   type WorkflowList,
 } from "./workflow-api";
@@ -28,6 +30,8 @@ const messageOf = (cause: unknown, fallback: string) => cause instanceof Error ?
  * - Keeps refresh failures visible (refreshError) instead of swallowing them.
  * - Starts and decisions announce the change so sibling workspaces re-read the
  *   list and can see newly approved upstream artifacts.
+ * - Decisions are bound to an exact workflow/run/approval target and are only
+ *   sent while that target is still the selected, committed one.
  */
 export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initial, workflowType, label }: {
   initial?: WorkflowList;
@@ -43,13 +47,22 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
   const [error, setError] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // True between choosing another workflow and receiving its detail; the
+  // previous workflow's detail is cleared so it cannot be acted on meanwhile.
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
   const mounted = useRef(true);
   const selectedId = useRef<string | undefined>(undefined);
+  // The newest committed detail, used to verify decision targets at send time.
+  const detailRef = useRef<TDetail | null>(null);
   const requestSeq = useRef(0);
   // Every list fetch (full loads and sibling-triggered list refreshes) takes a
   // ticket; only the newest ticket may replace the list, so a slow older
   // response can never overwrite newer state.
   const listSeq = useRef(0);
+  // Every operation that may set or clear refreshError takes a ticket too; only
+  // the newest may change it, so an older success cannot erase a newer failure
+  // and an older failure cannot overwrite a newer recovery.
+  const feedbackSeq = useRef(0);
   const inFlight = useRef(0);
 
   useEffect(() => {
@@ -73,17 +86,20 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
     const next = await fetchWorkflowDetail<TDetail>(selected, `Could not load the ${label} workflow.`);
     if (!mounted.current || seq !== requestSeq.current) return;
     selectedId.current = selected;
+    detailRef.current = next;
     setDetail(next);
+    setSwitchingTo(null);
   }, [label, workflowType]);
 
   /** Never throws: a failed refresh stays visible until a later one succeeds. */
   const refresh = useCallback(async (workflowId?: string, detailOnly = false) => {
+    const ticket = ++feedbackSeq.current;
     inFlight.current += 1;
     try {
       await load(workflowId, detailOnly);
-      if (mounted.current) setRefreshError(null);
+      if (mounted.current && ticket === feedbackSeq.current) setRefreshError(null);
     } catch (cause) {
-      if (mounted.current) setRefreshError(messageOf(cause, `Could not refresh ${label} workflows.`));
+      if (mounted.current && ticket === feedbackSeq.current) setRefreshError(messageOf(cause, `Could not refresh ${label} workflows.`));
     } finally {
       inFlight.current -= 1;
     }
@@ -91,11 +107,13 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
 
   const refreshList = useCallback(async () => {
     const ticket = ++listSeq.current;
+    const feedbackTicket = ++feedbackSeq.current;
     try {
       const list = await fetchWorkflowList(`Could not refresh ${label} workflows.`);
-      if (mounted.current && ticket === listSeq.current) { setEngine(list.workflowEngine); setRefreshError(null); }
+      if (mounted.current && ticket === listSeq.current) setEngine(list.workflowEngine);
+      if (mounted.current && feedbackTicket === feedbackSeq.current) setRefreshError(null);
     } catch (cause) {
-      if (mounted.current && ticket === listSeq.current) setRefreshError(messageOf(cause, `Could not refresh ${label} workflows.`));
+      if (mounted.current && feedbackTicket === feedbackSeq.current) setRefreshError(messageOf(cause, `Could not refresh ${label} workflows.`));
     }
   }, [label]);
 
@@ -113,7 +131,7 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const activeId = detail?.workflow.id ?? workflows[0]?.id;
+  const activeId = detail?.workflow.id ?? switchingTo ?? workflows[0]?.id;
   const status = detail?.workflow.status;
   const polling = Boolean(detail && status && POLLING_WORKFLOW_STATUSES.includes(status));
 
@@ -128,6 +146,13 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
   const select = useCallback((workflowId: string) => {
     selectedId.current = workflowId;
     setNotice(null);
+    if (detailRef.current?.workflow.id !== workflowId) {
+      // Drop the previous workflow's detail so its review controls (and any
+      // draft state bound to it) cannot act while the new selection loads.
+      detailRef.current = null;
+      setDetail(null);
+      setSwitchingTo(workflowId);
+    }
     void refresh(workflowId);
   }, [refresh]);
 
@@ -148,16 +173,32 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
     }
   }, [label, load, source, workflowType]);
 
-  const decide = useCallback(async (decision: ApprovalDecision, note: string | undefined, successNotice: string) => {
-    const approval = pendingApprovalOf(detail);
-    if (!detail || !approval) return false;
+  /**
+   * Sends a decision only to the exact gate it was made against. The target is
+   * re-verified against the currently selected, committed detail at send time;
+   * if anything changed, nothing is sent.
+   */
+  const decide = useCallback(async (target: DecisionTarget, decision: ApprovalDecision, note: string | undefined, successNotice: string) => {
+    const current = decisionTargetOf(detailRef.current);
+    if (!current || current.key !== target.key || selectedId.current !== target.workflowId) {
+      setError("Nothing was recorded: the selected run changed before this decision was sent. Review the run now shown and decide again.");
+      return false;
+    }
     if (decision === "REQUEST_REVISION" && !note?.trim()) return false;
     setBusy(true); setError(null); setNotice(null);
     try {
-      await submitApprovalDecision(detail.workflow.id, approval.id, decision, note?.trim() || undefined, "Could not record the review decision.");
+      await submitApprovalDecision(target.workflowId, target.approvalId, decision, note?.trim() || undefined, "Could not record the review decision.");
       announceWorkflowsChanged(source);
-      await load(detail.workflow.id);
-      if (mounted.current) setNotice(successNotice);
+      if (!mounted.current) return true;
+      if (selectedId.current === target.workflowId) {
+        await load(target.workflowId);
+        if (mounted.current) setNotice(successNotice);
+      } else {
+        // The operator moved on while the decision was in flight: record the
+        // outcome without pulling the view back to the previous workflow.
+        await refreshList();
+        if (mounted.current) setNotice(`${decision.replaceAll("_", " ")} recorded on the previously selected workflow.`);
+      }
       return true;
     } catch (cause) {
       if (mounted.current) setError(messageOf(cause, "Could not record the review decision."));
@@ -165,7 +206,7 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
     } finally {
       if (mounted.current) setBusy(false);
     }
-  }, [detail, load, source]);
+  }, [load, refreshList, source]);
 
   return {
     engine,
@@ -173,9 +214,11 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
     detail,
     currentRun: currentRunOf(detail),
     pendingApproval: pendingApprovalOf(detail),
+    decisionTarget: decisionTargetOf(detail),
     activeId,
     polling,
     loading,
+    switching: switchingTo !== null,
     busy,
     error,
     refreshError,

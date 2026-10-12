@@ -40,6 +40,16 @@ export function pendingApprovalOf(detail: WorkflowDetailBase | null | undefined)
   return detail?.approvals.find((item) => item.status === "PENDING" && (!item.workflow_run_id || item.workflow_run_id === run?.id));
 }
 
+/** The exact workflow, run, and approval gate a human decision is bound to. */
+export type DecisionTarget = { workflowId: string; runId: string; approvalId: string; key: string };
+
+export function decisionTargetOf(detail: WorkflowDetailBase | null | undefined): DecisionTarget | null {
+  const run = currentRunOf(detail);
+  const approval = pendingApprovalOf(detail);
+  if (!detail || !run || !approval) return null;
+  return { workflowId: detail.workflow.id, runId: run.id, approvalId: approval.id, key: `${detail.workflow.id}:${run.id}:${approval.id}` };
+}
+
 const WORKFLOWS_CHANGED_EVENT = "channelwright:workflows-changed";
 
 /** Tells sibling workspaces that a start or decision changed durable workflow state. */

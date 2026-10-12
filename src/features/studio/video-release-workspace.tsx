@@ -32,7 +32,7 @@ const formatTimestamp = (seconds: number) => {
 
 export function VideoReleaseWorkspace({ initial }: { initial?: WorkflowList }) {
   const workspace = useWorkflowWorkspace<WorkflowDetail>({ initial, workflowType: "CHANNEL_VIDEO_RELEASE", label: "video release" });
-  const { detail, currentRun, pendingApproval, busy } = workspace;
+  const { detail, currentRun, decisionTarget, busy } = workspace;
   const selection = useApprovedUpstream({
     engine: workspace.engine,
     workflowType: "CHANNEL_VIDEO_PACKAGING",
@@ -67,7 +67,7 @@ export function VideoReleaseWorkspace({ initial }: { initial?: WorkflowList }) {
         </button>
       </header>
 
-      <WorkspaceFeedback label="video release" loading={workspace.loading} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
+      <WorkspaceFeedback label="video release" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
 
       {selection.eligible.length === 0 && !workspace.loading && (
         <p className="muted">Approve a video packaging first. A release can only be decided from approved packaging.</p>
@@ -98,8 +98,9 @@ export function VideoReleaseWorkspace({ initial }: { initial?: WorkflowList }) {
 
       {release && <ReleaseDocument release={release} qa={finalQa} />}
 
-      {release && pendingApproval && (
+      {release && decisionTarget && (
         <DecisionBar
+          target={decisionTarget}
           busy={busy}
           title="Review this release decision"
           explanation="Approving records the final release decision. It does not publish, schedule, upload, or generate anything."
@@ -107,7 +108,7 @@ export function VideoReleaseWorkspace({ initial }: { initial?: WorkflowList }) {
           approveLabel="Approve exact version"
           revisionPlaceholder="What should the revised release change?"
           artifactLabel="release"
-          onDecide={(decision, note) => workspace.decide(decision, note, `${decision.replaceAll("_", " ")} recorded. The original release record and its lineage are preserved.`)}
+          onDecide={(target, decision, note) => workspace.decide(target, decision, note, `${decision.replaceAll("_", " ")} recorded. The original release record and its lineage are preserved.`)}
         />
       )}
     </section>
