@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import StudioApp from "./studio-app";
 import { ChannelwrightOrchestrator } from "@/server/orchestrator";
@@ -33,6 +33,11 @@ const readyChannel = async (orchestrator: ChannelwrightOrchestrator) => {
   await orchestrator.execute("user-1", "approve", { type: "BUSINESS_STRATEGY_DECISION", channelId, strategyVersion: 1, decision: "APPROVE" });
   return channelId;
 };
+
+/** The workflow actions the studio POSTed, in order. */
+const postedActions = (fetcher: ReturnType<typeof vi.fn>) => fetcher.mock.calls
+  .filter(([, init]) => (init as RequestInit | undefined)?.method === "POST")
+  .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as Record<string, unknown>);
 
 /** Every in-page nav link must point at an element that exists. */
 const expectLinksResolve = (nav: HTMLElement) => {
@@ -132,6 +137,124 @@ describe("StudioApp fixture channel home", () => {
     expect(videoItem).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText(/product builder \/ specification/i)).toBeNull();
     expect(screen.getByText(/independent script qa/i)).toBeInTheDocument();
+  });
+
+  it("sends a conversation revision to the older video that is open, not the newest one", async () => {
+    const { orchestrator, fetcher } = await fixtureStudio(async (instance) => {
+      const channelId = await readyChannel(instance);
+      await instance.execute("user-1", "video-1", { type: "CREATE_VIDEO", channelId, topic: "Why loyalty programs change decisions" });
+      await instance.execute("user-1", "video-2", { type: "CREATE_VIDEO", channelId, topic: "How warranties quietly make money" });
+    });
+    const [olderVideo, newestVideo] = (await orchestrator.snapshot("user-1")).videos;
+    render(<StudioApp user={{ email: "demo@example.com", mode: "mock" }} />);
+
+    const work = await screen.findByRole("region", { name: /videos and builds/i });
+    const older = within(work).getAllByRole("button", { name: /^video/i }).find((item) => item.getAttribute("aria-pressed") === "false")!;
+    fireEvent.click(older);
+    expect(older).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.change(screen.getByRole("textbox", { name: /request a change/i }), { target: { value: "Tighten the opening for this video." } });
+    fireEvent.click(screen.getByRole("button", { name: /create new version/i }));
+    await waitFor(() => expect(postedActions(fetcher)).toHaveLength(1));
+    expect(postedActions(fetcher)[0]).toMatchObject({ type: "SCRIPT_DECISION", videoId: olderVideo.id, decision: "REQUEST_CHANGES" });
+    expect(postedActions(fetcher)[0].videoId).not.toBe(newestVideo.id);
+  });
+
+  it("targets the opened video's script rather than the newest build's specification", async () => {
+    const { orchestrator, fetcher } = await fixtureStudio(async (instance) => {
+      const channelId = await readyChannel(instance);
+      await instance.execute("user-1", "video", { type: "CREATE_VIDEO", channelId, topic: "Why loyalty programs change decisions" });
+      const option = (await instance.snapshot("user-1")).channels[0].businessStrategies[0].strategy.freeResourceOptions[0];
+      await instance.execute("user-1", "select", { type: "SELECT_STRATEGY_OFFER", channelId, strategyVersion: 1, offerType: "FREE_RESOURCE", candidateId: option.id });
+      await instance.execute("user-1", "build", { type: "CREATE_RESOURCE_BUILD", channelId, strategyVersion: 1 });
+    });
+    const { videos: [video] } = await orchestrator.snapshot("user-1");
+    render(<StudioApp user={{ email: "demo@example.com", mode: "mock" }} />);
+
+    const work = await screen.findByRole("region", { name: /videos and builds/i });
+    expect(screen.getByText(/revising build specification/i)).toBeInTheDocument();
+    fireEvent.click(within(work).getByRole("button", { name: /^video/i }));
+    expect(screen.getByText(/revising script/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox", { name: /request a change/i }), { target: { value: "Rework the second act." } });
+    fireEvent.click(screen.getByRole("button", { name: /create new version/i }));
+    await waitFor(() => expect(postedActions(fetcher)).toHaveLength(1));
+    expect(postedActions(fetcher)[0]).toMatchObject({ type: "SCRIPT_DECISION", videoId: video.id });
+  });
+
+  it("sends a build revision to the opened build when several builds exist", async () => {
+    const { orchestrator, fetcher } = await fixtureStudio(async (instance) => {
+      const channelId = await readyChannel(instance);
+      const strategy = (await instance.snapshot("user-1")).channels[0].businessStrategies[0].strategy;
+      await instance.execute("user-1", "select-free", { type: "SELECT_STRATEGY_OFFER", channelId, strategyVersion: 1, offerType: "FREE_RESOURCE", candidateId: strategy.freeResourceOptions[0].id });
+      await instance.execute("user-1", "select-paid", { type: "SELECT_STRATEGY_OFFER", channelId, strategyVersion: 1, offerType: "PAID_PRODUCT", candidateId: strategy.paidProductOptions[0].id });
+      await instance.execute("user-1", "build-free", { type: "CREATE_RESOURCE_BUILD", channelId, strategyVersion: 1 });
+      await instance.execute("user-1", "build-paid", { type: "CREATE_PRODUCT_BUILD", channelId, strategyVersion: 1 });
+    });
+    const resourceBuild = (await orchestrator.snapshot("user-1")).buildProjects.find((item) => item.projectType === "FREE_RESOURCE")!;
+    render(<StudioApp user={{ email: "demo@example.com", mode: "mock" }} />);
+
+    const work = await screen.findByRole("region", { name: /videos and builds/i });
+    expect(within(work).getByRole("button", { name: /paid product build/i })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(work).getByRole("button", { name: /free resource build/i }));
+
+    fireEvent.change(screen.getByRole("textbox", { name: /request a change/i }), { target: { value: "Narrow the resource to one worksheet." } });
+    fireEvent.click(screen.getByRole("button", { name: /create new version/i }));
+    await waitFor(() => expect(postedActions(fetcher)).toHaveLength(1));
+    expect(postedActions(fetcher)[0]).toMatchObject({ type: "BUILD_SPEC_DECISION", buildProjectId: resourceBuild.id });
+  });
+
+  it("never carries a conversation draft from one opened item to another", async () => {
+    await fixtureStudio(async (instance) => {
+      const channelId = await readyChannel(instance);
+      await instance.execute("user-1", "video-1", { type: "CREATE_VIDEO", channelId, topic: "Why loyalty programs change decisions" });
+      await instance.execute("user-1", "video-2", { type: "CREATE_VIDEO", channelId, topic: "How warranties quietly make money" });
+    });
+    render(<StudioApp user={{ email: "demo@example.com", mode: "mock" }} />);
+
+    const work = await screen.findByRole("region", { name: /videos and builds/i });
+    const videoItems = within(work).getAllByRole("button", { name: /^video/i });
+    const newest = videoItems.find((item) => item.getAttribute("aria-pressed") === "true")!;
+    const older = videoItems.find((item) => item.getAttribute("aria-pressed") === "false")!;
+    fireEvent.change(screen.getByRole("textbox", { name: /request a change/i }), { target: { value: "Only about the newest video." } });
+    fireEvent.click(older);
+    expect(screen.getByRole("textbox", { name: /request a change/i })).toHaveValue("");
+    fireEvent.click(older);
+    // Nothing is open, so nothing can be revised.
+    expect(screen.getByText(/no artifact awaiting changes/i)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /request a change/i })).toBeDisabled();
+    fireEvent.click(newest);
+    expect(screen.getByRole("textbox", { name: /request a change/i })).toHaveValue("");
+  });
+
+  it("hides one-shot creation actions once their artifact exists for the approved strategy version", async () => {
+    const { orchestrator } = await fixtureStudio(async (instance) => {
+      const channelId = await readyChannel(instance);
+      const strategy = (await instance.snapshot("user-1")).channels[0].businessStrategies[0].strategy;
+      await instance.execute("user-1", "pillar", { type: "CREATE_PILLAR_VIDEO", channelId, strategyVersion: 1 });
+      await instance.execute("user-1", "select-free", { type: "SELECT_STRATEGY_OFFER", channelId, strategyVersion: 1, offerType: "FREE_RESOURCE", candidateId: strategy.freeResourceOptions[0].id });
+      await instance.execute("user-1", "select-paid", { type: "SELECT_STRATEGY_OFFER", channelId, strategyVersion: 1, offerType: "PAID_PRODUCT", candidateId: strategy.paidProductOptions[0].id });
+      await instance.execute("user-1", "build-free", { type: "CREATE_RESOURCE_BUILD", channelId, strategyVersion: 1 });
+    });
+    render(<StudioApp user={{ email: "demo@example.com", mode: "mock" }} />);
+
+    await screen.findByRole("region", { name: /videos and builds/i });
+    expect(screen.queryByRole("button", { name: /create pillar video/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /build selected resource/i })).toBeNull();
+    // The paid product has a selection but no build yet, so it stays available.
+    expect(screen.getByRole("button", { name: /build selected product/i })).toBeEnabled();
+    cleanup();
+
+    // Work created from a different strategy version does not consume this version's actions.
+    const snapshot = await orchestrator.snapshot("user-1");
+    snapshot.videos = snapshot.videos.map((item) => ({ ...item, sourceBusinessStrategyVersion: 99 }));
+    snapshot.buildProjects = snapshot.buildProjects.map((item) => ({ ...item, strategyVersion: 99 }));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(snapshot), { status: 200 })));
+    render(<StudioApp user={{ email: "demo@example.com", mode: "mock" }} />);
+    await screen.findByRole("region", { name: /videos and builds/i });
+    expect(screen.getByRole("button", { name: /create pillar video/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /build selected resource/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /build selected product/i })).toBeEnabled();
   });
 
   it("gives a failed channel a recovery path instead of an empty panel", async () => {

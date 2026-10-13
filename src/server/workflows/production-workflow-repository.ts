@@ -1,7 +1,8 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { getWorkflowDefinition, serializeWorkflowSteps, type WorkflowApprovalDecision, type WorkflowStartRequest } from "@/domain/production-workflows";
+import { z } from "zod";
+import { getWorkflowDefinition, serializeWorkflowSteps, workflowTypeSchema, type ProductionWorkflowType, type WorkflowApprovalDecision, type WorkflowStartRequest } from "@/domain/production-workflows";
 import { createSupabaseServerClient } from "@/server/supabase";
 
 export type ProductionWorkflowErrorCode = "UNAUTHORIZED" | "VALIDATION_ERROR" | "PAYLOAD_TOO_LARGE" | "WORKFLOW_TYPE_INVALID" | "IDEMPOTENCY_CONFLICT" | "RESEARCH_LIMIT_REACHED" | "STRATEGY_LIMIT_REACHED" | "CONTENT_LIMIT_REACHED" | "VIDEO_BRIEF_LIMIT_REACHED" | "VIDEO_SCRIPT_LIMIT_REACHED" | "VIDEO_PACKAGING_LIMIT_REACHED" | "VIDEO_RELEASE_LIMIT_REACHED" | "VIDEO_PERFORMANCE_LIMIT_REACHED" | "VIDEO_DIAGNOSIS_LIMIT_REACHED" | "VIDEO_DECISION_LIMIT_REACHED" | "VIDEO_EXPERIMENT_LIMIT_REACHED" | "VIDEO_PORTFOLIO_LIMIT_REACHED" | "VIDEO_INTELLIGENCE_LIMIT_REACHED" | "UPSTREAM_RESEARCH_INVALID" | "UPSTREAM_STRATEGY_INVALID" | "UPSTREAM_CONTENT_INVALID" | "UPSTREAM_BRIEF_INVALID" | "UPSTREAM_SCRIPT_INVALID" | "UPSTREAM_PACKAGING_INVALID" | "UPSTREAM_RELEASE_INVALID" | "UPSTREAM_PERFORMANCE_INVALID" | "UPSTREAM_DIAGNOSIS_INVALID" | "UPSTREAM_DECISION_INVALID" | "UPSTREAM_EXPERIMENT_INVALID" | "UPSTREAM_PORTFOLIO_INVALID" | "TOPIC_INVALID" | "NOT_FOUND" | "INVALID_TRANSITION" | "LEASE_NOT_ACTIVE" | "DATABASE_ERROR";
@@ -11,6 +12,17 @@ export class ProductionWorkflowError extends Error {
 }
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+
+export const APPROVED_WORKFLOW_PAGE_SIZE = 50;
+
+/** Query for one page of approved workflows of one type; the cursor is both-or-neither. */
+export const approvedWorkflowPageQuerySchema = z.object({
+  approvedType: workflowTypeSchema,
+  beforeCreatedAt: z.iso.datetime({ offset: true }).optional(),
+  beforeId: z.uuid().optional(),
+}).strict().refine((value) => (value.beforeCreatedAt === undefined) === (value.beforeId === undefined), { message: "beforeCreatedAt and beforeId must be sent together." });
+
+export type ApprovedWorkflowCursor = { createdAt: string; id: string };
 
 /** Maps a raised PostgreSQL error onto a stable typed code and HTTP status. Exported for regression tests. */
 export function databaseError(error: { message: string }) {
@@ -80,6 +92,29 @@ export class ProductionWorkflowRepository {
     const error = workflows.error ?? runs.error ?? approvals.error;
     if (error) throw databaseError(error);
     return { workflows: workflows.data ?? [], runs: runs.data ?? [], pendingApprovals: approvals.data ?? [] };
+  }
+
+  /**
+   * One page of approved (COMPLETED) workflows of a single type, newest first,
+   * with their current runs. list() is capped across all types, so upstream
+   * pickers page through this instead. Keyset-paged on (created_at, id) so
+   * older pages stay stable while new workflows arrive. RLS scopes rows to the
+   * caller exactly as in list().
+   */
+  async listApproved(workflowType: ProductionWorkflowType, before?: ApprovedWorkflowCursor, pageSize = APPROVED_WORKFLOW_PAGE_SIZE) {
+    const client = await createSupabaseServerClient();
+    let query = client.from("workflows").select("*").eq("workflow_type", workflowType).eq("status", "COMPLETED");
+    // Cursor values are schema-validated (ISO timestamp, UUID) before reaching here; quoting keeps PostgREST's reserved characters literal.
+    if (before) query = query.or(`created_at.lt."${before.createdAt}",and(created_at.eq."${before.createdAt}",id.lt.${before.id})`);
+    const workflows = await query.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(pageSize + 1);
+    if (workflows.error) throw databaseError(workflows.error);
+    const page = (workflows.data ?? []).slice(0, pageSize);
+    const runIds = page.map((item) => item.current_run_id).filter((id): id is string => typeof id === "string");
+    const runs = runIds.length === 0 ? { data: [], error: null } : await client.from("workflow_runs").select("id,workflow_id,status,output_payload,error_code,created_at,completed_at").in("id", runIds);
+    if (runs.error) throw databaseError(runs.error);
+    const last = page.at(-1);
+    const nextCursor: ApprovedWorkflowCursor | null = (workflows.data ?? []).length > pageSize && last ? { createdAt: last.created_at, id: last.id } : null;
+    return { workflows: page, runs: runs.data ?? [], nextCursor };
   }
 
   async get(workflowId: string, runId?: string) {

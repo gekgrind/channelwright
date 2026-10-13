@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { currentRunOf, fetchWorkflowDetail, runVersionOf, type WorkflowDetailBase, type WorkflowList } from "./workflow-api";
+import { currentRunOf, fetchApprovedWorkflowPage, fetchWorkflowDetail, runVersionOf, type ApprovedWorkflowPage, type WorkflowDetailBase, type WorkflowList } from "./workflow-api";
 
 type Describe<T> = (output: T) => { title: string; detail?: string };
 
@@ -30,7 +30,49 @@ export function useApprovedUpstream<T>({ engine, workflowType, label, parse, des
   parse: (payload: unknown) => T | null;
   describe: Describe<T>;
 }) {
-  const eligible = useMemo(() => engine?.workflows.filter((item) => item.workflow_type === workflowType && item.status === "COMPLETED") ?? [], [engine, workflowType]);
+  // The shared list is capped across every workflow type, so approved artifacts
+  // are also paged per type from the server; both sources merge, newest first.
+  const listed = useMemo(() => engine?.workflows.filter((item) => item.workflow_type === workflowType && item.status === "COMPLETED") ?? [], [engine, workflowType]);
+  const listedSignature = listed.map((item) => item.id).join("|");
+  const [history, setHistory] = useState<{ workflows: WorkflowList["workflows"]; runs: WorkflowList["runs"]; nextCursor: ApprovedWorkflowPage["nextCursor"]; paged: boolean; error: string | null }>({ workflows: [], runs: [], nextCursor: null, paged: false, error: null });
+  const [loadingOlder, setLoadingOlder] = useState(false);
+
+  // The newest page is re-read when a new approval appears in the shared list.
+  // Pages are only ever added, so an older artifact the operator chose never
+  // disappears from the picker (which would silently re-select the newest).
+  useEffect(() => {
+    let disposed = false;
+    fetchApprovedWorkflowPage(workflowType, null, `Could not load older approved ${label}s.`)
+      .then((page) => {
+        if (disposed) return;
+        setHistory((current) => ({
+          workflows: mergeById(current.workflows, page.workflows),
+          runs: mergeById(current.runs, page.runs),
+          nextCursor: current.paged ? current.nextCursor : page.nextCursor,
+          paged: true,
+          error: null,
+        }));
+      })
+      .catch((cause: unknown) => { if (!disposed) setHistory((current) => ({ ...current, error: cause instanceof Error ? cause.message : `Could not load older approved ${label}s.` })); });
+    return () => { disposed = true; };
+  }, [workflowType, label, listedSignature]);
+
+  const loadOlder = async () => {
+    if (!history.nextCursor || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const page = await fetchApprovedWorkflowPage(workflowType, history.nextCursor, `Could not load older approved ${label}s.`);
+      setHistory((current) => ({ workflows: mergeById(current.workflows, page.workflows), runs: mergeById(current.runs, page.runs), nextCursor: page.nextCursor, paged: true, error: null }));
+    } catch (cause) {
+      setHistory((current) => ({ ...current, error: cause instanceof Error ? cause.message : `Could not load older approved ${label}s.` }));
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
+
+  const eligible = useMemo(() => mergeById(listed, history.workflows)
+    .filter((item) => item.workflow_type === workflowType && item.status === "COMPLETED")
+    .sort((left, right) => right.created_at.localeCompare(left.created_at) || right.id.localeCompare(left.id)), [listed, history.workflows, workflowType]);
   const [chosenId, setChosenId] = useState<string>();
   const selectedId = chosenId && eligible.some((item) => item.id === chosenId) ? chosenId : eligible[0]?.id;
   const [resolved, setResolved] = useState<{ id: string; upstream: ApprovedUpstream<T> | null; error: string | null } | null>(null);
@@ -66,10 +108,11 @@ export function useApprovedUpstream<T>({ engine, workflowType, label, parse, des
 
   const current = resolved?.id === selectedId ? resolved : null;
   /** Picker labels come from the list payload when it carries the run output. */
+  const runOf = (workflow: WorkflowList["workflows"][number]) => engine?.runs?.find((run) => run.id === workflow.current_run_id) ?? history.runs.find((run) => run.id === workflow.current_run_id);
   const optionLabel = (workflow: WorkflowList["workflows"][number]) => {
-    const payload = engine?.runs?.find((run) => run.id === workflow.current_run_id)?.output_payload;
+    const payload = runOf(workflow)?.output_payload;
     const output = payload === undefined ? null : parse(payload);
-    const approved = workflow.completed_at ?? engine?.runs?.find((run) => run.id === workflow.current_run_id)?.completed_at;
+    const approved = workflow.completed_at ?? runOf(workflow)?.completed_at;
     const when = approved ? `approved ${formatDay(approved)}` : `created ${formatDay(workflow.created_at)}`;
     return output ? `${describe(output).title} · ${when}` : `Approved ${label} · ${when}`;
   };
@@ -82,8 +125,17 @@ export function useApprovedUpstream<T>({ engine, workflowType, label, parse, des
     loading: Boolean(selectedId) && !current,
     error: current?.error ?? null,
     optionLabel,
+    hasOlder: history.nextCursor !== null,
+    loadingOlder,
+    loadOlder,
+    historyError: history.error,
   };
 }
+
+const mergeById = <T extends { id: string }>(first: T[], second: T[]) => {
+  const seen = new Set(first.map((item) => item.id));
+  return [...first, ...second.filter((item) => !seen.has(item.id))];
+};
 
 /**
  * Card identity only needs an object payload; authority stays with the server,
@@ -119,15 +171,20 @@ export function UpstreamCard<T>({ heading, kindLabel, selection, disabled }: {
 }) {
   const { eligible, selectedId, upstream, loading, error } = selection;
   if (!selectedId) return null;
+  const noun = kindLabel.toLowerCase();
   // The picker stays available while a choice loads or fails, so the operator can change course.
-  const picker = eligible.length > 1 && (
-    <label>
-      Use a different approved {kindLabel.toLowerCase()}
-      <select value={selectedId} onChange={(event) => selection.choose(event.target.value)} disabled={disabled}>
-        {eligible.map((item, index) => <option key={item.id} value={item.id}>{selection.optionLabel(item)}{index === 0 ? " (newest)" : ""}</option>)}
-      </select>
-    </label>
-  );
+  const picker = <>
+    {eligible.length > 1 && (
+      <label>
+        Use a different approved {noun}
+        <select value={selectedId} onChange={(event) => selection.choose(event.target.value)} disabled={disabled}>
+          {eligible.map((item, index) => <option key={item.id} value={item.id}>{selection.optionLabel(item)}{index === 0 ? " (newest)" : ""}</option>)}
+        </select>
+      </label>
+    )}
+    {selection.hasOlder && <button type="button" className="button button-quiet" onClick={() => void selection.loadOlder()} disabled={disabled || selection.loadingOlder}>{selection.loadingOlder ? `Loading older approved ${noun}s…` : `Load older approved ${noun}s`}</button>}
+    {selection.historyError && <p className="muted">{selection.historyError} Only recently approved {noun}s are listed.</p>}
+  </>;
   if (loading) return <><p className="upstream-empty" role="status">Loading the approved {kindLabel.toLowerCase()}…</p>{picker}</>;
   if (error || !upstream) return <><div className="error-banner" role="alert">{error ?? `The approved ${kindLabel.toLowerCase()} could not be resolved.`}</div>{picker}</>;
   return (
@@ -137,7 +194,7 @@ export function UpstreamCard<T>({ heading, kindLabel, selection, disabled }: {
       <p className="upstream-meta">
         <span>{kindLabel}{upstream.version ? ` v${upstream.version}` : ""} · approved{upstream.approvedAt ? ` ${formatDay(upstream.approvedAt)}` : ""}</span>
         {upstream.detail && <span>{upstream.detail}</span>}
-        {eligible.length > 1 && <span>{eligible.length} approved {kindLabel.toLowerCase()}s available</span>}
+        {eligible.length > 1 && <span>{eligible.length}{selection.hasOlder ? "+" : ""} approved {noun}s available</span>}
       </p>
       {picker}
       <details>

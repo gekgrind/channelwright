@@ -83,6 +83,21 @@ export function fetchWorkflowList(fallback: string) {
   return requestJson<{ workflowEngine: WorkflowList }>("/api/workflows", fallback, { cache: "no-store" });
 }
 
+/** One page of approved workflows of one type, newest first; nextCursor is null on the last page. */
+export type ApprovedWorkflowPage = {
+  workflows: WorkflowList["workflows"];
+  runs: WorkflowList["runs"];
+  nextCursor: { createdAt: string; id: string } | null;
+};
+
+export async function fetchApprovedWorkflowPage(workflowType: string, before: ApprovedWorkflowPage["nextCursor"], fallback: string) {
+  const params = new URLSearchParams({ approvedType: workflowType });
+  if (before) { params.set("beforeCreatedAt", before.createdAt); params.set("beforeId", before.id); }
+  const page = await requestJson<ApprovedWorkflowPage>(`/api/workflows?${params}`, fallback, { cache: "no-store" });
+  if (!page || !Array.isArray(page.workflows) || !Array.isArray(page.runs)) throw new Error(fallback);
+  return page;
+}
+
 export function fetchWorkflowDetail<T>(workflowId: string, fallback: string) {
   return requestJson<T>(`/api/workflows/${workflowId}`, fallback, { cache: "no-store" });
 }

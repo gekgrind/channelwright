@@ -255,3 +255,77 @@ describe("useWorkflowWorkspace decision identity", () => {
     expect(result.current.notice).toMatch(/previously selected workflow/i);
   });
 });
+
+describe("useWorkflowWorkspace start and decision follow-up failures", () => {
+  const NEW_ID = "cccccccc-cccc-4ccc-8ccc-ccccccccccc1";
+  const NEW_RUN = "dddddddd-dddd-4ddd-8ddd-ddddddddddd1";
+  const started = { workflows: [{ id: NEW_ID, workflow_type: "CHANNEL_VIDEO_SCRIPT", status: "QUEUED", created_at: "2026-09-02T10:00:00.000Z", current_run_id: NEW_RUN }], runs: [], pendingApprovals: [] };
+  const startedDetail = { workflow: { id: NEW_ID, status: "QUEUED", created_at: "2026-09-02T10:00:00.000Z", current_run_id: NEW_RUN }, runs: [{ id: NEW_RUN, status: "QUEUED", output_payload: null, error_code: null }], approvals: [] };
+  const posts = (fetcher: ReturnType<typeof vi.fn>) => fetcher.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === "POST");
+
+  it("reports a successful start whose detail load then fails as a refresh failure, never a failed start", async () => {
+    let detailHealthy = false;
+    const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") return json({ operationResult: { workflowId: NEW_ID } });
+      if (url === "/api/workflows") return json({ workflowEngine: started });
+      return detailHealthy ? json(startedDetail) : json({ error: { code: "DATABASE_ERROR", message: "The workflow store is unavailable." } }, false);
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const { result } = renderHook(() => useWorkflowWorkspace<WorkflowDetailBase>({ initial: { workflows: [], runs: [], pendingApprovals: [] }, workflowType: "CHANNEL_VIDEO_SCRIPT", label: "video script" }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let ok = false;
+    await act(async () => { ok = await result.current.start({ any: "input" }, "Script queued."); });
+    expect(ok).toBe(true);
+    expect(posts(fetcher)).toHaveLength(1);
+    expect(result.current.error).toBeNull();
+    expect(result.current.notice).toBe("Script queued.");
+    expect(result.current.refreshError).toMatch(/workflow store is unavailable/i);
+    // The new run is the selection, so Retry loads it rather than anything older.
+    expect(result.current.activeId).toBe(NEW_ID);
+    expect(result.current.busy).toBe(false);
+
+    detailHealthy = true;
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.detail?.workflow.id).toBe(NEW_ID);
+    expect(result.current.refreshError).toBeNull();
+    expect(posts(fetcher)).toHaveLength(1);
+  });
+
+  it("still reports a rejected start request as a failed start", async () => {
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => init?.method === "POST"
+      ? json({ error: { code: "VIDEO_SCRIPT_LIMIT_REACHED", message: "Finish the active video script first." } }, false)
+      : json({ workflowEngine: { workflows: [], runs: [], pendingApprovals: [] } }));
+    vi.stubGlobal("fetch", fetcher);
+    const { result } = renderHook(() => useWorkflowWorkspace<WorkflowDetailBase>({ initial: { workflows: [], runs: [], pendingApprovals: [] }, workflowType: "CHANNEL_VIDEO_SCRIPT", label: "video script" }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let ok = true;
+    await act(async () => { ok = await result.current.start({ any: "input" }, "Script queued."); });
+    expect(ok).toBe(false);
+    expect(result.current.error).toMatch(/finish the active video script/i);
+    expect(result.current.notice).toBeNull();
+    expect(result.current.busy).toBe(false);
+  });
+
+  it("reports a recorded decision whose detail reload then fails as recorded, with a visible refresh failure", async () => {
+    const pendingDetail = { workflow: { id: WORKFLOW_ID, status: "WAITING_FOR_APPROVAL", created_at: "2026-09-01T10:00:00.000Z", current_run_id: RUN_ID }, runs: [{ id: RUN_ID, status: "WAITING_FOR_APPROVAL", output_payload: null, error_code: null }], approvals: [{ id: "approval-1", workflow_run_id: RUN_ID, status: "PENDING" }] };
+    let detailHealthy = true;
+    const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") { detailHealthy = false; return json({ operationResult: {} }); }
+      if (url === "/api/workflows") return json(list("WAITING_FOR_APPROVAL"));
+      return detailHealthy ? json(pendingDetail) : json({ error: { code: "DATABASE_ERROR", message: "The workflow store is unavailable." } }, false);
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const { result } = renderHook(() => useWorkflowWorkspace<WorkflowDetailBase>({ workflowType: "CHANNEL_VIDEO_SCRIPT", label: "video script" }));
+    await waitFor(() => expect(result.current.decisionTarget?.workflowId).toBe(WORKFLOW_ID));
+
+    let ok = false;
+    await act(async () => { ok = await result.current.decide(result.current.decisionTarget!, "APPROVE", undefined, "Approved."); });
+    expect(ok).toBe(true);
+    expect(posts(fetcher)).toHaveLength(1);
+    expect(result.current.error).toBeNull();
+    expect(result.current.notice).toBe("Approved.");
+    expect(result.current.refreshError).toMatch(/workflow store is unavailable/i);
+  });
+});

@@ -158,20 +158,27 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
 
   const start = useCallback(async (input: unknown, successNotice: string) => {
     setBusy(true); setError(null); setNotice(null);
+    let workflowId: string;
     try {
-      const payload = await startWorkflow(workflowType, input, `Could not start the ${label}.`);
-      selectedId.current = payload.operationResult.workflowId;
-      announceWorkflowsChanged(source);
-      await load(payload.operationResult.workflowId);
-      if (mounted.current) setNotice(successNotice);
-      return true;
+      workflowId = (await startWorkflow(workflowType, input, `Could not start the ${label}.`)).operationResult.workflowId;
     } catch (cause) {
-      if (mounted.current) setError(messageOf(cause, `Could not start the ${label}.`));
+      if (mounted.current) { setError(messageOf(cause, `Could not start the ${label}.`)); setBusy(false); }
       return false;
-    } finally {
-      if (mounted.current) setBusy(false);
     }
-  }, [label, load, source, workflowType]);
+    // The run exists from here on. A failed follow-up load is a refresh failure
+    // (refreshError, with Retry), never a failed start: reporting it as one
+    // would invite a second paid run under a fresh idempotency key.
+    selectedId.current = workflowId;
+    if (detailRef.current?.workflow.id !== workflowId) {
+      detailRef.current = null;
+      setDetail(null);
+      setSwitchingTo(workflowId);
+    }
+    announceWorkflowsChanged(source);
+    await refresh(workflowId);
+    if (mounted.current) { setNotice(successNotice); setBusy(false); }
+    return true;
+  }, [label, refresh, source, workflowType]);
 
   /**
    * Sends a decision only to the exact gate it was made against. The target is
@@ -188,25 +195,25 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
     setBusy(true); setError(null); setNotice(null);
     try {
       await submitApprovalDecision(target.workflowId, target.approvalId, decision, note?.trim() || undefined, "Could not record the review decision.");
-      announceWorkflowsChanged(source);
-      if (!mounted.current) return true;
-      if (selectedId.current === target.workflowId) {
-        await load(target.workflowId);
-        if (mounted.current) setNotice(successNotice);
-      } else {
-        // The operator moved on while the decision was in flight: record the
-        // outcome without pulling the view back to the previous workflow.
-        await refreshList();
-        if (mounted.current) setNotice(`${decision.replaceAll("_", " ")} recorded on the previously selected workflow.`);
-      }
-      return true;
     } catch (cause) {
-      if (mounted.current) setError(messageOf(cause, "Could not record the review decision."));
+      if (mounted.current) { setError(messageOf(cause, "Could not record the review decision.")); setBusy(false); }
       return false;
-    } finally {
-      if (mounted.current) setBusy(false);
     }
-  }, [load, refreshList, source]);
+    // Recorded. As with starts, a failed follow-up load is only a refresh failure.
+    announceWorkflowsChanged(source);
+    if (!mounted.current) return true;
+    if (selectedId.current === target.workflowId) {
+      await refresh(target.workflowId);
+      if (mounted.current) setNotice(successNotice);
+    } else {
+      // The operator moved on while the decision was in flight: record the
+      // outcome without pulling the view back to the previous workflow.
+      await refreshList();
+      if (mounted.current) setNotice(`${decision.replaceAll("_", " ")} recorded on the previously selected workflow.`);
+    }
+    if (mounted.current) setBusy(false);
+    return true;
+  }, [refresh, refreshList, source]);
 
   return {
     engine,

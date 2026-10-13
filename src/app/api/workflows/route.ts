@@ -11,8 +11,8 @@ import { JsonWorkspaceRepository } from "@/server/repository";
 import { createSerialQueue } from "@/server/serial-queue";
 import { FixtureMediaOrchestrator } from "@/server/media/fixture-media-orchestrator";
 import { ProductionMediaRepository } from "@/server/media/production-media-repository";
-import { productionRequiredResponse, unauthorizedWorkflowResponse, workflowErrorResponse } from "@/server/workflows/http";
-import { ProductionWorkflowRepository } from "@/server/workflows/production-workflow-repository";
+import { productionRequiredResponse, unauthorizedWorkflowResponse, workflowErrorResponse, workflowValidationResponse } from "@/server/workflows/http";
+import { approvedWorkflowPageQuerySchema, ProductionWorkflowRepository } from "@/server/workflows/production-workflow-repository";
 
 const fixtureRepository = new JsonWorkspaceRepository();
 const orchestrator = new ChannelwrightOrchestrator(fixtureRepository);
@@ -26,9 +26,20 @@ const unavailable = (action?: string) => NextResponse.json({
   capability: action ?? "workflow-planning",
 }, { status: 501 });
 
-export async function GET() {
+export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) return unauthorizedWorkflowResponse();
+  const params = new URL(request.url).searchParams;
+  if (params.has("approvedType")) {
+    // One page of approved workflows of one type, for upstream pickers that must reach past list()'s cap.
+    if (isMockMode()) return productionRequiredResponse();
+    const query = approvedWorkflowPageQuerySchema.safeParse(Object.fromEntries(params));
+    if (!query.success) return workflowValidationResponse("Invalid approved-workflow page request.");
+    const { approvedType, beforeCreatedAt, beforeId } = query.data;
+    try {
+      return NextResponse.json(await productionWorkflows.listApproved(approvedType, beforeCreatedAt && beforeId ? { createdAt: beforeCreatedAt, id: beforeId } : undefined));
+    } catch (error) { return workflowErrorResponse(error); }
+  }
   if (!isMockMode()) {
     try {
       const [media, workflowEngine] = await Promise.all([productionMedia.snapshot(), productionWorkflows.list()]);
