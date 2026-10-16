@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, LoaderCircle, RefreshCcw, ShieldCheck, Sparkles, XCircle } from "lucide-react";
+import { FormEvent, useState } from "react";
+import { AlertTriangle, LoaderCircle, RefreshCcw, ShieldCheck, Sparkles } from "lucide-react";
 import {
   channelVideoBriefResultSchema,
   videoBriefQAResultSchema,
@@ -10,23 +10,19 @@ import {
   type VideoBriefQAResult,
 } from "@/domain/production-workflows";
 import type { ViewerValueGate } from "@/domain/viewer-value";
-import type { WorkflowList } from "./channel-research-workspace";
+import type { WorkflowList } from "./workflow-api";
+import { runVersionOf } from "./workflow-api";
+import { useWorkflowWorkspace } from "./use-workflow-workspace";
+import { UpstreamCard, useApprovedUpstream } from "./upstream-selection";
+import { DecisionBar, RunChips, StageList, WorkspaceFeedback } from "./workflow-controls";
 
 type WorkflowDetail = {
   workflow: { id: string; status: string; created_at: string; current_run_id: string };
-  runs: Array<{ id: string; status: string; input_payload: Record<string, unknown>; context_payload: Record<string, unknown>; output_payload: unknown; error_code: string | null; artifact_hash: string | null; provenance_hash: string | null }>;
+  runs: Array<{ id: string; status: string; input_payload: Record<string, unknown>; context_payload: Record<string, unknown>; output_payload: unknown; error_code: string | null; artifact_hash: string | null; provenance_hash: string | null; created_at?: string; completed_at?: string | null }>;
   steps: Array<{ id: string; workflow_run_id: string; step_key: string; status: string; output_payload: unknown; attempt_count: number; max_attempts: number; error_code: string | null }>;
   approvals: Array<{ id: string; workflow_run_id: string; status: string; decision_note: string | null; requested_at: string; decided_at: string | null }>;
   researchBudgets: Array<{ workflow_run_id: string; parent_run_id: string | null; root_run_id: string; used_totals: Record<string, number>; provider_identities: string[]; model_identities: string[]; exhaustion_code: string | null }>;
 };
-
-function message(payload: unknown, fallback: string) {
-  if (!payload || typeof payload !== "object") return fallback;
-  const error = (payload as { error?: unknown }).error;
-  if (typeof error === "string") return error;
-  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") return error.message;
-  return fallback;
-}
 
 const gateTone = (gate: ViewerValueGate) => gate === "PASS" ? "done" : gate === "REVISE" ? "warning" : "failed";
 
@@ -38,120 +34,50 @@ const EVIDENCE_STATUS_LABEL: Record<string, string> = {
   MUST_NOT_CLAIM: "Must not claim",
 };
 
-/** An approved content-intelligence artifact plus the topics eligible to brief. */
-type EligibleUpstream = {
-  workflowId: string;
-  runId: string;
-  result: ChannelContentIntelligenceResult;
-};
+/** The recommended topic's working concept names the approved backlog in plain language. */
+export function describeContentBacklog(result: ChannelContentIntelligenceResult) {
+  const next = result.topics.find((topic) => topic.topicId === result.nextVideoRecommendation.topicId);
+  return { title: next ? `Backlog led by “${next.workingConcept}”` : "Approved content backlog", detail: `${result.backlog.length} ranked topics` };
+}
 
 export function VideoBriefWorkspace({ initial }: { initial?: WorkflowList }) {
-  const [engine, setEngine] = useState(initial);
-  const [detail, setDetail] = useState<WorkflowDetail | null>(null);
-  const [upstream, setUpstream] = useState<EligibleUpstream | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [revisionNote, setRevisionNote] = useState("");
-  const [selectedTopicId, setSelectedTopicId] = useState("");
-
-  const briefWorkflows = useMemo(() => engine?.workflows.filter((item) => item.workflow_type === "CHANNEL_VIDEO_BRIEF") ?? [], [engine]);
-  const approvedContent = useMemo(() => engine?.workflows.find((item) => item.workflow_type === "CHANNEL_CONTENT_INTELLIGENCE" && item.status === "COMPLETED"), [engine]);
-  const activeId = detail?.workflow.id ?? briefWorkflows[0]?.id;
-
-  const load = async (workflowId?: string) => {
-    const listResponse = await fetch("/api/workflows", { cache: "no-store" });
-    const listPayload = await listResponse.json();
-    if (!listResponse.ok) throw new Error(message(listPayload, "Could not refresh video brief workflows."));
-    setEngine(listPayload.workflowEngine);
-    const selected = workflowId ?? detail?.workflow.id ?? listPayload.workflowEngine.workflows.find((item: { workflow_type: string }) => item.workflow_type === "CHANNEL_VIDEO_BRIEF")?.id;
-    if (!selected) return;
-    const response = await fetch(`/api/workflows/${selected}`, { cache: "no-store" });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(message(payload, "Could not load the video brief workflow."));
-    setDetail(payload);
-  };
-
-  /** Loads the approved backlog so the operator can see the recommendation and pick an eligible topic. */
-  const loadUpstream = async (workflowId: string) => {
-    const response = await fetch(`/api/workflows/${workflowId}`, { cache: "no-store" });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(message(payload, "Could not load the approved content backlog."));
-    const run = payload.runs?.find((item: { status: string; output_payload: unknown }) => item.status === "COMPLETED" && item.output_payload);
-    const parsed = run ? channelVideoBriefUpstreamSchemaSafeParse(run.output_payload) : null;
-    if (parsed) setUpstream({ workflowId, runId: run.id, result: parsed });
-  };
-
-  useEffect(() => {
-    let disposed = false;
-    const refresh = () => load()
-      .catch((cause: unknown) => { if (!disposed) setError(cause instanceof Error ? cause.message : "Could not load video brief workflows."); })
-      .finally(() => { if (!disposed) setLoading(false); });
-    void refresh();
-    return () => { disposed = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const contentId = approvedContent?.id;
-    if (!contentId) return;
-    let disposed = false;
-    // The approved backlog is read only to populate the topic selector; a
-    // failure here must not block the rest of the workspace.
-    const refresh = () => loadUpstream(contentId).catch(() => { if (!disposed) setUpstream(null); });
-    void refresh();
-    return () => { disposed = true; };
-  }, [approvedContent?.id]);
+  const workspace = useWorkflowWorkspace<WorkflowDetail>({ initial, workflowType: "CHANNEL_VIDEO_BRIEF", label: "video brief" });
+  const { detail, currentRun, decisionTarget, busy } = workspace;
+  // A topic choice is only meaningful for the exact approved content run it was
+  // made from; it is bound to that run and never carried to another backlog.
+  const [topicChoice, setTopicChoice] = useState<{ upstreamKey: string; topicId: string } | null>(null);
+  const selection = useApprovedUpstream({
+    engine: workspace.engine,
+    workflowType: "CHANNEL_CONTENT_INTELLIGENCE",
+    label: "content backlog",
+    parse: channelVideoBriefUpstreamSchemaSafeParse,
+    describe: describeContentBacklog,
+  });
+  const upstream = selection.upstream;
+  const upstreamKey = upstream ? `${upstream.workflowId}:${upstream.runId}` : null;
+  const eligibleTopics = upstream?.output.backlog.filter((entry) => upstream.output.topics.find((topic) => topic.topicId === entry.topicId)?.viewerValue.gate === "PASS") ?? [];
+  const choiceIsCurrent = Boolean(topicChoice && topicChoice.upstreamKey === upstreamKey && eligibleTopics.some((entry) => entry.topicId === topicChoice.topicId));
+  const selectedTopicId = choiceIsCurrent ? topicChoice!.topicId : "";
+  const topicChoiceInvalidated = Boolean(topicChoice && upstreamKey && !choiceIsCurrent);
 
   const start = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!upstream) return;
-    setBusy(true); setError(null); setNotice(null);
-    try {
-      // Only identifiers travel; the server resolves the authoritative artifact.
-      const input: Record<string, string> = {
-        contentIntelligenceWorkflowId: upstream.workflowId,
-        contentIntelligenceRunId: upstream.runId,
-      };
-      if (selectedTopicId) input.topicId = selectedTopicId;
-      const response = await fetch("/api/workflows", {
-        method: "POST",
-        headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
-        body: JSON.stringify({ operation: "START_WORKFLOW", workflowType: "CHANNEL_VIDEO_BRIEF", definitionVersion: 1, input }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(message(payload, "Could not start the video brief."));
-      await load(payload.operationResult.workflowId);
-      setNotice("Video brief queued from the exact approved topic. The server persisted its immutable upstream reference.");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not start the video brief."); }
-    finally { setBusy(false); }
+    // Only identifiers travel; the server resolves the authoritative artifact.
+    const input: Record<string, string> = {
+      contentIntelligenceWorkflowId: upstream.workflowId,
+      contentIntelligenceRunId: upstream.runId,
+    };
+    // Only a topic chosen from this exact backlog run is sent; the server re-verifies eligibility.
+    if (choiceIsCurrent && topicChoice?.upstreamKey === `${upstream.workflowId}:${upstream.runId}`) input.topicId = topicChoice.topicId;
+    await workspace.start(input, "Video brief queued from the exact approved topic. The server persisted its immutable upstream reference.");
   };
 
-  const decide = async (decision: "APPROVE" | "REJECT" | "REQUEST_REVISION") => {
-    const approval = detail?.approvals.find((item) => item.status === "PENDING");
-    if (!detail || !approval) return;
-    const note = decision === "REQUEST_REVISION" ? revisionNote.trim() : undefined;
-    if (decision === "REQUEST_REVISION" && !note) return;
-    setBusy(true); setError(null);
-    try {
-      const response = await fetch(`/api/workflows/${detail.workflow.id}/approvals/${approval.id}`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decision, note }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(message(payload, "Could not record the review decision."));
-      await load(detail.workflow.id);
-      if (decision === "REQUEST_REVISION") setRevisionNote("");
-      setNotice(`${decision.replaceAll("_", " ")} recorded. The original brief and its lineage are preserved.`);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not record the review decision."); }
-    finally { setBusy(false); }
-  };
-
-  const currentRun = detail?.runs.find((run) => run.id === detail.workflow.current_run_id) ?? detail?.runs[0];
   const brief = safeBrief(currentRun?.output_payload);
-  const finalQa = safeQa(detail?.steps.find((step) => step.step_key === "final-video-brief-qa")?.output_payload);
-  const pendingApproval = detail?.approvals.find((item) => item.status === "PENDING");
-  const recommendation = upstream?.result.nextVideoRecommendation;
+  // Scope QA to the current run so a predecessor's QA never appears beside a successor brief.
+  const finalQa = safeQa(detail?.steps.find((step) => step.workflow_run_id === currentRun?.id && step.step_key === "final-video-brief-qa")?.output_payload);
+  const recommendation = upstream?.output.nextVideoRecommendation;
+  const version = detail && currentRun ? runVersionOf(detail, currentRun.id) : undefined;
 
   return (
     <section className="workspace-section" aria-label="Video brief">
@@ -160,57 +86,52 @@ export function VideoBriefWorkspace({ initial }: { initial?: WorkflowList }) {
           <h2>Video brief</h2>
           <p>Turn one approved backlog topic into the creative and production direction for a single video. Titles, thumbnails, scripts, and publishing remain later stages.</p>
         </div>
-        <button type="button" className="button" onClick={() => load().catch(() => undefined)} disabled={busy}>
+        <button type="button" className="button" onClick={() => void workspace.refresh()} disabled={busy}>
           <RefreshCcw size={15} /> Refresh
         </button>
       </header>
 
-      {loading && <p className="muted" role="status"><LoaderCircle size={14} className="spin" /> Loading video brief workflows…</p>}
-      {error && <div className="error-banner" role="alert">{error}</div>}
-      {notice && <div className="notice-banner" role="status">{notice}</div>}
+      <WorkspaceFeedback label="video brief" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
 
-      {!approvedContent && !loading && (
+      {selection.eligible.length === 0 && !workspace.loading && (
         <p className="muted">Approve a content-intelligence backlog first. A video brief can only be built from an approved topic.</p>
       )}
 
-      {approvedContent && upstream && (
+      {selection.eligible.length > 0 && (
         <form className="stack-form" onSubmit={start}>
-          {recommendation && (
+          <UpstreamCard heading="Create a video brief from" kindLabel="Backlog" selection={selection} disabled={busy} />
+          {upstream && recommendation && (
             <div className="callout">
               <strong>Recommended next video</strong>
-              <p>{upstream.result.topics.find((topic) => topic.topicId === recommendation.topicId)?.workingConcept ?? recommendation.topicId}</p>
+              <p>{upstream.output.topics.find((topic) => topic.topicId === recommendation.topicId)?.workingConcept ?? recommendation.topicId}</p>
               <p className="muted">{recommendation.viewerValueRationale}</p>
             </div>
           )}
-          <label>
-            Topic
-            <select value={selectedTopicId} onChange={(event) => setSelectedTopicId(event.target.value)} disabled={busy}>
-              <option value="">Use the recommended next video</option>
-              {upstream.result.backlog
-                .filter((entry) => upstream.result.topics.find((topic) => topic.topicId === entry.topicId)?.viewerValue.gate === "PASS")
-                .map((entry) => (
-                  <option key={entry.topicId} value={entry.topicId}>
-                    #{entry.rank} · {upstream.result.topics.find((topic) => topic.topicId === entry.topicId)?.workingConcept ?? entry.topicId}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <p className="muted">Only topics that passed the Viewer Value gate upstream are eligible. The server re-verifies the topic against the approved artifact.</p>
-          <button className="button button-accent" type="submit" disabled={busy}>
+          {upstream && (
+            <>
+              <label>
+                Topic
+                <select value={selectedTopicId} onChange={(event) => setTopicChoice(upstreamKey && event.target.value ? { upstreamKey, topicId: event.target.value } : null)} disabled={busy}>
+                  <option value="">Use the recommended next video</option>
+                  {eligibleTopics
+                    .map((entry) => (
+                      <option key={entry.topicId} value={entry.topicId}>
+                        #{entry.rank} · {upstream.output.topics.find((topic) => topic.topicId === entry.topicId)?.workingConcept ?? entry.topicId}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {topicChoiceInvalidated && <p className="callout callout-warning" role="status">Your earlier topic choice belonged to a different backlog, so it was cleared. The recommended next video from this backlog will be used unless you choose again.</p>}
+              <p className="muted">Only topics that passed the Viewer Value gate upstream are eligible. The server re-verifies the topic against the approved artifact.</p>
+            </>
+          )}
+          <button className="button button-accent" type="submit" disabled={busy || !upstream}>
             {busy ? <LoaderCircle size={15} className="spin" /> : <Sparkles size={15} />} Start video brief
           </button>
         </form>
       )}
 
-      {briefWorkflows.length > 0 && (
-        <nav className="chip-row" aria-label="Video brief runs">
-          {briefWorkflows.map((item) => (
-            <button key={item.id} type="button" className={`chip ${item.id === activeId ? "chip-active" : ""}`} onClick={() => load(item.id).catch(() => undefined)}>
-              {new Date(item.created_at).toLocaleDateString()} · {item.status}
-            </button>
-          ))}
-        </nav>
-      )}
+      <RunChips label="Video brief runs" workflows={workspace.workflows} activeId={workspace.activeId} disabled={busy} onSelect={workspace.select} />
 
       {detail && (
         <div className="detail-grid">
@@ -225,37 +146,20 @@ export function VideoBriefWorkspace({ initial }: { initial?: WorkflowList }) {
 
       {brief && <BriefDocument brief={brief} qa={finalQa} />}
 
-      {brief && pendingApproval && (
-        <div className="approval-panel">
-          <h3>Review</h3>
-          <p className="muted">Approving accepts the creative and production direction. It does not mean the video is ready to produce, export, or publish.</p>
-          <label>
-            Revision note
-            <textarea value={revisionNote} onChange={(event) => setRevisionNote(event.target.value)} maxLength={2000}
-              placeholder="What should the revised brief change?" disabled={busy} />
-          </label>
-          <div className="button-row">
-            <button type="button" className="button button-accent" onClick={() => decide("APPROVE")} disabled={busy}><Check size={15} /> Approve</button>
-            <button type="button" className="button" onClick={() => decide("REQUEST_REVISION")} disabled={busy || !revisionNote.trim()}><RefreshCcw size={15} /> Request revision</button>
-            <button type="button" className="button button-danger" onClick={() => decide("REJECT")} disabled={busy}><XCircle size={15} /> Reject</button>
-          </div>
-        </div>
+      {brief && decisionTarget && (
+        <DecisionBar
+          target={decisionTarget}
+          busy={busy}
+          title="Review this brief"
+          explanation="Approving accepts the creative and production direction. It does not mean the video is ready to produce, export, or publish."
+          versionLabel={version ? `Brief v${version}` : undefined}
+          approveLabel="Approve exact version"
+          revisionPlaceholder="What should the revised brief change?"
+          artifactLabel="brief"
+          onDecide={(target, decision, note) => workspace.decide(target, decision, note, `${decision.replaceAll("_", " ")} recorded. The original brief and its lineage are preserved.`)}
+        />
       )}
     </section>
-  );
-}
-
-function StageList({ steps }: { steps: Array<{ id: string; step_key: string; status: string; attempt_count: number; max_attempts: number; error_code: string | null }> }) {
-  return (
-    <ol className="stage-list" aria-label="Workflow stages">
-      {steps.map((step) => (
-        <li key={step.id} className={`stage stage-${step.status.toLowerCase()}`}>
-          <span>{step.step_key.replaceAll("-", " ")}</span>
-          <span className="muted">{step.status}{step.attempt_count > 1 ? ` · attempt ${step.attempt_count}/${step.max_attempts}` : ""}</span>
-          {step.error_code && <code>{step.error_code}</code>}
-        </li>
-      ))}
-    </ol>
   );
 }
 

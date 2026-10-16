@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, LoaderCircle, RefreshCcw, ShieldCheck, Sparkles, XCircle } from "lucide-react";
+import type { FormEvent } from "react";
+import { AlertTriangle, LoaderCircle, RefreshCcw, ShieldCheck, Sparkles } from "lucide-react";
 import {
   CONTENT_BACKLOG_MAX,
   CONTENT_BACKLOG_MIN,
@@ -17,106 +17,48 @@ import {
   type TopicDiscoveryBundle,
 } from "@/domain/production-workflows";
 import type { ViewerValueGate } from "@/domain/viewer-value";
-import type { WorkflowList } from "./channel-research-workspace";
+import { runVersionOf, type WorkflowList } from "./workflow-api";
+import { useWorkflowWorkspace } from "./use-workflow-workspace";
+import { parseObjectPayload, textAt, UpstreamCard, useApprovedUpstream } from "./upstream-selection";
+import { DecisionBar, WorkspaceFeedback } from "./workflow-controls";
 
 type WorkflowDetail = {
   workflow: { id: string; status: string; created_at: string; current_run_id: string };
-  runs: Array<{ id: string; status: string; input_payload: Record<string, unknown>; context_payload: Record<string, unknown>; output_payload: unknown; error_code: string | null; artifact_hash: string | null; provenance_hash: string | null }>;
+  runs: Array<{ id: string; status: string; input_payload: Record<string, unknown>; context_payload: Record<string, unknown>; output_payload: unknown; error_code: string | null; artifact_hash: string | null; provenance_hash: string | null; created_at?: string; completed_at?: string | null }>;
   steps: Array<{ id: string; workflow_run_id: string; step_key: string; status: string; output_payload: unknown; attempt_count: number; max_attempts: number; error_code: string | null }>;
   approvals: Array<{ id: string; workflow_run_id: string; status: string; decision_note: string | null; requested_at: string; decided_at: string | null }>;
   researchBudgets: Array<{ workflow_run_id: string; parent_run_id: string | null; root_run_id: string; used_totals: Record<string, number>; provider_identities: string[]; model_identities: string[]; exhaustion_code: string | null }>;
 };
 
-function message(payload: unknown, fallback: string) {
-  if (!payload || typeof payload !== "object") return fallback;
-  const error = (payload as { error?: unknown }).error;
-  if (typeof error === "string") return error;
-  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") return error.message;
-  return fallback;
-}
-
 const gateTone = (gate: ViewerValueGate) => gate === "PASS" ? "done" : gate === "REVISE" ? "warning" : "failed";
 
+/** Strategy runs are named by their channel concept and the recommendation they reached. */
+const describeStrategy = (output: Record<string, unknown>) => {
+  const decision = textAt(output, ["recommendation", "decision"]);
+  return { title: textAt(output, ["strategicThesis", "channelConcept", "statement"]) ?? "Approved channel strategy", detail: decision ? `Recommendation: ${decision.replaceAll("_", " ").toLowerCase()}` : undefined };
+};
+
 export function ContentIntelligenceWorkspace({ initial }: { initial?: WorkflowList }) {
-  const [engine, setEngine] = useState(initial);
-  const [detail, setDetail] = useState<WorkflowDetail | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [revisionNote, setRevisionNote] = useState("");
-  const contentWorkflows = useMemo(() => engine?.workflows.filter((item) => item.workflow_type === "CHANNEL_CONTENT_INTELLIGENCE") ?? [], [engine]);
-  const approvedStrategy = useMemo(() => engine?.workflows.find((item) => item.workflow_type === "CHANNEL_STRATEGY" && item.status === "COMPLETED"), [engine]);
-  const activeId = detail?.workflow.id ?? contentWorkflows[0]?.id;
-
-  const load = async (workflowId?: string) => {
-    const listResponse = await fetch("/api/workflows", { cache: "no-store" });
-    const listPayload = await listResponse.json();
-    if (!listResponse.ok) throw new Error(message(listPayload, "Could not refresh content workflows."));
-    setEngine(listPayload.workflowEngine);
-    const selected = workflowId ?? detail?.workflow.id ?? listPayload.workflowEngine.workflows.find((item: { workflow_type: string }) => item.workflow_type === "CHANNEL_CONTENT_INTELLIGENCE")?.id;
-    if (!selected) return;
-    const response = await fetch(`/api/workflows/${selected}`, { cache: "no-store" });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(message(payload, "Could not load the content workflow."));
-    setDetail(payload);
-  };
-
-  useEffect(() => {
-    if (!activeId) return;
-    let disposed = false;
-    const refresh = () => load(activeId).catch((cause: unknown) => { if (!disposed) setError(cause instanceof Error ? cause.message : "Could not refresh content intelligence."); });
-    void refresh();
-    const status = detail?.workflow.status ?? contentWorkflows[0]?.status ?? "";
-    const timer = ["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL"].includes(status) ? setInterval(refresh, 4_000) : undefined;
-    return () => { disposed = true; if (timer) clearInterval(timer); };
-    // Polling intentionally follows durable workflow identity and status.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, detail?.workflow.status]);
+  const workspace = useWorkflowWorkspace<WorkflowDetail>({ initial, workflowType: "CHANNEL_CONTENT_INTELLIGENCE", label: "content intelligence" });
+  const { detail, busy } = workspace;
+  const contentWorkflows = workspace.workflows;
+  const activeId = workspace.activeId;
+  const selection = useApprovedUpstream({ engine: workspace.engine, workflowType: "CHANNEL_STRATEGY", label: "channel strategy", parse: parseObjectPayload, describe: describeStrategy });
+  const strategy = selection.upstream;
 
   const start = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!strategy) return;
     const form = new FormData(event.currentTarget);
     const size = Number(form.get("targetBacklogSize"));
-    setBusy(true); setError(null); setNotice(null);
-    try {
-      const response = await fetch("/api/workflows", {
-        method: "POST", headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
-        body: JSON.stringify({
-          operation: "START_WORKFLOW", workflowType: "CHANNEL_CONTENT_INTELLIGENCE", definitionVersion: 1,
-          input: {
-            strategyWorkflowId: String(form.get("strategyWorkflowId")),
-            strategyRunId: String(form.get("strategyRunId")),
-            ...(Number.isInteger(size) && size >= CONTENT_BACKLOG_MIN && size <= CONTENT_BACKLOG_MAX ? { targetBacklogSize: size } : {}),
-          },
-        }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(message(payload, "Could not start content intelligence."));
-      await load(payload.operationResult.workflowId);
-      setNotice("Content intelligence queued from the exact approved strategy run.");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not start content intelligence."); }
-    finally { setBusy(false); }
+    await workspace.start({
+      strategyWorkflowId: strategy.workflowId,
+      strategyRunId: strategy.runId,
+      ...(Number.isInteger(size) && size >= CONTENT_BACKLOG_MIN && size <= CONTENT_BACKLOG_MAX ? { targetBacklogSize: size } : {}),
+    }, "Content intelligence queued from the exact approved strategy run.");
   };
 
-  const decide = async (decision: "APPROVE" | "REJECT" | "REQUEST_REVISION") => {
-    const run = detail?.runs[0];
-    const approval = detail?.approvals.find((item) => item.workflow_run_id === run?.id && item.status === "PENDING");
-    if (!approval || !detail) return;
-    const note = decision === "REQUEST_REVISION" ? revisionNote.trim() : undefined;
-    if (decision === "REQUEST_REVISION" && !note) return;
-    setBusy(true); setError(null);
-    try {
-      const response = await fetch(`/api/workflows/${detail.workflow.id}/approvals/${approval.id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decision, note }) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(message(payload, "Could not record the content decision."));
-      await load(detail.workflow.id);
-      if (decision === "REQUEST_REVISION") setRevisionNote("");
-      setNotice(`${decision.replaceAll("_", " ")} recorded. Exact-version lineage remains immutable.`);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not record the content decision."); }
-    finally { setBusy(false); }
-  };
-
-  const run = detail?.runs[0];
+  const run = workspace.currentRun;
   const currentSteps = detail?.steps.filter((item) => item.workflow_run_id === run?.id) ?? [];
   const step = (key: string) => currentSteps.find((item) => item.step_key === key)?.output_payload;
   const upstream = approvedStrategyArtifactSchema.safeParse(step("validate-approved-strategy"));
@@ -127,23 +69,20 @@ export function ContentIntelligenceWorkspace({ initial }: { initial?: WorkflowLi
   const finalQa = contentQAResultSchema.safeParse(step("final-content-qa"));
   const result = channelContentIntelligenceResultSchema.safeParse(run?.output_payload);
   const budget = detail?.researchBudgets.find((item) => item.workflow_run_id === run?.id);
-  const pendingApproval = detail?.approvals.some((item) => item.workflow_run_id === run?.id && item.status === "PENDING");
+  const version = detail && run ? runVersionOf(detail, run.id) : undefined;
 
   return <div className="research-workspace content-workspace">
     <section className="research-hero"><div><p className="eyebrow">Approved strategy → content intelligence</p><h2>Decide what to make next, and why</h2><p>Channelwright expands approved pillars, retrieves fresh YouTube evidence, and gates every idea on identifiable viewer value before recommending anything.</p></div><span>VIEWER VALUE GATED</span></section>
-    {error && <div className="error-banner" role="alert"><AlertTriangle size={17} /> {error}</div>}
-    {notice && <div className="success-banner" role="status"><Check size={17} /> {notice}</div>}
-    <form className="research-request" onSubmit={start}>
+    <WorkspaceFeedback label="content intelligence" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
+    {selection.eligible.length > 0 ? <form className="research-request" onSubmit={start}>
+      <UpstreamCard heading="Build a backlog from" kindLabel="Strategy" selection={selection} disabled={busy} />
       <div>
-        <label>Approved strategy workflow ID<input name="strategyWorkflowId" required defaultValue={approvedStrategy?.id ?? ""} /></label>
-        <label>Exact approved strategy run ID<input name="strategyRunId" required defaultValue={approvedStrategy?.current_run_id ?? ""} /></label>
         <label>Target backlog size<input name="targetBacklogSize" type="number" min={CONTENT_BACKLOG_MIN} max={CONTENT_BACKLOG_MAX} defaultValue={CONTENT_BACKLOG_MAX} /></label>
       </div>
       <p><ShieldCheck size={15} /> The server resolves and re-verifies the approved strategy, including its upstream research provenance. Unapproved, cross-owner, mutated, or mismatched artifacts fail closed.</p>
-      <button className="button button-accent" disabled={busy || !approvedStrategy}>{busy ? <LoaderCircle className="spin" size={15} /> : <ShieldCheck size={15} />} Build bounded backlog</button>
-    </form>
-    {!approvedStrategy && <div className="error-banner"><AlertTriangle size={17} /> Approve an exact CHANNEL_STRATEGY run before building a content backlog.</div>}
-    {contentWorkflows.length > 0 && <section className="research-history"><header><h3>Content ledger</h3><button type="button" className="button button-quiet" onClick={() => void load()}><RefreshCcw size={14} /> Refresh</button></header>{contentWorkflows.slice(0, 8).map((workflow) => <button type="button" key={workflow.id} className={workflow.id === activeId ? "selected" : ""} onClick={() => void load(workflow.id)}><span>{new Date(workflow.created_at).toLocaleString()}</span><b>{workflow.status.replaceAll("_", " ")}</b><small>{workflow.id}</small></button>)}</section>}
+      <button className="button button-accent" disabled={busy || !strategy}>{busy ? <LoaderCircle className="spin" size={15} /> : <ShieldCheck size={15} />} Build bounded backlog</button>
+    </form> : !workspace.loading && <p className="upstream-empty">Approve an exact strategy run above before building a content backlog.</p>}
+    {contentWorkflows.length > 0 && <section className="research-history"><header><h3>Content ledger</h3><button type="button" className="button button-quiet" disabled={busy} onClick={() => void workspace.refresh()}><RefreshCcw size={14} /> Refresh</button></header>{contentWorkflows.slice(0, 8).map((workflow) => <button type="button" key={workflow.id} className={workflow.id === activeId ? "selected" : ""} aria-pressed={workflow.id === activeId} onClick={() => workspace.select(workflow.id)}><span>{new Date(workflow.created_at).toLocaleString()}</span><b>{workflow.status.replaceAll("_", " ")}</b><small>{workflow.id}</small></button>)}</section>}
     {detail && <section className="research-run"><header><div><p className="eyebrow">Durable content execution</p><h2>{detail.workflow.status.replaceAll("_", " ")}</h2></div><small>{run?.id}</small></header><div className="research-steps">{currentSteps.map((item) => <span key={item.id} className={item.status === "COMPLETED" ? "done" : item.status === "FAILED" ? "failed" : ""}><b>{item.step_key.replaceAll("-", " ")}</b><small>{item.status.replaceAll("_", " ")} · {item.attempt_count}/{item.max_attempts}</small></span>)}</div>{run?.error_code && <p className="research-failure"><AlertTriangle size={15} /> Failed closed: {run.error_code}</p>}</section>}
     {result.success && <ContentBacklogReview
       result={result.data}
@@ -156,7 +95,17 @@ export function ContentIntelligenceWorkspace({ initial }: { initial?: WorkflowLi
       provenanceHash={run?.provenance_hash ?? null}
       upstreamStrategyRunId={upstream.success ? upstream.data.reference.strategyRunId : result.data.upstreamStrategy.strategyRunId}
     />}
-    {pendingApproval && <section className="research-decision"><div><p className="eyebrow">Human content decision required</p><h3>Approve, reject, or create a separately budgeted successor.</h3><label>Revision note<textarea rows={2} maxLength={2000} value={revisionNote} onChange={(event) => setRevisionNote(event.target.value)} placeholder="Required for a linked successor backlog run." /></label></div><div><button className="button" disabled={busy || !revisionNote.trim()} onClick={() => void decide("REQUEST_REVISION")}><RefreshCcw size={14} /> Request revision</button><button className="button" disabled={busy} onClick={() => void decide("REJECT")}><XCircle size={14} /> Reject</button><button className="button button-accent" disabled={busy} onClick={() => void decide("APPROVE")}><Check size={14} /> Approve backlog</button></div></section>}
+    {workspace.decisionTarget && <DecisionBar
+      target={workspace.decisionTarget}
+      busy={busy}
+      title="Human content decision required"
+      explanation="Approve this exact backlog, reject it, or create a separately budgeted successor run. Only approved backlogs can feed a video brief."
+      versionLabel={version ? `Backlog run v${version}` : undefined}
+      approveLabel="Approve exact backlog"
+      revisionPlaceholder="Required for a linked successor backlog run."
+      artifactLabel="backlog"
+      onDecide={(target, decision, note) => workspace.decide(target, decision, note, `${decision.replaceAll("_", " ")} recorded. Exact-version lineage remains immutable.`)}
+    />}
     {!result.success && draft.success && <p className="success-banner">Backlog draft persisted; final QA and human review are still pending.</p>}
   </div>;
 }

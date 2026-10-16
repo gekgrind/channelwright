@@ -67,7 +67,10 @@ describe("VideoPackagingWorkspace", () => {
     const fetchMock = mockFetch({});
     vi.stubGlobal("fetch", fetchMock);
     render(<VideoPackagingWorkspace />);
-    const button = await screen.findByRole("button", { name: /start video packaging/i }, { timeout: 5000 });
+    // The exact approved upstream is shown before anything can be started.
+    await screen.findByRole("region", { name: /selected approved script/i }, { timeout: 5000 });
+    const button = screen.getByRole("button", { name: /start video packaging/i });
+    expect(button).toBeEnabled();
     fireEvent.click(button);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/workflows", expect.objectContaining({ method: "POST" })));
     const call = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
@@ -117,7 +120,7 @@ describe("VideoPackagingWorkspace", () => {
     vi.stubGlobal("fetch", mockFetch({ packaging: packagingDetail("APPROVED") }));
     render(<VideoPackagingWorkspace />);
     await waitFor(() => expect(screen.getByRole("heading", { name: PACKAGING.source.workingConcept })).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /^approve$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /approve exact version/i })).not.toBeInTheDocument();
   });
 
   it("surfaces a terminal run error code without exposing internals", async () => {
