@@ -102,6 +102,6 @@ describe("AudienceFooterStatic", () => {
     expect(container.querySelector("footer.cw-aud__close")?.getAttribute("role")).toBe("contentinfo");
     const cta = container.querySelector(".cw-aud__close a");
     expect(cta?.textContent).toBe(OPEN.primaryCta);
-    expect(cta?.getAttribute("href")).toBe("/login");
+    expect(cta?.getAttribute("href")).toBe("/studio");
   });
 });

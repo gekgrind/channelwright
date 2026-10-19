@@ -121,12 +121,20 @@ export const CAPABILITIES: Capability[] = [
     boundary: "No OAuth application, upload adapter or publish operation exists yet.",
   },
   {
+    id: "performance-capture",
+    department: "06",
+    name: "Manual performance capture",
+    status: "OPERATING",
+    claim: "Operator-entered performance snapshots are bound to an exact approved release for review and learning.",
+    boundary: "Metrics are supplied by the operator. No YouTube analytics connection or automatic collection is available.",
+  },
+  {
     id: "measurement",
     department: "06",
-    name: "Performance measurement",
+    name: "Automated analytics ingestion",
     status: "DESIGNED",
     claim: "Release decisions already record the KPI and hypothesis each video tests, so results have somewhere to land.",
-    boundary: "Channelwright ingests no analytics today. The loop is architected and open at this seam.",
+    boundary: "Channelwright ingests no analytics automatically today. Manual performance capture is available separately.",
   },
 ];
 
