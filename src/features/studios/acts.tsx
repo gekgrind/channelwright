@@ -329,7 +329,7 @@ export function ControlRoom() {
  * because something is being done to the artifact in it; here nothing is being
  * done to it, which is the point — the building is looking back, not working.
  * An instrument would also be the exact place a fabricated analytics readout
- * would creep in, and performance measurement is DESIGNED, not built.
+ * would creep in, and automatic analytics ingestion is DESIGNED, not built.
  */
 /* The camera's own moments, in the return scene's progress space.
    `sceneProgress` is the only correct bridge between a journey position and a
@@ -394,8 +394,8 @@ export const ACTION_AT = Number((HANDOFF_DONE + 0.05).toFixed(3));
  * a release is not the end of the work, it is what makes the next decision
  * answerable. The argument is made almost entirely in the building — the
  * artifact is set down at a door that is drawn in the same hand as the
- * entrance and left unlit, because `measurement` is DESIGNED and Channelwright
- * ingests no analytics today.
+ * entrance and left unlit, because automatic ingestion (`measurement`) is DESIGNED and Channelwright
+ * ingests no analytics automatically today.
  *
  * The frame deliberately rhymes with Beat 1: darkness, one lit object, one
  * sentence, no chrome. The state is what has changed. An idea waiting to
@@ -436,7 +436,7 @@ export function NextDecision() {
               <Cue from={HANDOFF_DONE - 0.11} to={HANDOFF_DONE - 0.01} as="p" className="cw-rise cw-finale__line">
                 {FOOTER.line}
               </Cue>
-              <Link className="cw-cta cw-cta--solid cw-finale__cta" href="/login">
+              <Link className="cw-cta cw-cta--solid cw-finale__cta" href="/studio">
                 {OPEN.primaryCta}
               </Link>
             </div>
