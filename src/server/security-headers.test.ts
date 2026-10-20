@@ -2,6 +2,22 @@ import { describe, expect, it } from "vitest";
 import nextConfig, { contentSecurityPolicy } from "../../next.config";
 
 describe("application security headers", () => {
+  it("emits one policy that keeps forms same-origin and explicitly permits Turnstile", async () => {
+    const entries = await nextConfig.headers?.();
+    expect(entries?.flatMap((entry) => entry.headers).filter((header) => header.key.toLowerCase() === "content-security-policy")).toHaveLength(1);
+    const directives = new Map(contentSecurityPolicy("production").split("; ").map((directive) => {
+      const [name, ...sources] = directive.split(" ");
+      return [name, sources];
+    }));
+    expect(directives.get("form-action")).toEqual(["'self'"]);
+    for (const directive of ["script-src", "frame-src", "connect-src"]) {
+      expect(directives.get(directive)).toContain("https://challenges.cloudflare.com");
+      expect(directives.get(directive)).not.toContain("*");
+    }
+    // Turnstile pre-clearance fetches /cdn-cgi/ on the document origin.
+    expect(directives.get("connect-src")).toContain("'self'");
+  });
+
   it("prevents clickjacking without blocking the configured CAPTCHA script provider", async () => {
     const entries = await nextConfig.headers?.();
     const headers = new Map(entries?.flatMap((entry) => entry.headers.map((header) => [header.key, header.value] as const)));
