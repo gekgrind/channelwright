@@ -86,3 +86,42 @@ For a remaining violation, capture its exact blocked URL, directive, enforcing d
 Branch `codex/fix-login-csp-redirect` starts from fetched `origin/main` at `bf464961724e3304f7a1b4427ba0ac5a3f21b183`. It excludes `codex/promote-studio-journey`. The tracked deployment workflow triggers only on pushes to `main`; publishing this review branch does not deploy it.
 
 Stop at review. Product-owner approval is required before merge/deployment. After that approval, verify the public redirect headers and use an authorized QA account to confirm CAPTCHA rejection, invalid credentials, successful login, resulting cookies, authenticated `/studio`, refresh, and logout in Chrome through the actual TLS/Nginx path. Local runtime or mocked-provider tests do not establish production login success.
+
+## PR #15 CodeAnt session-cookie review (October 21, 2026)
+
+CodeAnt's [inline finding](https://github.com/gekgrind/channelwright/pull/15#discussion_r4341953122) is valid as a test-coverage defect. The original successful-login unit test mocked the entire Supabase factory with an `auth`-only object and asserted that `Set-Cookie` was absent. That assertion described the mock; it did not verify a real successful session. It has been removed and replaced with a reference to the session integration tests. The independent Standards and Spec reviews both identified this coverage gap and found no other violation in the original four-file diff.
+
+The traced implementation does not lose session cookies because it returns a new `NextResponse`:
+
+1. `signInWithCaptcha()` calls the actual Supabase password-auth method with the completed CAPTCHA token.
+2. Installed `@supabase/ssr` 0.12.4 handles the `SIGNED_IN` event, encodes/chunks the session, and invokes the configured `cookies.setAll()` adapter.
+3. `src/server/supabase.ts` sends every cookie's name, value, and options to `(await cookies()).set()` in the current Next request store.
+4. After the route returns its relative 303 response, installed Next.js 16.3.0 `AppRouteRouteModule` calls `appendMutableCookies()` and merges the modified request cookies into the final response headers. Direct calls to `POST()` bypass this framework step.
+
+`route-session.test.ts` uses that actual installed route runner and its request-scoped `cookies()` implementation, the application Supabase factory/adapter, and the real Supabase SSR and auth-js libraries. Only outbound provider HTTP responses are stubbed with explicit synthetic identities/tokens. It tests public, HTTPS internal, and HTTP internal request origins for:
+
+- Single-cookie and multi-chunk successful sessions with separate final `Set-Cookie` headers, reassembled access/refresh values, unchanged Path and SameSite attributes, and fixed relative `/studio` redirects despite untrusted return/forwarded inputs.
+- A second request carrying the issued cookies, with identity verified through the real client against the stub provider's `/auth/v1/user` endpoint using the issued access token.
+- Raw `Set-Cookie` expiration of obsolete session chunks without overwriting an incoming `entrepreneuria-auth-token` ecosystem cookie.
+- Rejected credentials returning a same-origin login error without issuing a session cookie.
+
+The stale-chunk assertions inspect raw headers because the installed edge cookie parser's `compact()` removes empty strings and zero values from its parsed representation. An initial parsed-object assertion failed despite the correct `name=; ...; Max-Age=0` header; the test was corrected rather than changing runtime behavior. Initial harness type errors were corrected against the installed Next interfaces. Thread-worker startup timeouts were retried with forked workers.
+
+Final validation for this review:
+
+| Check | Result |
+| --- | --- |
+| `npm.cmd test -- --pool=forks --no-file-parallelism src/app/api/auth/login src/server/security-headers.test.ts src/server/password-auth.test.ts src/domain/password-auth.test.ts src/features/auth` | 7 files / 48 tests passed, including 12 new session integration cases |
+| `npm.cmd run typecheck -- --incremental false` | Passed |
+| `npm.cmd run lint` and changed-test ESLint | Passed |
+| `npm.cmd run build` | Passed, Next.js 16.3.0 / Turbopack |
+| `git diff --check`, changed-file mojibake scan | Passed |
+| `graphify update .` | AST graph updated; optional SQL parser unavailable |
+
+The full repository suite was not rerun for this tests/documentation-only follow-up; the original PR's full-suite result is recorded above. No production implementation changes were needed. The review thread is left unresolved for human review even though the finding is addressed by the verified tests.
+
+### Shared-auth compatibility and remaining boundaries
+
+This PR preserves the existing factory configuration, cookie namespace/scope/options, Supabase project configuration, provider calls, and server-side user verification. It does not add a canonical shared cookie name or Domain option. In this baseline the SDK defaults to host-only `sb-<project-ref>-auth-token` cookies. Prior shared-auth reviews recorded the legacy ecosystem contract as `.entrepreneuria.io` / `entrepreneuria-auth-token`; other repositories were not re-audited here. The regression verifies coexistence without overwriting an incoming cookie with that name; it does not claim that a Channelwright login establishes Entrepreneuria-wide SSO. No other authentication workstream or repository was changed.
+
+Existing limitations remain outside this PR: there is no refresh proxy in this baseline; the shared server/client factory tolerates cookie-write errors for Server Components; default cookie options are not explicitly hardened with Secure/HttpOnly; and this adapter does not forward the SDK's separate cache-header argument. None is introduced by the relative redirect change or modified in this review. Production cookie acceptance, authenticated Studio navigation, refresh, logout, shared-session interoperability, and deployed Nginx/CDN/cache behavior still need authorized live QA. These local integration tests prove library/adapter/final-response behavior, not real hosted-provider acceptance or a completed SSO migration.

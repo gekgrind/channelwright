@@ -57,7 +57,8 @@ describe.each([publicOrigin, "https://localhost:3005", "http://localhost:3005"])
     expect(auth.signInWithPassword).toHaveBeenCalledWith({
       email: credentials.email, password: credentials.password, options: { captchaToken: credentials.captchaToken },
     });
-    expect(response.headers.get("set-cookie")).toBeNull();
+    // Session persistence is covered with the real SSR client and Next route
+    // finalization in route-session.test.ts, rather than this auth-only mock.
   });
 
   it.each([
