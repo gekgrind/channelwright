@@ -41,7 +41,7 @@ describe("production Studio access", () => {
     body.set("returnTo", target);
     const response = await POST(new Request(`https://channelwright.entrepreneuria.io/api/auth/login?next=${encodeURIComponent(target)}`, { method: "POST", body }));
     expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toBe("https://channelwright.entrepreneuria.io/studio");
+    expect(response.headers.get("location")).toBe("/studio");
     expect(auth.signInWithPassword).toHaveBeenCalledWith({ email: "operator@example.com", password: "test-password", options: { captchaToken: "test-captcha" } });
   });
 
@@ -50,7 +50,7 @@ describe("production Studio access", () => {
     body.set("email", "operator@example.com");
     body.set("password", "test-password");
     const response = await POST(new Request("https://channelwright.entrepreneuria.io/api/auth/login", { method: "POST", body }));
-    expect(response.headers.get("location")).toBe("https://channelwright.entrepreneuria.io/login?error=captcha_required");
+    expect(response.headers.get("location")).toBe("/login?error=captcha_required");
     expect(auth.signInWithPassword).not.toHaveBeenCalled();
   });
 });
