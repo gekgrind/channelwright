@@ -1,14 +1,31 @@
 # Phase B UX: Information Architecture and Channel Command Center
 
-Status: **proposal for review**. Design exploration only; no production code, migrations, auth, or schema changes.
-Scope of this pass: information architecture and the Channel Command Center. Video workspace, Approvals,
-Learning, and the full design system follow after review.
+Status: **direction approved by the owner (2026-10-25)**, with the refinements recorded in section 0.
+This document changes no production code, migrations, auth, or schema. The first implementation slice
+(section 8) is a separate branch and PR.
 
-Visual companion (IA map, low-fi wireframe, hi-fi direction with Operating / First run / Section error
-states, phone layout): https://claude.ai/artifact/YQxxXLUYp3Ku5LmZu91nVD (private until shared).
+Prototypes (private until shared):
+- **Approved visual direction, "Studio screens":** https://claude.ai/artifact/9c8FQHeRstn8ZNzNcY7B7a
+  (Command Center, Video workspace at Script v2, Approvals with all five states, phone triage, first run,
+  section states).
+- Superseded exploration (IA map, low-fi wireframe, light-theme hi-fi): https://claude.ai/artifact/YQxxXLUYp3Ku5LmZu91nVD.
+  Its IA map and wireframe still hold; its light visual direction is replaced by section 4.
 
 Doctrine loop strengthened: **Next Decision**, with Measurement and Learning made visible enough to compete
 with Production for the operator's attention.
+
+---
+
+## 0. Owner decisions (2026-10-25)
+
+| # | Decision | Refinement now binding |
+|---|---|---|
+| Q1 | Three-layer IA approved. Approvals is the single primary global destination. Activity and Account & Usage are utilities. | None. |
+| Q2 | "Close learning loops before opening new ones" approved as a guiding principle. | Learning work is prioritized only when it is **eligible and actionable**. Measurement windows, urgency, blockers and pending approvals all count. Performance entry is **never** an unconditional priority over a script approval. Section 3 has the rules. |
+| Q3 | Derived Channel/Video read-model approved for launch. | Lineage is authoritative. Ambiguity is shown explicitly ("unattributed"), and no relationship is inferred that approved references do not prove. |
+| Q4 | Legacy fixture experiences are preserved as isolated demonstrations. | Fixture data never mixes with production. Nothing is retired without verified parity. |
+| Q5 | Monetization stays inside Strategy. | It gets its own navigation only when dedicated monetization workflows exist. |
+| Visual | The Studios homepage identity is approved for the app. | Workspace screens use its surfaces and type, not its cinematic perspective or atmosphere. The two readability adjustments are approved (section 4). |
 
 ---
 
@@ -52,8 +69,8 @@ deterministic Next Best Action, read-only monetization) are treated as proposals
 | Account & Usage | Sidebar footer utility | Budgets, spend, plan. Depends on D6. |
 
 **Where this departs from the Engineering proposal.** Four peer global destinations put two low-frequency
-utilities on equal footing with Approvals. I recommend one primary global destination (Approvals), two
-utilities, and a switcher instead of a "Channels" page until multi-channel exists.
+utilities on equal footing with Approvals. Approved instead (Q1): one primary global destination (Approvals),
+two utilities, and a switcher in place of a "Channels" page until there are multiple channels.
 
 ### Channel layer (sidebar, in loop order)
 
@@ -90,8 +107,8 @@ Breadcrumb always reads `Channel › Video › Stage › vN`. Detailed in the ne
 
 **Migration guarantee.** The eight existing workspace components take `initial: WorkflowList` and are
 self-contained, so they can be re-hosted inside new destinations unchanged. `/studio` stays reachable as
-"All workflows" until each workspace has a new home with parity tests. Fixture-mode legacy screens are out of
-scope for this IA and need an explicit keep/retire decision (open question Q4).
+"All workflows" until each workspace has a new home with parity tests. Fixture-mode legacy screens stay as isolated
+demonstrations (Q4). They are not merged with production data and are not retired without verified parity.
 
 ### Proposed routes (for discussion, not implementation)
 
@@ -136,21 +153,31 @@ order on every viewport:
 
 ### Next Decision rules (deterministic, explainable)
 
-Principle: **close loops before opening new ones.** A video further along the loop outranks one earlier in it.
-This encodes the doctrine's "learning over volume" without blocking the user: the NBA is advice, and every
-other action stays reachable.
+Principle (Q2): close learning loops before opening new ones, **when the learning work is eligible and
+actionable**. The card is advice. It never starts or decides anything, and every other action stays reachable.
+Implemented in `src/features/command-center/next-decision.ts` (section 8).
 
-| Priority | Condition | Example action |
+**Eligibility comes first.** An item is never ranked when:
+- lineage does not attribute it to this channel (Q3). It is listed as unattributed;
+- the product has no screen to act on it (today: Diagnosis, Decision, Experiment, Portfolio, Intelligence, Concept validation);
+- it is a measurement task with no due rule (D5), or its observation window is still open.
+
+Each exclusion appears with its reason under "Why this, not something else?".
+
+| Tier | What | Order inside the tier |
 |---|---|---|
-| P0 Recover | A run in this channel is FAILED or BLOCKED and needs a human | "Resolve failed Script run" |
-| P1 Close the loop | Learning-side gate pending (Performance, Diagnosis, Decision, Experiment, Portfolio, Intelligence); measurement window elapsed with no snapshot; strategy review signal awaiting decision | "Record performance for …" |
-| P2 Unblock production | Production gate pending (Release > Packaging > Script > Brief, most downstream first) | "Review Script v2 for …" |
-| P3 Start learning | Performance recorded but no Diagnosis; Decision recommends an experiment not yet started | "Diagnose …" |
-| P4 Produce | Approved plan has an un-briefed topic, and nothing in P0–P3 | "Start a brief for topic #4" |
-| P5 Foundation | No approved strategy or plan | "Research a channel opportunity" |
+| P0 Recover | A failed or blocked run that needs a human | Oldest first |
+| P1 Decide | Pending approval gates. They block the pipeline. | Learning gates → measurement escalated past `ESCALATE_AFTER_DAYS` (default 7) → channel gates (Research, Strategy, Content plan) → video gates, most downstream first → oldest |
+| P2 Close the loop | Eligible learning work that is due (record performance, start diagnosis or experiment) | Most overdue first |
+| P3 Produce | Brief a topic from the approved content plan | Oldest first |
+| P4 Foundation | No approved strategy | — |
 
-Ties break by age (oldest first). The card always shows the rule that fired and how many items were deferred.
-It never starts a workflow on its own.
+What this means in practice:
+- A pending Script approval outranks entering performance until that measurement is 7 days overdue. It is
+  never outranked unconditionally.
+- A pending learning gate (for example Performance) outranks production gates, because it is a decision
+  that blocks learning.
+- If pending approvals fail to load, the card says its ranking may be incomplete.
 
 ### States
 
@@ -164,20 +191,39 @@ It never starts a workflow on its own.
 
 ---
 
-## 4. High-fidelity direction (this pass)
+## 4. Visual direction (approved: Studios identity for workspaces)
 
-Keep the shipped tokens (`globals.css`) and fonts; change how intensely they are used in the operator app.
+The public Studios homepage sets the identity. Workspace screens take its materials, not its staging.
 
-- **Keep:** paper `#f2efe6`, ink `#121310`, acid `#d8ff3e`, mint `#91e6c1`, orange `#ff6846`; Space Grotesk
-  (headings), Manrope (body), DM Mono (IDs, versions, eyebrows, metric figures); 4 px radius.
-- **Add:** surface `#fbf9f3` for panels; muted text `#5f615a` (≈5:1 on paper); orange text `#a8361a` because
-  `#ff6846` fails as text on paper. Orange stays a fill with ink text.
-- **Acid means "your move".** One acid moment per screen (the NBA offset shadow and CTA), plus the
-  "your move" stage cell and approval badge. Never decorative.
-- **Drop for the app:** landing-page grain, giant display type, offset-shadow hover on every button. Those
-  suit marketing, not an 8-hour work surface. The offset shadow is reserved for the NBA card.
-- Status is never color alone: every state has a text label; stage tracks have an `aria-label` sentence.
-- No charts on the Command Center in this phase.
+**Surfaces and type** (tokens from `src/features/studios/studios.css`, re-scoped as `--cw-*` in
+`src/features/command-center/command-center.css`):
+- Ground `void #050607`; sidebar `deep #0a0c10`; panels `deck #12151b`; hover `riser #1b1f27`.
+- Text `lume #f2efe6`; secondary `#a9a7a0`; labels `#8d8b85`.
+- Hairline borders only: `edge` (10% lume) and `edge-2` (18% lume). No shadows or cards stacked on cards.
+- Space Grotesk for headings and artifact titles, Manrope for body, DM Mono for labels, IDs, versions and figures.
+
+**Meaning of color**
+- **Acid `#d8ff3e` means a decision is yours.** It is used for one primary CTA per screen, the Next Decision
+  frame, the "your move" stage cell, the "You" waiting-on label, and the Approvals badge. An unknown count is
+  neutral, never acid.
+- **Orange `#ff6846` marks revision and recovery**: revision requested, failed or blocked runs, unattributed
+  work, failed sections. Following the approved prototype, it also marks "Not supported" and "Below plan"
+  outcomes.
+- Mint `#91e6c1` marks pass outcomes (Supported, Above plan).
+- Status is never color alone. Every state has a text label, and stage tracks carry an `aria-label` sentence.
+
+**Script plates.** The artifact plate is how an exact artifact version is shown: one document object, additive,
+with superseded material struck through rather than removed. Use plates in the Video workspace and the
+Approvals detail view, where the version under decision must be unmistakable. Do not use them on summary
+screens such as the Command Center.
+
+**Approved readability adjustments**
+1. Labels use solid `#8d8b85` instead of `lume-3` (40% lume), which fails contrast for text. Measured
+   ≈5.4:1 on `deck`.
+2. Mono labels go from 10.5px/.2em to 11px/.14em.
+
+**Kept on the homepage only:** perspective, soundstage, grain, glow fields, scroll choreography. The workspace
+hides the global grain overlay. Motion is limited to a skeleton pulse that respects `prefers-reduced-motion`.
 
 ---
 
@@ -185,12 +231,13 @@ Keep the shipped tokens (`globals.css`) and fonts; change how intensely they are
 
 - Desktop-first, 1280–1440 primary. Sidebar + content in a wrapping flex row; at < 1024 the sidebar becomes a
   top bar with channel switcher + menu; at phone width a 4-item bottom bar (Home, Videos, Approvals, More).
+  The first slice only stacks the sidebar above content below 760px. The top bar and bottom bar are follow-up work.
 - Phone is a triage surface: read the NBA, open approvals, check state. Approval decisions on phone require
   opening the full artifact view; no swipe-to-approve.
 - Wide tables scroll inside their own box; the page never scrolls horizontally.
 - Landmarks: `nav` (Studio), `main`, one `h1` per page, each section `aria-labelledby` its `h2`.
-  `aria-current="page"` on the active nav item; `aria-expanded` on the NBA disclosure.
-- Targets ≥ 44 px; focus ring stays the existing 3 px orange outline; text ≥ 4.5:1.
+  `aria-current="page"` on the active nav item. The NBA disclosure is a native `<details>`.
+- Targets ≥ 44 px; focus ring is a 2px acid outline, as in Studios; text ≥ 4.5:1.
 
 ---
 
@@ -198,9 +245,9 @@ Keep the shipped tokens (`globals.css`) and fonts; change how intensely they are
 
 | ID | Capability | Needed for | Notes |
 |---|---|---|---|
-| D1 | **Channel grouping read-model**: group workflows by lineage root (one Research workflow and descendants) | Switcher, channel routes, sections A–D | No new table required. A second Research run on the same niche would appear as a second channel; a persisted Channel entity is the real fix and is an Engineering decision, not assumed here. |
+| D1 | **Channel grouping read-model**: group workflows by lineage root (one Research workflow and descendants) | Switcher, channel routes, sections A–D | Approved for launch (Q3). No new table. Membership comes only from resolved `approved<Upstream>Reference` chains. An item whose chain does not resolve is `ambiguous` and is shown as unattributed, never placed by name, timing or similarity. A second Research run on the same niche is a second channel until the owner decides otherwise. |
 | D2 | Channel display label | Switcher, identity band | Only `niche` / `channelConcept` exist (F9). Needs either a label field or an agreed derivation. |
-| D3 | **Video grouping read-model**: group Brief workflow and its descendants | Videos, section D, stage tracks, routes | Requires `input_payload` references, which the list endpoint does not return (F6). |
+| D3 | **Video grouping read-model**: group Brief workflow and its descendants | Videos, section D, stage tracks, routes | Requires `input_payload` references, which the list endpoint does not return (F6). Same attribution rule as D1. |
 | D4 | NBA rule evaluation | Section B | Pure function over D1/D3 state; can be client-side first, server-side later. |
 | D5 | "Measurement due" trigger | P1 rule, section D | VERIFIED: Release binds KPIs to hypotheses (`202608180003_video_release_kpi_scope.sql`), but the observation window is supplied by the operator at Performance entry. No release-side due date exists, so "due" needs a product rule (e.g. N days after release approval). The mock's "14-day window" assumes one. |
 | D6 | Usage API | Account & Usage | Budgets readable in DB (F11); no route. |
@@ -209,18 +256,53 @@ Keep the shipped tokens (`globals.css`) and fonts; change how intensely they are
 
 ---
 
-## 7. Open questions for review
+## 7. Decisions that still need the owner
 
-- **Q1.** Accept one primary global destination (Approvals) with Activity and Account as utilities, instead of four peers?
-- **Q2.** Accept "close loops before opening new ones" as the NBA ordering principle? It deliberately ranks
-  entering performance above approving a new script.
-- **Q3.** Derived channel/video read-model (D1, D3) for launch, or wait for persisted entities?
-- **Q4.** Fixture-mode legacy screens (concept selection, reference channel, builds, monetization review):
-  keep as a demo path, re-home, or retire?
-- **Q5.** Should Monetization stay under Strategy at launch (recommended) or be a sixth channel item?
+1. **Measurement-due rule (D5).** No rule says when performance entry is due. The release binds KPIs but has
+   no window. Until one exists, measurement is never ranked. Proposal: due at release approval + the
+   strategy KPI framework's observation window, or else a fixed 14 days.
+2. **Escalation threshold.** Overdue measurement outranks production gates after `ESCALATE_AFTER_DAYS = 7`.
+   Confirm or change it.
+3. **Channel label (D2).** Today it can only be the research niche or concept text. Keep that for launch, or
+   plan a user-editable name? A persisted name needs a migration, which is out of scope here.
+4. **Duplicate research roots (D1).** Two Research workflows on the same niche become two channels. Accept that
+   for launch, or require an explicit operator merge later?
+5. **Preview exposure.** `/studio/preview` exists only in fixture mode (local and dev). Should reviewers see it
+   on deployed previews? That needs an explicit flag, and fixture data would then appear on a deployed host.
 
-## Next pass (after review)
+## 8. First implementation slice: navigation shell + Command Center (fixtures)
 
-Video workspace, Approvals (pending / approved / rejected / revision requested / superseded), Learning flow
-(Performance → Diagnosis → Decision → Experiment → channel intelligence), screen inventory, component
-inventory, and the engineering handoff.
+Branch `claude/phase-b-command-center-slice`, separate PR. Do not merge or deploy without owner sign-off.
+
+**What it is.** `/studio/preview` renders the Phase B shell and the Command Center from typed fixtures, in the
+approved Studios workspace identity. It has three scenarios: `?scenario=operating | first-run | degraded`.
+
+**Isolation (Q4).** The route calls `notFound()` unless `isMockMode()` is true. That is always false when
+`NODE_ENV=production`. It still requires a signed-in user and reads no workflow, approval or usage data.
+`/studio` and every existing workspace are untouched.
+
+**Files**
+| File | Role |
+|---|---|
+| `src/features/command-center/model.ts` | View-model contract: `SectionState` (loading, ready, empty, unavailable, error), `Attribution`, `SurfaceAvailability`, gates, videos, tasks, learning, performance. |
+| `src/features/command-center/next-decision.ts` | Pure, deterministic ranking (section 3). `CURRENT_STUDIO_ANCHOR` maps actionable stages to today's `/studio` workspaces. |
+| `src/features/command-center/fixtures.ts` | Three scenarios, including an unattributed video and gate, a gate with no screen, a measurement task with no due rule, and a failed run. |
+| `src/features/command-center/app-shell.tsx` | Sidebar: channel block, channel nav, Approvals, utilities. Unbuilt destinations are labelled "Later" and are never dead links. |
+| `src/features/command-center/command-center.tsx` | Identity band, Next Decision, Needs your decision, unattributed notice, Videos in flight, Learning, Performance. |
+| `src/features/command-center/command-center.css` | Workspace tokens and styles scoped under `.cw-app`. |
+| `src/app/studio/preview/page.tsx` | Fixture-only route. |
+
+**Explicit unavailable states in the slice:** gates with no review screen say "No review screen yet";
+measurement with no due rule is "Not ranked" with its reason; Learning can render "Not available yet · D3 · D8";
+unattributed work is counted and explained; failed sections show a request ID and Retry; an unknown Approvals
+count is a neutral "—".
+
+**Tests:** 10 ranking tests, 10 render and accessibility tests, a CSS coverage check, and 3 access tests
+(the route is absent in production, requires a user, and falls back safely on unknown scenario keys).
+
+**Not in this slice, by instruction:** migrations, auth or entitlement changes, the lineage read-model and APIs
+(D1/D3), Approvals, Video workspace, Strategy/Plan/Learning destinations, the phone top bar and bottom bar.
+
+**Next step to go live:** build the D1/D3 read-model server-side over existing `workflow_runs.input_payload`
+references, so it returns this same `CommandCenterView` shape. Then add a live route beside `/studio/preview`.
+The UI should need no change.
