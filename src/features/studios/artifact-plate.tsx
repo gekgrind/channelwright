@@ -173,8 +173,7 @@ const STATE = {
      camera turns, so the return is motivated by the artifact rather than
      announced by the movement. `--resolved` then lands during the hold in
      Department 02, once the world has arrived. Neither of them answers the
-     question — see `ARTIFACT.bound` — because performance measurement is not a
-     capability this product has. */
+     question — see `ARTIFACT.bound` — because no result has been entered for this illustrative journey. */
   "--recall": beat("return", 0.02, 0.1),
   "--resolved": beat("return", 0.38, 0.52),
 

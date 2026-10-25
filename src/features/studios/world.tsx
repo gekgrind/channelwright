@@ -50,9 +50,9 @@ function Sign({ at, index, name }: { at: number; index: string; name: string }) 
  *
  * Two of these exist, and the difference between them is the whole argument of
  * the ending. The entrance is lit and the camera goes through it. The seam at
- * the far end — Department 06, where measurement would close the loop — is
+ * the far end — Department 06, where automatic ingestion would close the loop — is
  * drawn in the same hand and left dark, because `measurement` is DESIGNED and
- * Channelwright ingests no analytics today. The camera closes on it and the
+ * Channelwright ingests no analytics automatically today. The camera closes on it and the
  * building runs out.
  */
 function Threshold({ at, mark, label, kind, room }: { at: number; mark: string; label: string; kind?: "seam"; room?: boolean }) {
@@ -76,7 +76,7 @@ function Threshold({ at, mark, label, kind, room }: { at: number; mark: string; 
 
 /**
  * Department 06, read off the same register the capability table renders — and
- * so is the status painted on its lintel. If measurement ever stops being
+ * so is the status painted on its lintel. If automatic ingestion ever stops being
  * DESIGNED, the door relabels itself rather than quietly continuing to say
  * something the register no longer supports.
  */

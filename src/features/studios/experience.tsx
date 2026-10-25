@@ -22,7 +22,7 @@ const JOURNEY_ID = "cw-journey";
 function Topbar() {
   return (
     <header className="cw-topbar">
-      <Link className="cw-topbar__mark" href="/studios-preview">
+      <Link className="cw-topbar__mark" href="/">
         <b>Channelwright</b>
         <span>Studios</span>
       </Link>
@@ -30,7 +30,7 @@ function Topbar() {
         <a className="cw-cta cw-cta--ghost" href="#register">
           Capability register
         </a>
-        <Link className="cw-cta" href="/login">
+        <Link className="cw-cta" href="/studio">
           Enter the studio
         </Link>
       </div>
@@ -163,7 +163,7 @@ function StaticNarrative() {
           </p>
           <p className="cw-lede">{OPEN.lede}</p>
           <div className="cw-open__actions" style={{ marginTop: 0 }}>
-            <Link className="cw-cta cw-cta--solid" href="/login">{OPEN.primaryCta}</Link>
+            <Link className="cw-cta cw-cta--solid" href="/studio">{OPEN.primaryCta}</Link>
             <a className="cw-cta cw-cta--ghost" href="#register">{OPEN.secondaryCta}</a>
           </div>
         </div>
@@ -346,7 +346,7 @@ function StaticNarrative() {
             {FINALE.verdict}
           </p>
           <div className="cw-open__actions" style={{ marginTop: 0 }}>
-            <Link className="cw-cta cw-cta--solid" href="/login">{OPEN.primaryCta}</Link>
+            <Link className="cw-cta cw-cta--solid" href="/studio">{OPEN.primaryCta}</Link>
           </div>
         </div>
       </section>
@@ -416,7 +416,6 @@ export default function StudiosExperience() {
       </main>
 
       {reduced ? <AudienceFooterStatic /> : null}
-      <span className="cw-preview-flag">Preview · /studios-preview</span>
     </div>
   );
 }

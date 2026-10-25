@@ -209,7 +209,7 @@ export const LANDMARK = {
  * Deliberately *outside* `LANDMARK`, and deliberately past the end of the
  * journey. Every landmark above is somewhere the camera goes; this is the one
  * place it does not. `measurement` is DESIGNED, not built — the register says
- * Channelwright ingests no analytics today and that the loop is open at this
+ * Channelwright ingests no analytics automatically today and that the loop is open at this
  * seam — so the door is placed just beyond the last frame the visitor can
  * reach. The camera closes on it and runs out of building. That is the honest
  * statement, and it is made in architecture rather than in a caption.

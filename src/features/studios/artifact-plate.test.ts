@@ -95,14 +95,15 @@ describe("artifact track", () => {
   });
 
   it("states the measurement boundary instead of an outcome", () => {
-    // The one thing Beat 9 must never do. Performance measurement is DESIGNED,
+    // The one thing Beat 9 must never do. Automatic ingestion is DESIGNED,
     // so the plate ends on a binding and an absence, and the room says which is
     // which. If this ever starts failing because measurement shipped, the copy
     // is what has to change — not this assertion.
     const measurement = CAPABILITIES.find((capability) => capability.id === "measurement")!;
     expect(measurement.status).toBe("DESIGNED");
+    expect(CAPABILITIES.find((capability) => capability.id === "performance-capture")?.status).toBe("OPERATING");
     expect(ARTIFACT.unmeasured).toBe("No result yet");
-    expect([FINALE.heading, FINALE.verdict, ...FINALE.body].join(" ")).toContain("ingests no analytics");
+    expect([FINALE.heading, FINALE.verdict, ...FINALE.body].join(" ")).toContain("ingests no analytics automatically");
   });
 
   it("offers the action only after the plate has become a decision", () => {

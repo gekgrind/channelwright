@@ -113,9 +113,9 @@ export const ARTIFACT = {
    * Beat 8. What the return actually finds, and what it deliberately does not.
    *
    * The release decision is bound to the strategy hypothesis it tests — that
-   * capability is OPERATING (`video-release` in ./capabilities.ts). Ingesting
-   * the result is not: `measurement` is DESIGNED, and its boundary states that
-   * Channelwright ingests no analytics today. So the question comes back
+   * capability is OPERATING (`video-release` in ./capabilities.ts). Automatic
+   * ingestion is not: `measurement` is DESIGNED; manual capture is separate.
+   * This illustrative journey has no entered result. So the question returns
    * carrying a binding, not an answer, and the site says which is which.
    */
   bound: "Bound to the release that tests it",
@@ -223,9 +223,9 @@ export const CONTROL = {
  * tests and a superseded strategy stays in the record, so the question
  * survives the pipeline instead of being lost at the end of it.
  *
- * What this room must never imply is that the answer has arrived. Performance
- * measurement is DESIGNED, not built; the loop is open at that seam and the
- * copy here says so in the same breath as the claim.
+ * What this room must never imply is that an illustrative answer has arrived.
+ * Automatic ingestion is DESIGNED, not built; manual capture is separate,
+ * and the copy here states that boundary alongside the claim.
  */
 export const RETURN = {
   index: "02",
@@ -233,7 +233,7 @@ export const RETURN = {
   heading: "A pipeline forgets. This one comes back.",
   body: [
     "The release decision was bound to the strategy hypothesis it was meant to test, and the strategy it came from is still in the record at the exact version that was approved. The question does not get lost between the video going out and the next one being planned \u2014 it comes back to the room that asked it.",
-    "What has not landed against it yet is the result. Channelwright ingests no analytics today; the loop is architected and open at that seam, and the register below says so rather than showing you a number nobody measured.",
+    "No result has been entered for this illustrative journey. Operators can record performance against an approved release, then review it for learning and the next decision. Channelwright ingests no analytics automatically today; the register below keeps that boundary visible.",
   ],
   verdict: "1 question, still open",
 } as const;
@@ -244,7 +244,7 @@ export const RETURN = {
  * The Return proved the question survives the pipeline. This states what that
  * is *for*: a release is not the end of the work, it is the thing that makes
  * the next decision answerable. The register is the boundary — `measurement`
- * is DESIGNED, Channelwright ingests no analytics today — so the finale points
+ * is DESIGNED, Channelwright ingests no analytics automatically — so the finale points
  * at the seam rather than pretending to have crossed it, and the building says
  * so by leaving Department 06 unlit rather than by apologising in a paragraph.
  *
@@ -254,10 +254,10 @@ export const RETURN = {
 export const FINALE = {
   heading: "Every video leaves knowing what it has to prove.",
   body: [
-    "The release decision records the KPI and the hypothesis the video is meant to test, so a result has somewhere to land. Where it lands is the one room this building has not built.",
-    "Channelwright ingests no analytics today. Department 06 is specified and reserved, and it is left unlit here rather than dressed up as a dashboard.",
+    "The release decision records the KPI and the hypothesis the video is meant to test, so an operator-entered performance snapshot has somewhere to land. This illustrative journey ends before a result is entered.",
+    "Channelwright ingests no analytics automatically today. The unlit door marks that integration boundary; manual performance capture and review are available in the Studio.",
   ],
-  verdict: "1 room, deliberately dark",
+  verdict: "1 integration, still open",
 } as const;
 
 export const REGISTER = {
@@ -273,5 +273,5 @@ export const REGISTER = {
 
 export const FOOTER = {
   line: "Build the company behind the channel.",
-  note: "Channelwright Studios is a preview surface. The production site remains at the site root and is unchanged by this work.",
+  note: "Explore Channelwright here. Sign in to enter the production Studio. Illustrative scenes show the workflow; the capability register states what is available.",
 } as const;

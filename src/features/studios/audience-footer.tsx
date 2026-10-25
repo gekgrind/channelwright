@@ -242,7 +242,7 @@ function Close({ children }: { children?: ReactNode }) {
         <div className="cw-aud__close-main">
           <p className="cw-mono cw-mono--signal">Channelwright Studios</p>
           <p className="cw-aud__line">{FOOTER.line}</p>
-          <Link className="cw-cta cw-cta--solid cw-aud__cta" href="/login">
+          <Link className="cw-cta cw-cta--solid cw-aud__cta" href="/studio">
             {OPEN.primaryCta}
           </Link>
         </div>
