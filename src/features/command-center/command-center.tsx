@@ -1,0 +1,261 @@
+import type { ReactNode } from "react";
+import {
+  STAGE_LABEL, VIDEO_STAGES,
+  type ChannelIdentity, type CommandCenterView, type LearningItem, type PendingGate, type PerformanceRow, type SectionState, type VideoInFlight,
+} from "./model";
+import { CURRENT_STUDIO_ANCHOR, rankNextDecision, TIER_LABEL } from "./next-decision";
+
+const DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+const NUMBER = new Intl.NumberFormat("en-US");
+const formatDate = (iso: string) => DATE.format(new Date(iso));
+const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+
+/** Compact age relative to the view's evaluation time, so output is deterministic. */
+export function age(fromIso: string, asOfIso: string) {
+  const minutes = Math.max(0, Math.floor((Date.parse(asOfIso) - Date.parse(fromIso)) / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 1_440) return `${Math.floor(minutes / 60)}h`;
+  return `${Math.floor(minutes / 1_440)}d`;
+}
+
+export function CommandCenter({ view }: { view: CommandCenterView }) {
+  const ambiguous = <T extends { attribution: { status: string } }>(state: SectionState<T[]>) =>
+    state.status === "ready" ? state.data.filter((item) => item.attribution.status === "ambiguous").length : 0;
+  const unattributed = { videos: ambiguous(view.videos), gates: ambiguous(view.gates) };
+  return (
+    <div className="cw-cc">
+      <IdentityHeader state={view.channel} />
+      <div className="cw-row">
+        <NextDecisionPanel view={view} />
+        <Section index="02" id="cw-gates" title="Needs your decision" className="cw-span5" state={attributedOnly(view.gates)}
+          render={(gates) => <GateList gates={gates} asOf={view.asOf} />} />
+      </div>
+      {unattributed.videos + unattributed.gates > 0 && (
+        <p className="cw-notice" role="note">
+          <span className="cw-mono cw-warn">Unattributed · {plural(unattributed.videos, "video")}, {plural(unattributed.gates, "gate")}</span>
+          {" "}Some work could not be traced to this channel through approved lineage, so it is not shown or ranked here. Nothing was guessed. Its gates stay decidable in the current Studio.
+        </p>
+      )}
+      <Section index="03" id="cw-videos" title="Videos in flight" state={attributedOnly(view.videos)}
+        render={(videos) => <VideoTable videos={videos} asOf={view.asOf} />} />
+      <div className="cw-row">
+        <Section index="04" id="cw-learning" title="What we're learning" className="cw-span7" state={view.learning}
+          render={(items) => <LearningList items={items} />} />
+        <Section index="05" id="cw-performance" title="Recent performance" className="cw-span5" state={view.performance}
+          caption="Entered by you · YouTube not connected"
+          render={(rows) => <PerformanceTable rows={rows} />} />
+      </div>
+    </div>
+  );
+}
+
+function attributedOnly<T extends { attribution: { status: string } }>(state: SectionState<T[]>): SectionState<T[]> {
+  return state.status === "ready" ? { status: "ready", data: state.data.filter((item) => item.attribution.status === "resolved") } : state;
+}
+
+function IdentityHeader({ state }: { state: SectionState<ChannelIdentity> }) {
+  if (state.status !== "ready") {
+    return (
+      <header className="cw-ident">
+        <div className="cw-ident-copy">
+          <span className="cw-mono">Command Center</span>
+          <h1>{state.status === "empty" ? "Earn the right to make a video first." : "Channel"}</h1>
+          <SectionBody state={state} render={() => null} />
+        </div>
+      </header>
+    );
+  }
+  const channel = state.data;
+  return (
+    <header className="cw-ident">
+      <div className="cw-ident-copy">
+        <span className="cw-mono">Command Center</span>
+        <h1>{channel.label}</h1>
+        {channel.thesis && <p className="cw-lume2">{channel.thesis}</p>}
+      </div>
+      <dl className="cw-meta" aria-label="Channel strategy summary">
+        <div><dt className="cw-mono">Strategy</dt><dd>{channel.strategyVersion ? `v${channel.strategyVersion} · ${formatDate(channel.strategyApprovedAt!)}` : "None approved"}</dd></div>
+        <div><dt className="cw-mono">Revenue paths</dt><dd>{channel.revenuePathCount ?? "—"}</dd></div>
+        <div><dt className="cw-mono">Last review</dt><dd>{channel.lastReview ? reviewLabel(channel.lastReview.outcome) : "None yet"}</dd></div>
+      </dl>
+    </header>
+  );
+}
+
+const reviewLabel = (outcome: NonNullable<ChannelIdentity["lastReview"]>["outcome"]) =>
+  outcome === "HOLD" ? "Hold" : outcome === "REVISE" ? "Revise" : "Insufficient evidence";
+
+function NextDecisionPanel({ view }: { view: CommandCenterView }) {
+  const decision = rankNextDecision(view);
+  const { primary } = decision;
+  const waiting = decision.deferred.length + decision.excluded.length;
+  return (
+    <section className="cw-nba cw-span7" aria-labelledby="cw-nba-h">
+      <div className="cw-sh">
+        <span className="cw-mono cw-signal"><span className="cw-dot" aria-hidden="true" />01 · Next decision</span>
+        {primary && <span className="cw-tag">{TIER_LABEL[primary.tier]} · {primary.rule}</span>}
+      </div>
+      <h2 id="cw-nba-h">{primary ? primary.title : "Nothing needs you right now."}</h2>
+      {primary && <p className="cw-lume2 cw-measure">{primary.detail}</p>}
+      {!decision.complete && <p className="cw-warn-text">Approvals did not load, so a pending decision may be missing from this ranking.</p>}
+      {primary && <a className="cw-btn cw-btn-signal" href={primary.href}>{primary.cta} <span aria-hidden="true">→</span></a>}
+      {waiting > 0 && (
+        <details className="cw-why">
+          <summary>Why this, not something else? · {waiting} more</summary>
+          {decision.deferred.length > 0 && (
+            <ol className="cw-why-list" aria-label="Also waiting, in rank order">
+              {decision.deferred.map((item) => <li key={item.id}><span className="cw-mono">{TIER_LABEL[item.tier].split(" ")[0]}</span><span>{item.title}</span><a className="cw-mono" href={item.href}>Open</a></li>)}
+            </ol>
+          )}
+          {decision.excluded.length > 0 && (
+            <ul className="cw-why-list" aria-label="Not ranked">
+              {decision.excluded.map((item) => <li key={item.id}><span className="cw-mono">Not ranked</span><span>{item.title}<small>{item.reason}</small></span><span /></li>)}
+            </ul>
+          )}
+        </details>
+      )}
+      <p className="cw-mono cw-quiet">Advice, not automation. Nothing starts until you do.</p>
+    </section>
+  );
+}
+
+function Section<T>({ index, id, title, state, render, className, caption }: {
+  index: string; id: string; title: string; state: SectionState<T>; render: (data: T) => ReactNode; className?: string; caption?: string;
+}) {
+  return (
+    <section className={`cw-panel ${className ?? ""}`.trim()} aria-labelledby={`${id}-h`} aria-busy={state.status === "loading" || undefined}>
+      <div className="cw-sh"><h2 id={`${id}-h`}><span className="cw-mono">{index}</span>{title}</h2></div>
+      {caption && state.status === "ready" && <p className="cw-mono cw-quiet">{caption}</p>}
+      <SectionBody state={state} render={render} />
+    </section>
+  );
+}
+
+function SectionBody<T>({ state, render }: { state: SectionState<T>; render: (data: T) => ReactNode }) {
+  switch (state.status) {
+    case "ready": return <>{render(state.data)}</>;
+    case "loading": return <div className="cw-skeleton" aria-label="Loading"><i /><i /><i /><i /></div>;
+    case "empty": return <div className="cw-state"><p>{state.message}</p>{state.action && <a className="cw-btn" href={state.action.href}>{state.action.label} <span aria-hidden="true">→</span></a>}</div>;
+    case "unavailable": return <div className="cw-state"><p>{state.message}</p><p className="cw-mono">Not available yet · {state.dependency}</p></div>;
+    case "error": return (
+      <div className="cw-state cw-state-error" role="alert">
+        <p>{state.message} The rest of this page is current.</p>
+        <a className="cw-btn" href="">Retry</a>
+        <p className="cw-mono cw-case">Request ID {state.requestId}</p>
+      </div>
+    );
+  }
+}
+
+function GateList({ gates, asOf }: { gates: PendingGate[]; asOf: string }) {
+  if (gates.length === 0) return <div className="cw-state"><p>Nothing is waiting on you. Gates appear here the moment a workflow pauses for review.</p></div>;
+  return (
+    <>
+      <ul className="cw-gates">
+        {gates.map((gate) => (
+          <li key={gate.approvalId}>
+            <div className="cw-gate-tags">
+              <span className="cw-tag cw-tag-signal">{STAGE_LABEL[gate.stage]} · v{gate.version}</span>
+              {gate.supersedesVersion && <span className="cw-tag">Supersedes v{gate.supersedesVersion}</span>}
+            </div>
+            <p className="cw-gate-title">{gate.subject}</p>
+            <p className="cw-mono cw-quiet">{gate.note} · {age(gate.requestedAt, asOf)}</p>
+            {gate.surface === "available" && CURRENT_STUDIO_ANCHOR[gate.stage]
+              ? <a className="cw-mono cw-go" href={CURRENT_STUDIO_ANCHOR[gate.stage]}>Review in current Studio <span aria-hidden="true">→</span></a>
+              : <p className="cw-mono cw-warn">No review screen yet</p>}
+          </li>
+        ))}
+      </ul>
+      <p className="cw-mono cw-quiet cw-rule">Decisions open the full artifact. Nothing is approved from here.</p>
+    </>
+  );
+}
+
+const CELL_TEXT = { done: "done", you: "your move", system: "running", recover: "needs recovery", none: "not started" } as const;
+
+function trackLabel(video: VideoInFlight) {
+  const current = VIDEO_STAGES.find((stage) => stage.key === video.currentStage)!;
+  const done = VIDEO_STAGES.filter((stage) => video.cells[stage.key] === "done").length;
+  return `${done} of 8 stages done. ${current.label}: ${CELL_TEXT[video.cells[video.currentStage]]}.`;
+}
+
+function VideoTable({ videos, asOf }: { videos: VideoInFlight[]; asOf: string }) {
+  if (videos.length === 0) return <div className="cw-state"><p>No attributed videos in flight.</p></div>;
+  return (
+    <div className="cw-table-box">
+      <table className="cw-table">
+        <thead><tr><th scope="col">Video</th><th scope="col">Make 01–04 · Learn 05–08</th><th scope="col">Stage</th><th scope="col">Waiting on</th><th scope="col" className="cw-num">Age</th></tr></thead>
+        <tbody>
+          {videos.map((video) => (
+            <tr key={video.rootWorkflowId}>
+              <td className="cw-video-title">{video.title}</td>
+              <td>
+                <div className="cw-track" role="img" aria-label={trackLabel(video)}>
+                  {VIDEO_STAGES.map((stage, index) => (
+                    <i key={stage.key} className={`cw-cell cw-cell-${video.cells[stage.key]}${index === 4 ? " cw-cell-learn" : ""}`} />
+                  ))}
+                </div>
+              </td>
+              <td>{video.stateLabel}</td>
+              <td><span className={video.waitingOn === "you" ? "cw-mono cw-signal" : "cw-mono"}>{video.waitingLabel}</span></td>
+              <td className="cw-num">{age(video.updatedAt, asOf)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const OUTCOME: Record<LearningItem["outcome"], { label: string; tone: string }> = {
+  SUPPORTED: { label: "Supported", tone: "cw-tag-pass" },
+  NOT_SUPPORTED: { label: "Not supported", tone: "cw-tag-warn" },
+  INCONCLUSIVE: { label: "Inconclusive", tone: "" },
+  RUNNING: { label: "Running", tone: "" },
+  ADOPTED: { label: "Adopted", tone: "cw-tag-pass" },
+  HELD: { label: "Held provisionally", tone: "" },
+  HOLD: { label: "Hold", tone: "" },
+};
+
+function LearningList({ items }: { items: LearningItem[] }) {
+  return (
+    <ul className="cw-learn">
+      {items.map((item) => (
+        <li key={item.id}>
+          <span className={`cw-tag ${OUTCOME[item.outcome].tone}`.trim()}>{OUTCOME[item.outcome].label}</span>
+          <div><p className="cw-learn-title">{item.statement}</p><p className="cw-mono cw-quiet">{item.source}</p></div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const VERSUS: Record<PerformanceRow["versusPlan"], { label: string; tone: string }> = {
+  ABOVE: { label: "Above", tone: "cw-pass" },
+  ON_PLAN: { label: "On plan", tone: "cw-lume2" },
+  BELOW: { label: "Below", tone: "cw-warn" },
+  NOT_ENTERED: { label: "Not entered", tone: "cw-quiet" },
+};
+
+function PerformanceTable({ rows }: { rows: PerformanceRow[] }) {
+  return (
+    <>
+      <div className="cw-table-box">
+        <table className="cw-table cw-table-compact">
+          <thead><tr><th scope="col">Video</th><th scope="col" className="cw-num">Views</th><th scope="col" className="cw-num">Avg viewed</th><th scope="col" className="cw-num">vs plan</th></tr></thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.videoTitle}>
+                <td>{row.videoTitle}</td>
+                <td className="cw-num">{row.views === null ? "—" : NUMBER.format(row.views)}</td>
+                <td className="cw-num">{row.averageViewedPct === null ? "—" : `${row.averageViewedPct}%`}</td>
+                <td className={`cw-num cw-mono ${VERSUS[row.versusPlan].tone}`}>{VERSUS[row.versusPlan].label}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="cw-mono cw-quiet">Charts appear after 3 snapshots per video.</p>
+    </>
+  );
+}
