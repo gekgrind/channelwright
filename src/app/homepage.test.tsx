@@ -21,7 +21,7 @@ describe("public homepage", () => {
     const { container } = render(<HomePage />);
     expect(container.querySelector("main#main h1")?.textContent).toBe("Every channel starts with an idea.");
     expect(container.querySelector(".cw-topbar__mark")?.getAttribute("href")).toBe("/");
-    expect(container.textContent).not.toMatch(/preview surface|Preview Â·|production site remains/i);
+    expect(container.textContent).not.toMatch(/preview surface|Preview ·|production site remains/i);
     expect(container.querySelector("video")).toBeNull();
     const links = [...container.querySelectorAll<HTMLAnchorElement>("a")];
     const studioLinks = links.filter((link) => link.textContent?.includes("Enter the studio"));
