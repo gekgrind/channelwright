@@ -68,17 +68,44 @@ export const CURRENT_STUDIO_ANCHOR: Partial<Record<StageKey, string>> = {
 };
 
 const videoStageIndex = (stage: StageKey) => VIDEO_STAGES.findIndex((item) => item.key === stage);
-const time = (iso: string) => Date.parse(iso);
+
+const INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/;
+
+/**
+ * Milliseconds for an RFC 3339 timestamp with an explicit offset, or null.
+ * Date.parse alone reads offset-less strings in the server's time zone and
+ * rolls impossible dates forward (Feb 30 becomes Mar 2), so both are rejected.
+ */
+export function parseInstant(value: string | null | undefined): number | null {
+  if (typeof value !== "string") return null;
+  const match = INSTANT.exec(value);
+  if (!match) return null;
+  const [year, month, day, hour, minute, second, offsetHour, offsetMinute] = match.slice(1).map((part) => (part === undefined ? 0 : Number(part)));
+  // setUTCFullYear keeps years 0–99 literal; Date.UTC would map them to 1900–1999.
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  if (hour > 23 || minute > 59 || second > 59 || offsetHour > 23 || offsetMinute > 59) return null;
+  const instant = Date.parse(value);
+  return Number.isFinite(instant) ? instant : null;
+}
+
+/** An invalid timestamp never hides work; it sorts after every valid one. */
+const sortTime = (iso: string) => parseInstant(iso) ?? Number.POSITIVE_INFINITY;
+const ascending = <T extends number | string>(left: T, right: T) => (left < right ? -1 : left > right ? 1 : 0);
 
 /** Sort key within a tier: lower sorts first. */
 type Ranked = Candidate & { order: number[] };
+
+/** Candidate id for a gate, shared by the ranking and the gate list. */
+export const gateItemId = (gate: Pick<PendingGate, "approvalId">) => `gate:${gate.approvalId}`;
 
 function gateCandidate(gate: PendingGate): Ranked {
   const learning = LEARNING_STAGES.has(gate.stage);
   const channel = CHANNEL_STAGES.has(gate.stage);
   const stage = STAGE_LABEL[gate.stage];
   return {
-    id: `gate:${gate.approvalId}`,
+    id: gateItemId(gate),
     tier: 1,
     rule: learning ? "Learning gate waiting on you" : channel ? "Channel gate blocks every video" : "Production gate waiting on you",
     title: `Review ${stage} v${gate.version} · ${gate.subject}`,
@@ -86,21 +113,25 @@ function gateCandidate(gate: PendingGate): Ranked {
     cta: `Review ${stage} v${gate.version}`,
     href: CURRENT_STUDIO_ANCHOR[gate.stage] ?? "",
     // Learning gates, then channel gates, then video gates downstream-first; oldest breaks ties.
-    order: [learning ? 0 : channel ? 2 : 3, learning || channel ? 0 : -videoStageIndex(gate.stage), time(gate.requestedAt)],
+    order: [learning ? 0 : channel ? 2 : 3, learning || channel ? 0 : -videoStageIndex(gate.stage), sortTime(gate.requestedAt)],
   };
 }
 
-function taskCandidate(task: OperatorTask, asOf: number): Ranked {
+/** Only called for eligible tasks, so a set dueAt and asOf are both valid here. */
+function taskCandidate(task: OperatorTask, asOf: number | null): Ranked {
   const base = { id: `task:${task.id}`, title: task.subject, detail: task.detail, href: task.href, cta: ctaFor(task) };
-  if (task.kind === "RESOLVE_FAILURE") return { ...base, tier: 0, rule: "A run failed and needs you", order: [time(task.createdAt)] };
-  if (task.kind === "START_BRIEF") return { ...base, tier: 3, rule: "Approved plan has an unbriefed topic", order: [time(task.createdAt)] };
-  if (task.kind === "START_RESEARCH") return { ...base, tier: 4, rule: "No approved strategy yet", order: [time(task.createdAt)] };
-  const overdueDays = task.dueAt ? Math.floor((asOf - time(task.dueAt)) / DAY_MS) : 0;
+  const created = sortTime(task.createdAt);
+  if (task.kind === "RESOLVE_FAILURE") return { ...base, tier: 0, rule: "A run failed and needs you", order: [created] };
+  if (task.kind === "START_BRIEF") return { ...base, tier: 3, rule: "Approved plan has an unbriefed topic", order: [created] };
+  if (task.kind === "START_RESEARCH") return { ...base, tier: 4, rule: "No approved strategy yet", order: [created] };
+  const due = parseInstant(task.dueAt);
+  if (due === null || asOf === null) return { ...base, tier: 2, rule: "Learning work is due", order: [created] };
+  const overdueDays = Math.floor((asOf - due) / DAY_MS);
   if (overdueDays >= ESCALATE_AFTER_DAYS) {
     // Escalated measurement sits between learning gates (0) and channel gates (2).
-    return { ...base, tier: 1, rule: `Overdue ${overdueDays} days: escalated`, order: [1, 0, time(task.dueAt!)] };
+    return { ...base, tier: 1, rule: `Overdue ${overdueDays} days: escalated`, order: [1, 0, due] };
   }
-  return { ...base, tier: 2, rule: "Learning work is due", order: [task.dueAt ? time(task.dueAt) : time(task.createdAt)] };
+  return { ...base, tier: 2, rule: "Learning work is due", order: [due] };
 }
 
 function ctaFor(task: OperatorTask) {
@@ -121,24 +152,31 @@ function exclusion(item: { surface: string; attribution: { status: string; reaso
   return extra ?? null;
 }
 
-function measurementExclusion(task: OperatorTask, asOf: number) {
-  if (task.kind !== "RECORD_PERFORMANCE") return null;
-  if (!task.dueAt) return "No rule defines when measurement is due, so it is not ranked.";
-  if (time(task.dueAt) > asOf) return "Measurement window is still open.";
+const DUE_DATED = new Set<OperatorTask["kind"]>(["RECORD_PERFORMANCE", "START_DIAGNOSIS", "START_EXPERIMENT"]);
+
+/** Learning work ranks by its due date, so it ranks only when that date and the evaluation time are both valid. */
+function timingExclusion(task: OperatorTask, asOf: number | null) {
+  if (!DUE_DATED.has(task.kind)) return null;
+  const measurement = task.kind === "RECORD_PERFORMANCE";
+  if (task.dueAt === null || task.dueAt === undefined) return measurement ? "No rule defines when measurement is due, so it is not ranked." : null;
+  const due = parseInstant(task.dueAt);
+  if (due === null) return "Its due date is not a valid timestamp, so it is not ranked.";
+  if (asOf === null) return "The evaluation time is not a valid timestamp, so due work is not ranked.";
+  if (measurement && due > asOf) return "Measurement window is still open.";
   return null;
 }
 
 const compare = (left: Ranked, right: Ranked) => {
   if (left.tier !== right.tier) return left.tier - right.tier;
   for (let index = 0; index < Math.max(left.order.length, right.order.length); index += 1) {
-    const delta = (left.order[index] ?? 0) - (right.order[index] ?? 0);
+    const delta = ascending(left.order[index] ?? 0, right.order[index] ?? 0);
     if (delta !== 0) return delta;
   }
-  return left.id.localeCompare(right.id);
+  return ascending(left.id, right.id);
 };
 
 export function rankNextDecision(view: Pick<CommandCenterView, "gates" | "tasks" | "asOf">): NextDecision {
-  const asOf = time(view.asOf);
+  const asOf = parseInstant(view.asOf);
   const ranked: Ranked[] = [];
   const excluded: ExcludedItem[] = [];
   const gates = view.gates.status === "ready" ? view.gates.data : [];
@@ -149,11 +187,12 @@ export function rankNextDecision(view: Pick<CommandCenterView, "gates" | "tasks"
     else ranked.push(candidate);
   }
   for (const task of view.tasks) {
-    const reason = exclusion(task, measurementExclusion(task, asOf));
+    const reason = exclusion(task, timingExclusion(task, asOf));
     if (reason) excluded.push({ id: `task:${task.id}`, title: task.subject, reason });
     else ranked.push(taskCandidate(task, asOf));
   }
   const sorted = ranked.sort(compare).map(strip);
+  excluded.sort((left, right) => ascending(left.id, right.id));
   return { primary: sorted[0] ?? null, deferred: sorted.slice(1), excluded, complete: view.gates.status === "ready" };
 }
 

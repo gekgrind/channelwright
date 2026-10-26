@@ -4,13 +4,16 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
-import { CommandCenter, age } from "./command-center";
+import { CommandCenter, age, formatDate, type ActionTargets } from "./command-center";
 import { AppShell } from "./app-shell";
+import { FixtureRecord, findFixtureItem, fixtureTargets } from "./fixture-record";
 import { degradedScenario, firstRunScenario, operatingScenario } from "./fixtures";
+import type { CommandCenterView } from "./model";
 
 afterEach(cleanup);
 
-const renderView = (view = operatingScenario) => render(<AppShell channelLabel="Budget mechanical keyboards" channelDetail="Strategy v3" pendingCount={view.globalPendingCount}><CommandCenter view={view} /></AppShell>);
+const renderView = (view = operatingScenario, targets?: ActionTargets) => render(<AppShell channelLabel="Budget mechanical keyboards" channelDetail="Strategy v3" pendingCount={view.globalPendingCount}><CommandCenter view={view} targets={targets} /></AppShell>);
+const hrefs = () => screen.getAllByRole("link").map((link) => link.getAttribute("href"));
 
 describe("Command Center", () => {
   it("renders one main landmark, one h1, and the sections in priority order", () => {
@@ -95,6 +98,92 @@ describe("age", () => {
     expect(age("2026-10-24T10:00:00.000Z", "2026-10-24T15:00:00.000Z")).toBe("5h");
     expect(age("2026-10-09T14:00:00.000Z", "2026-10-24T15:00:00.000Z")).toBe("15d");
   });
+
+  it("shows a dash for invalid times and zero for future ones", () => {
+    expect(age("not a date", "2026-10-24T15:00:00.000Z")).toBe("—");
+    expect(age("2026-10-24T14:56:00.000Z", "garbage")).toBe("—");
+    expect(age("2026-12-01T00:00:00.000Z", "2026-10-24T15:00:00.000Z")).toBe("0m");
+    expect(formatDate("2026-02-30T00:00:00Z")).toBe("—");
+  });
+});
+
+describe("Command Center with invalid timestamps", () => {
+  it("renders instead of throwing, and shows no NaN", () => {
+    const broken: CommandCenterView = {
+      ...operatingScenario,
+      asOf: "garbage",
+      channel: operatingScenario.channel.status === "ready" ? { status: "ready", data: { ...operatingScenario.channel.data, strategyApprovedAt: "bad" } } : operatingScenario.channel,
+    };
+    renderView(broken);
+    expect(screen.getByText("v3 · —")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("NaN");
+  });
+});
+
+describe("fixture-safe destinations", () => {
+  it("sends every preview action to a fixture record, never to a Studio stage the preview cannot show", () => {
+    renderView(operatingScenario, fixtureTargets("operating"));
+    expect(hrefs().filter((href) => href?.startsWith("/studio#"))).toEqual([]);
+    expect(screen.getByRole("link", { name: /Review Packaging v1/ })).toHaveAttribute("href", "/studio/preview?scenario=operating&item=gate%3Aap-pack-lube");
+    const gates = screen.getByRole("region", { name: "02Needs your decision" });
+    expect(within(gates).getAllByRole("link", { name: /Open fixture record/ }).map((link) => link.getAttribute("href"))).toEqual([
+      "/studio/preview?scenario=operating&item=gate%3Aap-script-cheap",
+      "/studio/preview?scenario=operating&item=gate%3Aap-pack-lube",
+    ]);
+    expect(within(gates).getByText("No review screen yet")).toBeInTheDocument();
+  });
+
+  it("marks an action with no fixture record as unavailable instead of linking it", () => {
+    renderView(firstRunScenario, fixtureTargets("first-run"));
+    expect(screen.getByText("Start research · Not available here")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /Start research/ }).map((link) => link.getAttribute("href"))).toEqual(["/studio/preview?scenario=first-run&item=task%3Aresearch-first"]);
+  });
+
+  it("keeps live destinations unchanged outside the preview", () => {
+    renderView();
+    expect(screen.getByRole("link", { name: /Review Packaging v1/ })).toHaveAttribute("href", "/studio#stage-packaging");
+    expect(screen.getAllByRole("link", { name: /Review in current Studio/ })).toHaveLength(2);
+  });
+
+  it("every link the preview renders resolves to a fixture record of the same scenario", () => {
+    for (const view of [operatingScenario, firstRunScenario, degradedScenario]) {
+      renderView(view, fixtureTargets(view.scenario));
+      const items = hrefs().filter((href) => href?.startsWith("/studio/preview?") && href.includes("&item="));
+      expect(items.length).toBeGreaterThan(0);
+      for (const href of items) {
+        const params = new URLSearchParams(href!.split("?")[1]);
+        expect(params.get("scenario")).toBe(view.scenario);
+        expect(findFixtureItem(view, params.get("item")!)).not.toBeNull();
+      }
+      cleanup();
+    }
+  });
+
+  it("shows the synthetic gate it was opened for, with its exact version and no decision controls", () => {
+    render(<FixtureRecord view={operatingScenario} scenarioLabel="Operating" itemId="gate:ap-script-cheap" />);
+    expect(screen.getByRole("heading", { level: 1, name: "Review Script v2 · Why cheap keyboards feel better than expensive ones" })).toBeInTheDocument();
+    expect(screen.getByText("Supersedes v1")).toBeInTheDocument();
+    expect(screen.getByText("run-script-cheap-2")).toBeInTheDocument();
+    expect(screen.getByText("Fixture record · demonstration data")).toBeInTheDocument();
+    expect(screen.getByText(/Nothing is approved from here/)).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Back to Command Center/ })).toHaveAttribute("href", "/studio/preview?scenario=operating");
+  });
+
+  it("shows a synthetic task record", () => {
+    render(<FixtureRecord view={degradedScenario} scenarioLabel="Degraded" itemId="task:fail-brief-returned" />);
+    expect(screen.getByRole("heading", { level: 1, name: "Resolve failed Brief v2 · The keyboard I returned" })).toBeInTheDocument();
+    expect(screen.getByText("No due rule")).toBeInTheDocument();
+    expect(screen.getByText(/Nothing is started from here/)).toBeInTheDocument();
+  });
+
+  it.each(["gate:ap-diag-gasket", "gate:ap-script-keychron", "task:perf-10-setup", "gate:missing", "gate:ap-pack-lube?"])(
+    "does not open a record for %s, which the operating Command Center does not link to",
+    (itemId) => {
+      render(<FixtureRecord view={operatingScenario} scenarioLabel="Operating" itemId={itemId} />);
+      expect(screen.getByRole("heading", { level: 1, name: "That item is not in the Operating scenario." })).toBeInTheDocument();
+    },
+  );
 });
 
 describe("command center CSS coverage", () => {

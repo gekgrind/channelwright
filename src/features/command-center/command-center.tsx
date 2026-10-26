@@ -3,32 +3,62 @@ import {
   STAGE_LABEL, VIDEO_STAGES,
   type ChannelIdentity, type CommandCenterView, type LearningItem, type PendingGate, type PerformanceRow, type SectionState, type VideoInFlight,
 } from "./model";
-import { CURRENT_STUDIO_ANCHOR, rankNextDecision, TIER_LABEL } from "./next-decision";
+import { CURRENT_STUDIO_ANCHOR, gateItemId, parseInstant, rankNextDecision, TIER_LABEL } from "./next-decision";
 
 const DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 const NUMBER = new Intl.NumberFormat("en-US");
-const formatDate = (iso: string) => DATE.format(new Date(iso));
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+
+/** Short UTC date, or a dash when the timestamp is not valid. */
+export function formatDate(iso: string) {
+  const instant = parseInstant(iso);
+  return instant === null ? "—" : DATE.format(instant);
+}
 
 /** Compact age relative to the view's evaluation time, so output is deterministic. */
 export function age(fromIso: string, asOfIso: string) {
-  const minutes = Math.max(0, Math.floor((Date.parse(asOfIso) - Date.parse(fromIso)) / 60_000));
+  const from = parseInstant(fromIso);
+  const asOf = parseInstant(asOfIso);
+  if (from === null || asOf === null) return "—";
+  const minutes = Math.max(0, Math.floor((asOf - from) / 60_000));
   if (minutes < 60) return `${minutes}m`;
   if (minutes < 1_440) return `${Math.floor(minutes / 60)}h`;
   return `${Math.floor(minutes / 1_440)}d`;
 }
 
-export function CommandCenter({ view }: { view: CommandCenterView }) {
+/**
+ * Where Command Center actions lead. Data always carries live-shaped hrefs;
+ * a surface that cannot honour them (the fixture preview) swaps in its own
+ * destinations, and null marks an action as not available there.
+ */
+export interface ActionTargets {
+  /** A ranked item or gate review link, by candidate id. */
+  item(id: string, liveHref: string): string | null;
+  /** A section's empty-state action. */
+  action(liveHref: string): string | null;
+  /** Words on a gate's review link. */
+  reviewLabel: string;
+}
+
+export const LIVE_TARGETS: ActionTargets = { item: (_id, href) => href, action: (href) => href, reviewLabel: "Review in current Studio" };
+
+/** A link when the action has a destination here; otherwise the same words, marked unavailable. */
+function Action({ href, label, className }: { href: string | null; label: string; className: string }) {
+  if (href === null) return <p className="cw-mono cw-warn">{label} · Not available here</p>;
+  return <a className={className} href={href}>{label} <span aria-hidden="true">→</span></a>;
+}
+
+export function CommandCenter({ view, targets = LIVE_TARGETS }: { view: CommandCenterView; targets?: ActionTargets }) {
   const ambiguous = <T extends { attribution: { status: string } }>(state: SectionState<T[]>) =>
     state.status === "ready" ? state.data.filter((item) => item.attribution.status === "ambiguous").length : 0;
   const unattributed = { videos: ambiguous(view.videos), gates: ambiguous(view.gates) };
   return (
     <div className="cw-cc">
-      <IdentityHeader state={view.channel} />
+      <IdentityHeader state={view.channel} targets={targets} />
       <div className="cw-row">
-        <NextDecisionPanel view={view} />
-        <Section index="02" id="cw-gates" title="Needs your decision" className="cw-span5" state={attributedOnly(view.gates)}
-          render={(gates) => <GateList gates={gates} asOf={view.asOf} />} />
+        <NextDecisionPanel view={view} targets={targets} />
+        <Section index="02" id="cw-gates" title="Needs your decision" className="cw-span5" state={attributedOnly(view.gates)} targets={targets}
+          render={(gates) => <GateList gates={gates} asOf={view.asOf} targets={targets} />} />
       </div>
       {unattributed.videos + unattributed.gates > 0 && (
         <p className="cw-notice" role="note">
@@ -36,12 +66,12 @@ export function CommandCenter({ view }: { view: CommandCenterView }) {
           {" "}Some work could not be traced to this channel through approved lineage, so it is not shown or ranked here. Nothing was guessed. Its gates stay decidable in the current Studio.
         </p>
       )}
-      <Section index="03" id="cw-videos" title="Videos in flight" state={attributedOnly(view.videos)}
+      <Section index="03" id="cw-videos" title="Videos in flight" state={attributedOnly(view.videos)} targets={targets}
         render={(videos) => <VideoTable videos={videos} asOf={view.asOf} />} />
       <div className="cw-row">
-        <Section index="04" id="cw-learning" title="What we're learning" className="cw-span7" state={view.learning}
+        <Section index="04" id="cw-learning" title="What we're learning" className="cw-span7" state={view.learning} targets={targets}
           render={(items) => <LearningList items={items} />} />
-        <Section index="05" id="cw-performance" title="Recent performance" className="cw-span5" state={view.performance}
+        <Section index="05" id="cw-performance" title="Recent performance" className="cw-span5" state={view.performance} targets={targets}
           caption="Entered by you · YouTube not connected"
           render={(rows) => <PerformanceTable rows={rows} />} />
       </div>
@@ -53,14 +83,14 @@ function attributedOnly<T extends { attribution: { status: string } }>(state: Se
   return state.status === "ready" ? { status: "ready", data: state.data.filter((item) => item.attribution.status === "resolved") } : state;
 }
 
-function IdentityHeader({ state }: { state: SectionState<ChannelIdentity> }) {
+function IdentityHeader({ state, targets }: { state: SectionState<ChannelIdentity>; targets: ActionTargets }) {
   if (state.status !== "ready") {
     return (
       <header className="cw-ident">
         <div className="cw-ident-copy">
           <span className="cw-mono">Command Center</span>
           <h1>{state.status === "empty" ? "Earn the right to make a video first." : "Channel"}</h1>
-          <SectionBody state={state} render={() => null} />
+          <SectionBody state={state} render={() => null} targets={targets} />
         </div>
       </header>
     );
@@ -85,7 +115,7 @@ function IdentityHeader({ state }: { state: SectionState<ChannelIdentity> }) {
 const reviewLabel = (outcome: NonNullable<ChannelIdentity["lastReview"]>["outcome"]) =>
   outcome === "HOLD" ? "Hold" : outcome === "REVISE" ? "Revise" : "Insufficient evidence";
 
-function NextDecisionPanel({ view }: { view: CommandCenterView }) {
+function NextDecisionPanel({ view, targets }: { view: CommandCenterView; targets: ActionTargets }) {
   const decision = rankNextDecision(view);
   const { primary } = decision;
   const waiting = decision.deferred.length + decision.excluded.length;
@@ -98,13 +128,16 @@ function NextDecisionPanel({ view }: { view: CommandCenterView }) {
       <h2 id="cw-nba-h">{primary ? primary.title : "Nothing needs you right now."}</h2>
       {primary && <p className="cw-lume2 cw-measure">{primary.detail}</p>}
       {!decision.complete && <p className="cw-warn-text">Approvals did not load, so a pending decision may be missing from this ranking.</p>}
-      {primary && <a className="cw-btn cw-btn-signal" href={primary.href}>{primary.cta} <span aria-hidden="true">→</span></a>}
+      {primary && <Action className="cw-btn cw-btn-signal" href={targets.item(primary.id, primary.href)} label={primary.cta} />}
       {waiting > 0 && (
         <details className="cw-why">
           <summary>Why this, not something else? · {waiting} more</summary>
           {decision.deferred.length > 0 && (
             <ol className="cw-why-list" aria-label="Also waiting, in rank order">
-              {decision.deferred.map((item) => <li key={item.id}><span className="cw-mono">{TIER_LABEL[item.tier].split(" ")[0]}</span><span>{item.title}</span><a className="cw-mono" href={item.href}>Open</a></li>)}
+              {decision.deferred.map((item) => {
+                const href = targets.item(item.id, item.href);
+                return <li key={item.id}><span className="cw-mono">{TIER_LABEL[item.tier].split(" ")[0]}</span><span>{item.title}</span>{href === null ? <span className="cw-mono cw-warn">Not available here</span> : <a className="cw-mono" href={href}>Open</a>}</li>;
+              })}
             </ol>
           )}
           {decision.excluded.length > 0 && (
@@ -119,23 +152,23 @@ function NextDecisionPanel({ view }: { view: CommandCenterView }) {
   );
 }
 
-function Section<T>({ index, id, title, state, render, className, caption }: {
-  index: string; id: string; title: string; state: SectionState<T>; render: (data: T) => ReactNode; className?: string; caption?: string;
+function Section<T>({ index, id, title, state, render, targets, className, caption }: {
+  index: string; id: string; title: string; state: SectionState<T>; render: (data: T) => ReactNode; targets: ActionTargets; className?: string; caption?: string;
 }) {
   return (
     <section className={`cw-panel ${className ?? ""}`.trim()} aria-labelledby={`${id}-h`} aria-busy={state.status === "loading" || undefined}>
       <div className="cw-sh"><h2 id={`${id}-h`}><span className="cw-mono">{index}</span>{title}</h2></div>
       {caption && state.status === "ready" && <p className="cw-mono cw-quiet">{caption}</p>}
-      <SectionBody state={state} render={render} />
+      <SectionBody state={state} render={render} targets={targets} />
     </section>
   );
 }
 
-function SectionBody<T>({ state, render }: { state: SectionState<T>; render: (data: T) => ReactNode }) {
+function SectionBody<T>({ state, render, targets }: { state: SectionState<T>; render: (data: T) => ReactNode; targets: ActionTargets }) {
   switch (state.status) {
     case "ready": return <>{render(state.data)}</>;
     case "loading": return <div className="cw-skeleton" aria-label="Loading"><i /><i /><i /><i /></div>;
-    case "empty": return <div className="cw-state"><p>{state.message}</p>{state.action && <a className="cw-btn" href={state.action.href}>{state.action.label} <span aria-hidden="true">→</span></a>}</div>;
+    case "empty": return <div className="cw-state"><p>{state.message}</p>{state.action && <Action className="cw-btn" href={targets.action(state.action.href)} label={state.action.label} />}</div>;
     case "unavailable": return <div className="cw-state"><p>{state.message}</p><p className="cw-mono">Not available yet · {state.dependency}</p></div>;
     case "error": return (
       <div className="cw-state cw-state-error" role="alert">
@@ -147,7 +180,7 @@ function SectionBody<T>({ state, render }: { state: SectionState<T>; render: (da
   }
 }
 
-function GateList({ gates, asOf }: { gates: PendingGate[]; asOf: string }) {
+function GateList({ gates, asOf, targets }: { gates: PendingGate[]; asOf: string; targets: ActionTargets }) {
   if (gates.length === 0) return <div className="cw-state"><p>Nothing is waiting on you. Gates appear here the moment a workflow pauses for review.</p></div>;
   return (
     <>
@@ -161,7 +194,7 @@ function GateList({ gates, asOf }: { gates: PendingGate[]; asOf: string }) {
             <p className="cw-gate-title">{gate.subject}</p>
             <p className="cw-mono cw-quiet">{gate.note} · {age(gate.requestedAt, asOf)}</p>
             {gate.surface === "available" && CURRENT_STUDIO_ANCHOR[gate.stage]
-              ? <a className="cw-mono cw-go" href={CURRENT_STUDIO_ANCHOR[gate.stage]}>Review in current Studio <span aria-hidden="true">→</span></a>
+              ? <Action className="cw-mono cw-go" href={targets.item(gateItemId(gate), CURRENT_STUDIO_ANCHOR[gate.stage]!)} label={targets.reviewLabel} />
               : <p className="cw-mono cw-warn">No review screen yet</p>}
           </li>
         ))}
@@ -255,7 +288,7 @@ function PerformanceTable({ rows }: { rows: PerformanceRow[] }) {
           </tbody>
         </table>
       </div>
-      <p className="cw-mono cw-quiet">Charts appear after 3 snapshots per video.</p>
+      <p className="cw-mono cw-quiet">Trend charts are not built yet.</p>
     </>
   );
 }
