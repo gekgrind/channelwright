@@ -43,6 +43,7 @@ describe("resolveLineage: channels and videos", () => {
     for (const type of ["CHANNEL_VIDEO_BRIEF", "CHANNEL_VIDEO_SCRIPT", "CHANNEL_VIDEO_RELEASE", "CHANNEL_VIDEO_PERFORMANCE", "CHANNEL_VIDEO_DECISION", "CHANNEL_VIDEO_EXPERIMENT"]) {
       expect(graph.workflows[chain[type].workflowId]).toEqual(resolved(channel, video));
     }
+    expectSelfConsistent(graph);
   });
 
   it("keeps two research roots with the same niche as two channels, each with only its own work", () => {
@@ -131,9 +132,10 @@ describe("resolveLineage: unresolved lineage is reported, never guessed", () => 
     const revision = builder.revise(content, repointed);
     const approval = builder.pending(revision);
     const graph = resolveLineage(builder.rows());
-    expect(graph.runs[content.runId].attribution).toEqual(resolved(a.CHANNEL_RESEARCH.workflowId));
-    expect(graph.runs[revision.runId].attribution).toEqual(resolved(b.workflowId));
+    // Neither side wins: the workflow and both of its runs carry the disagreement.
     expect(code(graph.workflows[content.workflowId])).toBe("RUNS_DISAGREE");
+    expect(code(graph.runs[content.runId].attribution)).toBe("RUNS_DISAGREE");
+    expect(code(graph.runs[revision.runId].attribution)).toBe("RUNS_DISAGREE");
     expect(code(graph.pendingApprovals.find((item) => item.approvalId === approval)?.attribution)).toBe("RUNS_DISAGREE");
   });
 
@@ -141,12 +143,78 @@ describe("resolveLineage: unresolved lineage is reported, never guessed", () => 
     const builder = new LineageBuilder();
     builder.research();
     const concept = builder.conceptValidation();
-    const graph = resolveLineage({ ...builder.rows(), workflows: [...builder.workflows, { id: "00000000-0000-4000-8000-0000000000ff", workflowType: "CHANNEL_FUTURE", status: "QUEUED", createdAt: "2026-10-02T00:00:00.000Z" }], runs: [...builder.runs, { id: "00000000-0000-4000-8000-0000000000fe", workflowId: "00000000-0000-4000-8000-0000000000ff", status: "QUEUED", createdAt: "2026-10-02T00:00:00.000Z", previousRunId: null, input: {} }] });
+    const graph = resolveLineage({ ...builder.rows(), workflows: [...builder.workflows, { id: "00000000-0000-4000-8000-0000000000ff", workflowType: "CHANNEL_FUTURE", status: "QUEUED", currentRunId: null, createdAt: "2026-10-02T00:00:00.000Z" }], runs: [...builder.runs, { id: "00000000-0000-4000-8000-0000000000fe", workflowId: "00000000-0000-4000-8000-0000000000ff", status: "QUEUED", errorCode: null, createdAt: "2026-10-02T00:00:00.000Z", completedAt: null, previousRunId: null, input: {} }] });
     expect(graph.workflows[concept.workflowId]).toEqual({ status: "unresolved", code: "PRE_RESEARCH", reason: "it is a pre-research concept validation and belongs to no channel" });
     expect(code(graph.workflows["00000000-0000-4000-8000-0000000000ff"])).toBe("UNKNOWN_TYPE");
     expect(graph.channels).toHaveLength(1);
   });
 });
+
+describe("resolveLineage: references must parse with the real domain schemas", () => {
+  it("rejects a reference whose ids match but whose required metadata is missing or wrong", () => {
+    const builder = new LineageBuilder();
+    const idsOnly = builder.chain("CHANNEL_STRATEGY");
+    const reference = builder.input(idsOnly.CHANNEL_STRATEGY).approvedResearchReference as Record<string, unknown>;
+    builder.input(idsOnly.CHANNEL_STRATEGY).approvedResearchReference = { researchWorkflowId: reference.researchWorkflowId, researchRunId: reference.researchRunId };
+    const badVersion = builder.chain("CHANNEL_CONTENT_INTELLIGENCE");
+    nested(builder.input(badVersion.CHANNEL_CONTENT_INTELLIGENCE), "approvedStrategyReference").outputSchemaVersion = 2;
+    const badNested = builder.chain("CHANNEL_VIDEO_BRIEF");
+    delete nested(builder.input(badNested.CHANNEL_VIDEO_BRIEF), "approvedContentReference", "upstreamStrategy", "upstreamResearch").researchArtifactHash;
+    const graph = resolveLineage(builder.rows());
+    for (const run of [idsOnly.CHANNEL_STRATEGY, badVersion.CHANNEL_CONTENT_INTELLIGENCE, badNested.CHANNEL_VIDEO_BRIEF]) expect(code(graph.workflows[run.workflowId])).toBe("MISSING_REFERENCE");
+  });
+
+  it("rejects compact Portfolio and Intelligence references that fail their readiness contracts", () => {
+    const builder = new LineageBuilder();
+    const { first, second } = twoExperiments(builder);
+    const notEligible = builder.portfolio([first.CHANNEL_VIDEO_EXPERIMENT]);
+    nested(builder.input(notEligible), "approvedVideoExperimentReferences", 0).portfolioEligible = false;
+    const p1 = builder.portfolio([first.CHANNEL_VIDEO_EXPERIMENT]);
+    const p2 = builder.portfolio([second]);
+    const notReady = builder.intelligence([p1, p2], [{ ...builder.portfolioReference(p1), portfolioReady: false }, builder.portfolioReference(p2)]);
+    const badSelection = builder.intelligence([p1, p2]);
+    nested(builder.input(badSelection), "portfolioSelections", 0).portfolioRunId = "not-a-uuid";
+    const graph = resolveLineage(builder.rows());
+    for (const run of [notEligible, notReady, badSelection]) expect(code(graph.workflows[run.workflowId])).toBe("MISSING_REFERENCE");
+    expect(graph.workflows[p1.workflowId]).toEqual(resolved(first.CHANNEL_RESEARCH.workflowId));
+  });
+});
+
+describe("resolveLineage: workflow-level conflicts reach everything downstream", () => {
+  it("unresolves every descendant of a brief whose revisions disagree, and keeps the graph self-consistent", () => {
+    const builder = new LineageBuilder();
+    const a = builder.chain("CHANNEL_VIDEO_BRIEF");
+    const b = builder.chain("CHANNEL_CONTENT_INTELLIGENCE", builder.research({ niche: "Other niche" }));
+    // A revision of A's brief whose input points at channel B's content plan.
+    const repointed = structuredClone(builder.input(builder.stage("CHANNEL_VIDEO_BRIEF", b.CHANNEL_CONTENT_INTELLIGENCE)));
+    builder.revise(a.CHANNEL_VIDEO_BRIEF, repointed);
+    const script = builder.stage("CHANNEL_VIDEO_SCRIPT", a.CHANNEL_VIDEO_BRIEF);
+    const packaging = builder.stage("CHANNEL_VIDEO_PACKAGING", script);
+    const scriptApproval = builder.pending(script);
+    const packagingApproval = builder.pending(packaging);
+    const graph = resolveLineage(builder.rows());
+
+    expect(code(graph.workflows[a.CHANNEL_VIDEO_BRIEF.workflowId])).toBe("RUNS_DISAGREE");
+    expect(code(graph.workflows[script.workflowId])).toBe("UPSTREAM_UNRESOLVED");
+    expect(code(graph.workflows[packaging.workflowId])).toBe("UPSTREAM_UNRESOLVED");
+    expect(code(graph.runs[packaging.runId].attribution)).toBe("UPSTREAM_UNRESOLVED");
+    for (const approval of [scriptApproval, packagingApproval]) expect(code(graph.pendingApprovals.find((item) => item.approvalId === approval)?.attribution)).toBe("UPSTREAM_UNRESOLVED");
+    expect(graph.videos.map((video) => video.key)).not.toContain(a.CHANNEL_VIDEO_BRIEF.workflowId);
+    expectSelfConsistent(graph);
+  });
+});
+
+/** Every resolved attribution names a channel and (if any) a video that the graph itself lists. */
+function expectSelfConsistent(graph: ReturnType<typeof resolveLineage>) {
+  const channels = new Set(graph.channels.map((channel) => channel.key));
+  const videos = new Map(graph.videos.map((video) => [video.key, video.channelKey]));
+  const all = [...Object.values(graph.workflows), ...Object.values(graph.runs).map((run) => run.attribution), ...graph.pendingApprovals.map((item) => item.attribution)];
+  for (const attribution of all) {
+    if (attribution.status !== "resolved") continue;
+    expect(channels.has(attribution.channelKey)).toBe(true);
+    if (attribution.videoKey) expect(videos.get(attribution.videoKey)).toBe(attribution.channelKey);
+  }
+}
 
 describe("resolveLineage: Portfolio and Intelligence compact references", () => {
   it("resolves a portfolio and an intelligence run whose selections all trace to one channel", () => {
@@ -253,6 +321,7 @@ describe("resolveLineage: revisions, approvals and determinism", () => {
     builder.pending(builder.conceptValidation());
     const rows = builder.rows();
     const expected = resolveLineage(rows);
+    expectSelfConsistent(expected);
     for (const seed of [1, 7, 42, 2026]) expect(resolveLineage(reorder(rows, seed))).toEqual(expected);
     expect(resolveLineage({ workflows: [...rows.workflows].reverse(), runs: [...rows.runs].reverse(), approvals: [...rows.approvals].reverse() })).toEqual(expected);
   });

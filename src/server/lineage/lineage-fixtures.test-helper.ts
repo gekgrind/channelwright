@@ -1,11 +1,5 @@
-import {
-  approvedContentIntelligenceReferenceSchema, approvedResearchReferenceSchema, approvedStrategyReferenceSchema,
-  approvedVideoBriefReferenceSchema, approvedVideoDecisionReferenceSchema, approvedVideoDiagnosisReferenceSchema,
-  approvedVideoExperimentReferenceSchema, approvedVideoPackagingReferenceSchema, approvedVideoPerformanceReferenceSchema,
-  approvedVideoPortfolioReferenceSchema, approvedVideoReleaseReferenceSchema, approvedVideoScriptReferenceSchema,
-  decisionTypeSchema, experimentTypeSchema,
-} from "@/domain/production-workflows";
-import { LINEAR_STAGES, REFERENCE_SHAPE, type LineageApprovalRow, type LineageRows, type LineageRunRow, type LineageWorkflowRow } from "./lineage-rows";
+import { approvedVideoPortfolioReferenceSchema, decisionTypeSchema, experimentTypeSchema } from "@/domain/production-workflows";
+import { LINEAR_STAGES, REFERENCE_SCHEMA, REFERENCE_SHAPE, type LineageApprovalRow, type LineageRows, type LineageRunRow, type LineageWorkflowRow } from "./lineage-rows";
 
 /**
  * Builds lineage rows the way production persists them: each run's input holds
@@ -14,20 +8,6 @@ import { LINEAR_STAGES, REFERENCE_SHAPE, type LineageApprovalRow, type LineageRo
  */
 
 export type RunRef = { workflowId: string; runId: string };
-
-const SCHEMA = {
-  CHANNEL_RESEARCH: approvedResearchReferenceSchema,
-  CHANNEL_STRATEGY: approvedStrategyReferenceSchema,
-  CHANNEL_CONTENT_INTELLIGENCE: approvedContentIntelligenceReferenceSchema,
-  CHANNEL_VIDEO_BRIEF: approvedVideoBriefReferenceSchema,
-  CHANNEL_VIDEO_SCRIPT: approvedVideoScriptReferenceSchema,
-  CHANNEL_VIDEO_PACKAGING: approvedVideoPackagingReferenceSchema,
-  CHANNEL_VIDEO_RELEASE: approvedVideoReleaseReferenceSchema,
-  CHANNEL_VIDEO_PERFORMANCE: approvedVideoPerformanceReferenceSchema,
-  CHANNEL_VIDEO_DIAGNOSIS: approvedVideoDiagnosisReferenceSchema,
-  CHANNEL_VIDEO_DECISION: approvedVideoDecisionReferenceSchema,
-  CHANNEL_VIDEO_EXPERIMENT: approvedVideoExperimentReferenceSchema,
-} as const;
 
 const HASH = "a".repeat(64);
 const STAGE = new Map(LINEAR_STAGES.map((stage) => [stage.type, stage]));
@@ -52,20 +32,20 @@ export class LineageBuilder {
 
   private addWorkflow(workflowType: string) {
     const id = this.uuid();
-    this.workflows.push({ id, workflowType, status: "COMPLETED", createdAt: this.stamp() });
+    this.workflows.push({ id, workflowType, status: "COMPLETED", currentRunId: null, createdAt: this.stamp() });
     return id;
   }
 
   private addRun(workflowId: string, input: Record<string, unknown>, previousRunId: string | null = null): RunRef {
     const runId = this.uuid();
-    this.runs.push({ id: runId, workflowId, status: "COMPLETED", createdAt: this.stamp(), previousRunId, input });
+    this.runs.push({ id: runId, workflowId, status: "COMPLETED", errorCode: null, createdAt: this.stamp(), completedAt: null, previousRunId, input });
     return { workflowId, runId };
   }
 
   private remember(type: string, own: RunRef, upstream: RunRef | null) {
     const ancestry = new Map(upstream ? this.ancestry.get(upstream.runId) : undefined).set(type, own);
     this.ancestry.set(own.runId, ancestry);
-    if (type in SCHEMA) this.references.set(own.runId, this.reference(type, own, upstream));
+    if (type in REFERENCE_SCHEMA) this.references.set(own.runId, this.reference(type, own, upstream));
   }
 
   /** The real approved reference for a run, nesting its upstream exactly as the domain does. */
@@ -86,7 +66,7 @@ export class LineageBuilder {
         upstreamVideoDecision: { decisionWorkflowId: upstream.workflowId, decisionRunId: upstream.runId, decisionArtifactHash: HASH, decisionProvenanceHash: HASH, decisionType: decisionTypeSchema.options[0], experimentEligible: true },
       });
     }
-    return SCHEMA[type as keyof typeof SCHEMA].parse(base) as Record<string, unknown>;
+    return REFERENCE_SCHEMA[type as keyof typeof REFERENCE_SCHEMA].parse(base) as Record<string, unknown>;
   }
 
   research(input: { niche?: string; channelConcept?: string } = { niche: "Budget mechanical keyboards" }): RunRef {
@@ -125,7 +105,7 @@ export class LineageBuilder {
     const type = this.workflows.find((row) => row.id === run.workflowId)!.workflowType;
     const own = this.addRun(run.workflowId, inputOverride ?? structuredClone(previous.input), run.runId);
     this.ancestry.set(own.runId, new Map(this.ancestry.get(run.runId)).set(type, own));
-    if (type in SCHEMA) this.references.set(own.runId, this.reference(type, own, this.ancestry.get(run.runId)!.get(STAGE.get(type)?.upstreamType ?? "") ?? null));
+    if (type in REFERENCE_SCHEMA) this.references.set(own.runId, this.reference(type, own, this.ancestry.get(run.runId)!.get(STAGE.get(type)?.upstreamType ?? "") ?? null));
     return own;
   }
 

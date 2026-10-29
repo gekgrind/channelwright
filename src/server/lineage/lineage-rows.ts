@@ -1,13 +1,23 @@
+import {
+  approvedContentIntelligenceReferenceSchema, approvedResearchReferenceSchema, approvedStrategyReferenceSchema,
+  approvedVideoBriefReferenceSchema, approvedVideoDecisionReferenceSchema, approvedVideoDiagnosisReferenceSchema,
+  approvedVideoExperimentReferenceSchema, approvedVideoPackagingReferenceSchema, approvedVideoPerformanceReferenceSchema,
+  approvedVideoReleaseReferenceSchema, approvedVideoScriptReferenceSchema,
+} from "@/domain/production-workflows";
+
 /**
  * The narrow rows the lineage read-model works from. They are read with the
  * signed-in user's RLS-bound client only (load-lineage-rows.ts) and are never
  * written. `input` holds only the lineage-bearing keys of `input_payload`.
+ * Stage outputs are not read here; a consumer that needs them loads them by
+ * run id for the few runs it shows.
  */
 
 export interface LineageWorkflowRow {
   id: string;
   workflowType: string;
   status: string;
+  currentRunId: string | null;
   createdAt: string;
 }
 
@@ -15,7 +25,9 @@ export interface LineageRunRow {
   id: string;
   workflowId: string;
   status: string;
+  errorCode: string | null;
   createdAt: string;
+  completedAt: string | null;
   /** The run this one revises, from `context_payload.previousRunId`; null for a first run. */
   previousRunId: string | null;
   input: Record<string, unknown>;
@@ -78,8 +90,23 @@ export const REFERENCE_SHAPE: Record<string, { prefix: string; upstreamKey: stri
   CHANNEL_VIDEO_EXPERIMENT: { prefix: "experiment", upstreamKey: null },
 };
 
-/** Keys of `input_payload` the loader projects: request ids (text) and references (json). */
-export const INPUT_TEXT_KEYS = ["niche", "channelConcept", ...LINEAR_STAGES.flatMap((stage) => [stage.requestWorkflowKey, stage.requestRunKey])];
+/** The approved-reference schema each stage hands to its consumers; a persisted reference must parse. */
+export const REFERENCE_SCHEMA = {
+  CHANNEL_RESEARCH: approvedResearchReferenceSchema,
+  CHANNEL_STRATEGY: approvedStrategyReferenceSchema,
+  CHANNEL_CONTENT_INTELLIGENCE: approvedContentIntelligenceReferenceSchema,
+  CHANNEL_VIDEO_BRIEF: approvedVideoBriefReferenceSchema,
+  CHANNEL_VIDEO_SCRIPT: approvedVideoScriptReferenceSchema,
+  CHANNEL_VIDEO_PACKAGING: approvedVideoPackagingReferenceSchema,
+  CHANNEL_VIDEO_RELEASE: approvedVideoReleaseReferenceSchema,
+  CHANNEL_VIDEO_PERFORMANCE: approvedVideoPerformanceReferenceSchema,
+  CHANNEL_VIDEO_DIAGNOSIS: approvedVideoDiagnosisReferenceSchema,
+  CHANNEL_VIDEO_DECISION: approvedVideoDecisionReferenceSchema,
+  CHANNEL_VIDEO_EXPERIMENT: approvedVideoExperimentReferenceSchema,
+} as const;
+
+/** Keys of `input_payload` the loader projects: request ids and brief topic (text) and references (json). */
+export const INPUT_TEXT_KEYS = ["niche", "channelConcept", "selectedTopicId", ...LINEAR_STAGES.flatMap((stage) => [stage.requestWorkflowKey, stage.requestRunKey])];
 export const INPUT_JSON_KEYS = [
   ...LINEAR_STAGES.map((stage) => stage.referenceKey),
   "experimentSelections", "approvedVideoExperimentReferences",

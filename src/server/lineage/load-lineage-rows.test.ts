@@ -59,15 +59,18 @@ describe("loadLineageRows", () => {
   it("projects only lineage keys of the run payloads, including the run's own previous run", async () => {
     pages = {
       workflows: [[]],
-      workflow_runs: [[{ id: id(2), workflow_id: id(1), status: "COMPLETED", created_at: at(2), previousRunId: id(3), researchWorkflowId: id(4), researchRunId: id(5), approvedResearchReference: { researchRunId: id(5) }, niche: null }]],
+      workflow_runs: [[{ id: id(2), workflow_id: id(1), status: "FAILED", error_code: "QA_FAILED", created_at: at(2), completed_at: at(3), previousRunId: id(3), researchWorkflowId: id(4), researchRunId: id(5), approvedResearchReference: { researchRunId: id(5) }, niche: null, selectedTopicId: "topic-6" }]],
       workflow_approvals: [[]],
     };
     const load = await loadLineageRows(USER);
     const select = calls.find((call) => call.table === "workflow_runs" && call.method === "select")!.args[0] as string;
     expect(select).toContain("previousRunId:context_payload->>previousRunId");
+    expect(select).toContain("selectedTopicId:input_payload->>selectedTopicId");
     expect(select).toContain("approvedVideoPortfolioReferences:input_payload->approvedVideoPortfolioReferences");
+    // Stage outputs are loaded by run id only for the runs a view shows, never for every run here.
     expect(select).not.toMatch(/output_payload|input_payload(,|$)|\*/);
-    expect(load.runs).toEqual({ status: "ok", rows: [{ id: id(2), workflowId: id(1), status: "COMPLETED", createdAt: at(2), previousRunId: id(3), input: { researchWorkflowId: id(4), researchRunId: id(5), approvedResearchReference: { researchRunId: id(5) } } }] });
+    expect(calls.find((call) => call.table === "workflows" && call.method === "select")!.args[0]).toBe("id,workflow_type,status,current_run_id,created_at");
+    expect(load.runs).toEqual({ status: "ok", rows: [{ id: id(2), workflowId: id(1), status: "FAILED", errorCode: "QA_FAILED", createdAt: at(2), completedAt: at(3), previousRunId: id(3), input: { researchWorkflowId: id(4), researchRunId: id(5), approvedResearchReference: { researchRunId: id(5) }, selectedTopicId: "topic-6" } }] });
   });
 
   it("reports a table above its ceiling as too large instead of returning a truncated set", async () => {

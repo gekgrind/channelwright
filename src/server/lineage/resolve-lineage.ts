@@ -1,5 +1,6 @@
+import { approvedVideoExperimentReferenceSchema, approvedVideoPortfolioReferenceSchema, intelligencePortfolioSelectionSchema, portfolioExperimentSelectionSchema } from "@/domain/production-workflows";
 import { parseInstant } from "@/features/command-center/next-decision";
-import { LINEAR_STAGES, REFERENCE_SHAPE, type LinearStage, type LineageApprovalRow, type LineageRows, type LineageRunRow, type LineageWorkflowRow } from "./lineage-rows";
+import { LINEAR_STAGES, REFERENCE_SCHEMA, REFERENCE_SHAPE, type LinearStage, type LineageApprovalRow, type LineageRows, type LineageRunRow, type LineageWorkflowRow } from "./lineage-rows";
 
 /**
  * D1/D3 lineage read-model: derives channels (research roots) and videos (brief
@@ -92,7 +93,21 @@ const STAGE_BY_TYPE = new Map(LINEAR_STAGES.map((stage) => [stage.type, stage]))
 type RunId = { workflowId: string; runId: string };
 /** The exact run each stage type resolved to on the walk from a run back to its research root. */
 type Ancestry = Map<string, RunId>;
-type Walked = { attribution: LineageAttribution; ancestry: Ancestry };
+/** `dependsOn`: every upstream run this run's attribution relied on, transitively. */
+type Walked = { attribution: LineageAttribution; ancestry: Ancestry; dependsOn: Set<string> };
+const NONE = (): Pick<Walked, "ancestry" | "dependsOn"> => ({ ancestry: new Map(), dependsOn: new Set() });
+
+/** Parsed with the real domain schema; anything that does not parse is unreadable, never trusted. */
+type Schema = { safeParse(value: unknown): { success: boolean; data?: unknown } };
+const parsed = (schema: Schema, value: unknown): Record<string, unknown> | null => {
+  const result = schema.safeParse(value);
+  return result.success ? record(result.data) : null;
+};
+const parsedList = (schema: Schema, value: unknown): Record<string, unknown>[] | null => {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const items = value.map((item) => parsed(schema, item));
+  return items.every((item): item is Record<string, unknown> => item !== null) ? items : null;
+};
 
 export function resolveLineage(rows: LineageRows): LineageGraph {
   const workflows = new Map<string, LineageWorkflowRow>([...rows.workflows].sort((a, b) => ascending(a.id, b.id)).map((row) => [row.id, row]));
@@ -103,6 +118,7 @@ export function resolveLineage(rows: LineageRows): LineageGraph {
 
   const memo = new Map<string, Walked>();
   const visiting = new Set<string>();
+  const fail = (code: Exclude<UnresolvedCode, "SPANS_CHANNELS">): Walked => ({ attribution: unresolved(code), ...NONE() });
 
   /** The run, if it is loaded, belongs to the named workflow, and has the expected type. */
   const upstreamRun = (expected: RunId, type: string): LineageRunRow | "missing" | "mismatch" => {
@@ -115,7 +131,7 @@ export function resolveLineage(rows: LineageRows): LineageGraph {
   const walk = (runId: string): Walked => {
     const cached = memo.get(runId);
     if (cached) return cached;
-    if (visiting.has(runId)) return { attribution: unresolved("INCONSISTENT_REFERENCE"), ancestry: new Map() };
+    if (visiting.has(runId)) return fail("INCONSISTENT_REFERENCE");
     visiting.add(runId);
     const result = walkUncached(runs.get(runId)!);
     visiting.delete(runId);
@@ -126,69 +142,62 @@ export function resolveLineage(rows: LineageRows): LineageGraph {
   const walkUncached = (run: LineageRunRow): Walked => {
     const own: RunId = { workflowId: run.workflowId, runId: run.id };
     const type = workflows.get(run.workflowId)?.workflowType;
-    if (!type) return { attribution: unresolved("UPSTREAM_NOT_FOUND"), ancestry: new Map() };
-    if (type === "CHANNEL_RESEARCH") return { attribution: { status: "resolved", channelKey: run.workflowId, videoKey: null }, ancestry: new Map([[type, own]]) };
-    if (type === "CHANNEL_CONCEPT_VALIDATION") return { attribution: unresolved("PRE_RESEARCH"), ancestry: new Map() };
+    if (!type) return fail("UPSTREAM_NOT_FOUND");
+    if (type === "CHANNEL_RESEARCH") return { attribution: { status: "resolved", channelKey: run.workflowId, videoKey: null }, ancestry: new Map([[type, own]]), dependsOn: new Set() };
+    if (type === "CHANNEL_CONCEPT_VALIDATION") return fail("PRE_RESEARCH");
     const stage = STAGE_BY_TYPE.get(type);
     if (stage) return walkLinear(run, stage, own);
     if (type === "CHANNEL_VIDEO_PORTFOLIO") return walkPortfolio(run, own);
     if (type === "CHANNEL_VIDEO_INTELLIGENCE") return walkIntelligence(run);
-    return { attribution: unresolved("UNKNOWN_TYPE"), ancestry: new Map() };
+    return fail("UNKNOWN_TYPE");
   };
 
   const walkLinear = (run: LineageRunRow, stage: LinearStage, own: RunId): Walked => {
     const requested = { workflowId: uuidOf(run.input[stage.requestWorkflowKey]), runId: uuidOf(run.input[stage.requestRunKey]) };
-    const reference = record(run.input[stage.referenceKey]);
-    if (!requested.workflowId || !requested.runId || !reference) return { attribution: unresolved("MISSING_REFERENCE"), ancestry: new Map() };
+    const reference = parsed(REFERENCE_SCHEMA[stage.upstreamType as keyof typeof REFERENCE_SCHEMA], run.input[stage.referenceKey]);
+    if (!requested.workflowId || !requested.runId || !reference) return fail("MISSING_REFERENCE");
     const upstream = upstreamRun(requested as RunId, stage.upstreamType);
-    if (upstream === "missing") return { attribution: unresolved("UPSTREAM_NOT_FOUND"), ancestry: new Map() };
-    if (upstream === "mismatch") return { attribution: unresolved("INCONSISTENT_REFERENCE"), ancestry: new Map() };
+    if (upstream === "missing") return fail("UPSTREAM_NOT_FOUND");
+    if (upstream === "mismatch") return fail("INCONSISTENT_REFERENCE");
     const parent = walk(upstream.id);
-    if (parent.attribution.status !== "resolved") return { attribution: unresolved("UPSTREAM_UNRESOLVED"), ancestry: new Map() };
+    if (parent.attribution.status !== "resolved") return fail("UPSTREAM_UNRESOLVED");
     // The persisted reference must name exactly the walked ancestors, level by level.
-    if (!referenceMatches(reference, stage.upstreamType, parent.ancestry)) return { attribution: unresolved("INCONSISTENT_REFERENCE"), ancestry: new Map() };
-    const ancestry = new Map(parent.ancestry).set(stage.type, own);
+    if (!referenceMatches(reference, stage.upstreamType, parent.ancestry)) return fail("INCONSISTENT_REFERENCE");
     const videoKey = stage.type === "CHANNEL_VIDEO_BRIEF" ? run.workflowId : parent.attribution.videoKey;
-    return { attribution: { status: "resolved", channelKey: parent.attribution.channelKey, videoKey }, ancestry };
+    return {
+      attribution: { status: "resolved", channelKey: parent.attribution.channelKey, videoKey },
+      ancestry: new Map(parent.ancestry).set(stage.type, own),
+      dependsOn: new Set([...parent.dependsOn, upstream.id]),
+    };
   };
 
   /** Selections and their compact references must name the same set of exact runs. */
   const selectionsMatch = (selections: RunId[], references: Record<string, unknown>[], prefix: string) => {
-    const named = references.map((item) => ({ workflowId: uuidOf(item[`${prefix}WorkflowId`]), runId: uuidOf(item[`${prefix}RunId`]) }));
-    if (named.some((item) => !item.workflowId || !item.runId) || named.length !== selections.length) return false;
-    const key = (item: { workflowId: string | null; runId: string | null }) => `${item.workflowId}/${item.runId}`;
-    const left = selections.map(key).sort();
-    const right = named.map(key).sort();
-    return new Set(left).size === left.length && left.every((value, index) => value === right[index]);
+    const key = (item: Record<string, unknown>) => `${uuidOf(item[`${prefix}WorkflowId`])}/${uuidOf(item[`${prefix}RunId`])}`;
+    const left = selections.map((item) => `${item.workflowId}/${item.runId}`).sort();
+    const right = references.map(key).sort();
+    return left.length === right.length && new Set(left).size === left.length && left.every((value, index) => value === right[index]);
   };
 
-  const selectionsOf = (value: unknown, prefix: string): RunId[] | null => {
-    if (!Array.isArray(value) || value.length === 0) return null;
-    const out: RunId[] = [];
-    for (const item of value) {
-      const entry = record(item);
-      const workflowId = uuidOf(entry?.[`${prefix}WorkflowId`]);
-      const runId = uuidOf(entry?.[`${prefix}RunId`]);
-      if (!workflowId || !runId) return null;
-      out.push({ workflowId, runId });
-    }
-    return out;
-  };
+  const selectionIds = (items: Record<string, unknown>[], prefix: string): RunId[] =>
+    items.map((item) => ({ workflowId: uuidOf(item[`${prefix}WorkflowId`])!, runId: uuidOf(item[`${prefix}RunId`])! }));
 
   /** Walks every selection, then requires all of them to resolve to one channel. */
-  const walkSelections = (selections: RunId[], type: string): { walked: Walked[] } | { attribution: LineageAttribution } => {
+  const walkSelections = (selections: RunId[], type: string): { walked: Walked[] } | { failed: Walked } => {
     const walked: Walked[] = [];
     for (const selection of selections) {
       const upstream = upstreamRun(selection, type);
-      if (upstream === "missing") return { attribution: unresolved("UPSTREAM_NOT_FOUND") };
-      if (upstream === "mismatch") return { attribution: unresolved("INCONSISTENT_REFERENCE") };
+      if (upstream === "missing") return { failed: fail("UPSTREAM_NOT_FOUND") };
+      if (upstream === "mismatch") return { failed: fail("INCONSISTENT_REFERENCE") };
       walked.push(walk(upstream.id));
     }
-    if (walked.some((item) => item.attribution.status !== "resolved")) return { attribution: unresolved("UPSTREAM_UNRESOLVED") };
+    if (walked.some((item) => item.attribution.status !== "resolved")) return { failed: fail("UPSTREAM_UNRESOLVED") };
     const channels = new Set(walked.map((item) => (item.attribution as { channelKey: string }).channelKey));
-    if (channels.size > 1) return { attribution: spans(channels.size) };
+    if (channels.size > 1) return { failed: { attribution: spans(channels.size), ...NONE() } };
     return { walked };
   };
+
+  const dependenciesOf = (selections: RunId[], walked: Walked[]) => new Set([...selections.map((item) => item.runId), ...walked.flatMap((item) => [...item.dependsOn])]);
 
   /** The one exact run of a type shared by every walked selection, else null. */
   const sharedAncestor = (walked: Walked[], type: string): RunId | null => {
@@ -197,20 +206,18 @@ export function resolveLineage(rows: LineageRows): LineageGraph {
   };
 
   const walkPortfolio = (run: LineageRunRow, own: RunId): Walked => {
-    const selections = selectionsOf(run.input.experimentSelections, "experiment");
-    const references = Array.isArray(run.input.approvedVideoExperimentReferences) ? run.input.approvedVideoExperimentReferences.map(record) : null;
-    if (!selections || !references || references.some((item) => !item)) return { attribution: unresolved("MISSING_REFERENCE"), ancestry: new Map() };
-    if (!selectionsMatch(selections, references as Record<string, unknown>[], "experiment")) return { attribution: unresolved("INCONSISTENT_REFERENCE"), ancestry: new Map() };
+    const chosen = parsedList(portfolioExperimentSelectionSchema, run.input.experimentSelections);
+    const references = parsedList(approvedVideoExperimentReferenceSchema, run.input.approvedVideoExperimentReferences);
+    if (!chosen || !references) return fail("MISSING_REFERENCE");
+    const selections = selectionIds(chosen, "experiment");
+    if (!selectionsMatch(selections, references, "experiment")) return fail("INCONSISTENT_REFERENCE");
     const result = walkSelections(selections, "CHANNEL_VIDEO_EXPERIMENT");
-    if ("attribution" in result) return { attribution: result.attribution, ancestry: new Map() };
+    if ("failed" in result) return result.failed;
     // Each flat decision summary must name the decision its experiment actually walked to.
-    for (const reference of references as Record<string, unknown>[]) {
-      const experimentRunId = uuidOf(reference.experimentRunId);
+    for (const reference of references) {
       const summary = record(reference.upstreamVideoDecision);
-      const walkedDecision = result.walked[selections.findIndex((item) => item.runId === experimentRunId)]?.ancestry.get("CHANNEL_VIDEO_DECISION");
-      if (!summary || !walkedDecision || uuidOf(summary.decisionWorkflowId) !== walkedDecision.workflowId || uuidOf(summary.decisionRunId) !== walkedDecision.runId) {
-        return { attribution: unresolved("INCONSISTENT_REFERENCE"), ancestry: new Map() };
-      }
+      const walkedDecision = result.walked[selections.findIndex((item) => item.runId === uuidOf(reference.experimentRunId))]?.ancestry.get("CHANNEL_VIDEO_DECISION");
+      if (!summary || !walkedDecision || uuidOf(summary.decisionWorkflowId) !== walkedDecision.workflowId || uuidOf(summary.decisionRunId) !== walkedDecision.runId) return fail("INCONSISTENT_REFERENCE");
     }
     const channelKey = (result.walked[0].attribution as { channelKey: string }).channelKey;
     const ancestry: Ancestry = new Map([["CHANNEL_VIDEO_PORTFOLIO", own]]);
@@ -219,34 +226,32 @@ export function resolveLineage(rows: LineageRows): LineageGraph {
       const shared = sharedAncestor(result.walked, type);
       if (shared) ancestry.set(type, shared);
     }
-    return { attribution: { status: "resolved", channelKey, videoKey: null }, ancestry };
+    return { attribution: { status: "resolved", channelKey, videoKey: null }, ancestry, dependsOn: dependenciesOf(selections, result.walked) };
   };
 
   const walkIntelligence = (run: LineageRunRow): Walked => {
-    const selections = selectionsOf(run.input.portfolioSelections, "portfolio");
-    const references = Array.isArray(run.input.approvedVideoPortfolioReferences) ? run.input.approvedVideoPortfolioReferences.map(record) : null;
-    if (!selections || !references || references.some((item) => !item)) return { attribution: unresolved("MISSING_REFERENCE"), ancestry: new Map() };
-    if (!selectionsMatch(selections, references as Record<string, unknown>[], "portfolio")) return { attribution: unresolved("INCONSISTENT_REFERENCE"), ancestry: new Map() };
+    const chosen = parsedList(intelligencePortfolioSelectionSchema, run.input.portfolioSelections);
+    const references = parsedList(approvedVideoPortfolioReferenceSchema, run.input.approvedVideoPortfolioReferences);
+    if (!chosen || !references) return fail("MISSING_REFERENCE");
+    const selections = selectionIds(chosen, "portfolio");
+    if (!selectionsMatch(selections, references, "portfolio")) return fail("INCONSISTENT_REFERENCE");
     const result = walkSelections(selections, "CHANNEL_VIDEO_PORTFOLIO");
-    if ("attribution" in result) return { attribution: result.attribution, ancestry: new Map() };
+    if ("failed" in result) return result.failed;
     // Exact anchors: each portfolio's research and strategy anchors must be the exact runs it
     // walked to, and every selection must share one strategy run.
     const strategyRuns = new Set<string>();
-    for (const reference of references as Record<string, unknown>[]) {
-      const index = selections.findIndex((item) => item.runId === uuidOf(reference.portfolioRunId));
-      const ancestry = result.walked[index]?.ancestry;
+    for (const reference of references) {
+      const ancestry = result.walked[selections.findIndex((item) => item.runId === uuidOf(reference.portfolioRunId))]?.ancestry;
       const research = ancestry?.get("CHANNEL_RESEARCH");
       const strategy = ancestry?.get("CHANNEL_STRATEGY");
       const researchAnchor = uuidOf(record(reference.researchAnchor)?.researchRunId);
       const strategyAnchor = uuidOf(record(reference.strategyAnchor)?.strategyRunId);
-      if (!research || !strategy || researchAnchor !== research.runId || strategyAnchor !== strategy.runId) {
-        return { attribution: unresolved("INCONSISTENT_REFERENCE"), ancestry: new Map() };
-      }
+      if (!research || !strategy || researchAnchor !== research.runId || strategyAnchor !== strategy.runId) return fail("INCONSISTENT_REFERENCE");
       strategyRuns.add(strategy.runId);
     }
-    if (strategyRuns.size !== 1) return { attribution: unresolved("INCONSISTENT_REFERENCE"), ancestry: new Map() };
+    if (strategyRuns.size !== 1) return fail("INCONSISTENT_REFERENCE");
     const channelKey = (result.walked[0].attribution as { channelKey: string }).channelKey;
-    return { attribution: { status: "resolved", channelKey, videoKey: null }, ancestry: new Map() };
+    return { attribution: { status: "resolved", channelKey, videoKey: null }, ancestry: new Map(), dependsOn: dependenciesOf(selections, result.walked) };
   };
 
   /** Each nested level of a persisted reference must name the exact walked run of its stage. */
@@ -266,6 +271,43 @@ export function resolveLineage(rows: LineageRows): LineageGraph {
     return false;
   };
 
+  const sortedRuns = [...runs.values()];
+  const effective = new Map(sortedRuns.map((run) => [run.id, walk(run.id).attribution]));
+
+  /** Every run of a workflow must agree; a split is never resolved by picking a side. */
+  const attributeWorkflows = () => {
+    const out: Record<string, LineageAttribution> = {};
+    for (const workflow of workflows.values()) {
+      const list = runsByWorkflow.get(workflow.id) ?? [];
+      if (workflow.workflowType === "CHANNEL_CONCEPT_VALIDATION") { out[workflow.id] = unresolved("PRE_RESEARCH"); continue; }
+      if (list.length === 0) { out[workflow.id] = unresolved("NO_RUNS"); continue; }
+      const attributions = list.map((run) => effective.get(run.id)!);
+      const firstUnresolved = attributions.find((item) => item.status === "unresolved");
+      if (firstUnresolved) { out[workflow.id] = firstUnresolved; continue; }
+      const identities = new Set(attributions.map((item) => item.status === "resolved" ? `${item.channelKey}/${item.videoKey}` : ""));
+      out[workflow.id] = identities.size === 1 ? attributions[0] : unresolved("RUNS_DISAGREE");
+    }
+    return out;
+  };
+
+  // A workflow found unresolved as a whole (e.g. its runs disagree) unresolves its own runs, with its
+  // reason, and every run that relied on any of them, until nothing changes. The unresolved set only
+  // grows, so this ends.
+  let workflowLineage = attributeWorkflows();
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const run of sortedRuns) {
+      if (effective.get(run.id)!.status !== "resolved") continue;
+      const own = workflowLineage[run.workflowId];
+      const tainted = [...memo.get(run.id)!.dependsOn].some((dependency) => workflowLineage[runs.get(dependency)!.workflowId]?.status !== "resolved");
+      if (own?.status === "unresolved") effective.set(run.id, own);
+      else if (tainted) effective.set(run.id, unresolved("UPSTREAM_UNRESOLVED"));
+      else continue;
+      changed = true;
+    }
+    if (changed) workflowLineage = attributeWorkflows();
+  }
+
   // Runs: attribution, version and the version they supersede.
   const runLineage: Record<string, RunLineage> = {};
   for (const [workflowId, list] of [...runsByWorkflow.entries()].sort(([a], [b]) => ascending(a, b))) {
@@ -273,21 +315,8 @@ export function resolveLineage(rows: LineageRows): LineageGraph {
     for (const run of list) {
       const previous = run.previousRunId ? uuidOf(run.previousRunId) : null;
       const supersedesVersion = previous && runs.get(previous)?.workflowId === workflowId ? versions.get(previous) ?? null : null;
-      runLineage[run.id] = { attribution: walk(run.id).attribution, version: versions.get(run.id)!, supersedesVersion };
+      runLineage[run.id] = { attribution: effective.get(run.id)!, version: versions.get(run.id)!, supersedesVersion };
     }
-  }
-
-  // Workflows: every run must agree; a split is never resolved by picking a side.
-  const workflowLineage: Record<string, LineageAttribution> = {};
-  for (const workflow of workflows.values()) {
-    const list = runsByWorkflow.get(workflow.id) ?? [];
-    if (workflow.workflowType === "CHANNEL_CONCEPT_VALIDATION") { workflowLineage[workflow.id] = unresolved("PRE_RESEARCH"); continue; }
-    if (list.length === 0) { workflowLineage[workflow.id] = unresolved("NO_RUNS"); continue; }
-    const attributions = list.map((run) => runLineage[run.id].attribution);
-    const firstUnresolved = attributions.find((item) => item.status === "unresolved");
-    if (firstUnresolved) { workflowLineage[workflow.id] = firstUnresolved; continue; }
-    const identities = new Set(attributions.map((item) => item.status === "resolved" ? `${item.channelKey}/${item.videoKey}` : ""));
-    workflowLineage[workflow.id] = identities.size === 1 ? attributions[0] : unresolved("RUNS_DISAGREE");
   }
 
   const channels: LineageChannel[] = [...workflows.values()]

@@ -48,16 +48,16 @@ const SAFE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const WORKFLOWS: TableSpec<LineageWorkflowRow> = {
   table: "workflows",
-  columns: "id,workflow_type,status,created_at",
+  columns: "id,workflow_type,status,current_run_id,created_at",
   cursorColumn: "created_at",
   ceiling: LINEAGE_CEILING.workflows,
-  map: (row) => ({ id: text(row.id), workflowType: text(row.workflow_type), status: text(row.status), createdAt: text(row.created_at) }),
+  map: (row) => ({ id: text(row.id), workflowType: text(row.workflow_type), status: text(row.status), currentRunId: nullableText(row.current_run_id), createdAt: text(row.created_at) }),
 };
 
 const RUNS: TableSpec<LineageRunRow> = {
   table: "workflow_runs",
   columns: [
-    "id", "workflow_id", "status", "created_at", "previousRunId:context_payload->>previousRunId",
+    "id", "workflow_id", "status", "error_code", "created_at", "completed_at", "previousRunId:context_payload->>previousRunId",
     ...INPUT_TEXT_KEYS.map((key) => `${key}:input_payload->>${key}`),
     ...INPUT_JSON_KEYS.map((key) => `${key}:input_payload->${key}`),
   ].join(","),
@@ -67,7 +67,9 @@ const RUNS: TableSpec<LineageRunRow> = {
     id: text(row.id),
     workflowId: text(row.workflow_id),
     status: text(row.status),
+    errorCode: nullableText(row.error_code),
     createdAt: text(row.created_at),
+    completedAt: nullableText(row.completed_at),
     previousRunId: nullableText(row.previousRunId),
     input: Object.fromEntries([...INPUT_TEXT_KEYS, ...INPUT_JSON_KEYS].filter((key) => row[key] !== null && row[key] !== undefined).map((key) => [key, row[key]])),
   }),
