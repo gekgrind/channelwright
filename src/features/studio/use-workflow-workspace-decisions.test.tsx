@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useWorkflowWorkspace } from "./use-workflow-workspace";
-import type { DecisionOutcome, WorkflowDetailBase } from "./workflow-api";
+import { announceWorkflowsChanged, type DecisionOutcome, type WorkflowDetailBase } from "./workflow-api";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -133,6 +133,26 @@ describe("useWorkflowWorkspace decision outcomes", () => {
     expect(result.current.noticeFocusKey).toBe(0);
     expect(result.current.refreshError).toMatch(/workflow store is unavailable/i);
     expect(result.current.decisionLocked).toBe(true);
+  });
+
+  it("a sibling's list-only refresh during a reload does not cancel the reconciled announcement", async () => {
+    const fetcher = serve(() => response(409, { error: { code: "INVALID_TRANSITION", message: "The requested workflow transition is not legal from its current state." } }));
+    const { result } = await mountPending();
+    await act(async () => { await result.current.decide(result.current.decisionTarget!, "APPROVE", undefined, "Approved."); });
+
+    let releaseDetail: (value: Response) => void = () => undefined;
+    fetcher.mockImplementation(async (url: string) => url === "/api/workflows"
+      ? response(200, list("COMPLETED"))
+      : new Promise<Response>((resolve) => { releaseDetail = resolve; }));
+    act(() => { result.current.reload(); });
+    await waitFor(() => expect(fetcher.mock.calls.filter(([url]) => String(url).includes(WORKFLOW_ID)).length).toBeGreaterThan(1));
+    // Another workspace announces a change; this workspace re-reads only its list.
+    await act(async () => { announceWorkflowsChanged("sibling-workspace"); });
+    await act(async () => { releaseDetail(response(200, approvedDetail)); });
+    await waitFor(() => expect(result.current.detail?.workflow.status).toBe("COMPLETED"));
+    expect(result.current.decisionTarget).toBeNull();
+    await waitFor(() => expect(result.current.notice).toMatch(/current state/i));
+    expect(result.current.noticeFocusKey).toBe(1);
   });
 
   it.each<[string, () => Response]>([

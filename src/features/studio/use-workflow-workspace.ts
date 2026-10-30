@@ -114,8 +114,9 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
 
   /**
    * Never throws: a failed refresh stays visible until a later one succeeds.
-   * Resolves true only when this refresh committed the current detail and no
-   * newer refresh has started since; a superseded success is not a success.
+   * Resolves true only when this refresh committed the newest detail. A newer
+   * detail load (another refresh, reload, or poll) supersedes it; a sibling's
+   * list-only refresh does not, because it never replaces the detail.
    */
   const refresh = useCallback(async (workflowId?: string, detailOnly = false) => {
     const ticket = ++feedbackSeq.current;
@@ -123,7 +124,7 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
     try {
       const committed = await load(workflowId, detailOnly);
       if (mounted.current && ticket === feedbackSeq.current) setRefreshError(null);
-      return committed && ticket === feedbackSeq.current;
+      return committed;
     } catch (cause) {
       if (mounted.current && ticket === feedbackSeq.current) setRefreshError(messageOf(cause, `Could not refresh ${label} workflows.`));
       return false;
