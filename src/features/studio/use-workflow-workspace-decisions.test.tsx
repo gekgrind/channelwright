@@ -155,10 +155,26 @@ describe("useWorkflowWorkspace decision outcomes", () => {
     expect(result.current.noticeFocusKey).toBe(1);
   });
 
+  it.each<[number, string, boolean]>([
+    [409, "stale", true],
+    [404, "stale", true],
+    [401, "unauthorized", false],
+    [403, "unauthorized", false],
+  ])("classifies a refusal with an unreadable body by its status (%i → %s), never as unconfirmed", async (status, reason, locks) => {
+    serve(() => ({ ok: false, status, json: async () => { throw new SyntaxError("Unexpected token <"); } }) as unknown as Response);
+    const { result } = await mountPending();
+    let outcome: DecisionOutcome = { ok: true };
+    await act(async () => { outcome = await result.current.decide(result.current.decisionTarget!, "APPROVE", undefined, "Approved."); });
+    expect(outcome).toMatchObject({ ok: false, reason, message: expect.stringMatching(/^Nothing was recorded/) });
+    expect(result.current.decisionLocked).toBe(locks);
+    expect(result.current.notice).toBeNull();
+  });
+
   it.each<[string, () => Response]>([
     ["a network failure", () => { throw new TypeError("Failed to fetch"); }],
     ["a 5xx", () => response(500, { error: { code: "DATABASE_ERROR", message: "The workflow operation could not be completed." } })],
     ["an unreadable body", () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("Unexpected token <"); } }) as unknown as Response],
+    ["an unreadable 5xx body", () => ({ ok: false, status: 502, json: async () => { throw new SyntaxError("Unexpected token <"); } }) as unknown as Response],
     ["a success body for another approval", () => response(200, { operationResult: { approvalId: "someone-else", decision: "APPROVE" } })],
     ["an empty acknowledgement", () => response(200, { operationResult: {} })],
     ["an array acknowledgement", () => response(200, { operationResult: [] })],

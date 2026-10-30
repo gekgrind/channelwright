@@ -425,7 +425,7 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--i
   .workspace-header { flex-direction: column; }
   .workspace-header > .button { align-self: stretch; }
   .approval-panel .decision-actions { flex-direction: column; }
-  .review-dialog-actions { flex-direction: column-reverse; }
+  .review-dialog-actions { flex-direction: column; }
   .approval-panel .decision-actions .button, .review-dialog-actions .button { width: 100%; margin-left: 0; }
   .stage-list { grid-template-columns: 1fr 1fr; }
   .beat-list > li { padding-left: 44px; }

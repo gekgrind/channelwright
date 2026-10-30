@@ -177,7 +177,11 @@ export type DecisionOutcome = { ok: true } | { ok: false; reason: DecisionFailur
  */
 export function decisionFailureOf(cause: unknown): { reason: DecisionFailureReason; message: string } {
   const unconfirmed = { reason: "unconfirmed" as const, message: "Channelwright couldn't confirm whether this decision was recorded. It may or may not have been saved. Reload to see the current state before deciding again." };
-  if (!(cause instanceof WorkflowRequestError) || cause.transport !== "http" || cause.status === null) return unconfirmed;
+  if (!(cause instanceof WorkflowRequestError) || cause.transport === "network" || cause.status === null) return unconfirmed;
+  // An unreadable body still carries a trustworthy status. A 401/403/404/409 is
+  // only ever a refusal (before the RPC, or an RPC exception that rolled back);
+  // any other unreadable response, including a 2xx, stays unconfirmed.
+  if (cause.transport === "unreadable" && ![401, 403, 404, 409].includes(cause.status)) return unconfirmed;
   // The route answers 501 PRODUCTION_REQUIRED before any mutation; every other 5xx is ambiguous.
   if (cause.status === 501 && cause.code === "PRODUCTION_REQUIRED") return { reason: "unavailable", message: "Nothing was recorded: durable workflows are not available in this mode." };
   if (cause.status >= 500) return unconfirmed;

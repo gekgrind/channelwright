@@ -75,6 +75,11 @@ describe("ReviewScreen responsive structure", () => {
     expect(Math.min(...heights)).toBeGreaterThanOrEqual(48);
   });
 
+  it.each(WIDTHS)("dialog actions keep DOM order on screen at %ipx, so the visual order matches the Tab order from Cancel", (width) => {
+    const reversed = all.filter((rule) => active(rule.media, width) && /review-dialog-actions/.test(rule.selector) && /(row|column)-reverse/.test(rule.body));
+    expect(reversed).toEqual([]);
+  });
+
   it("mutation check: the evaluator catches the prototype's .panel/.decide defect class", () => {
     const defective = rules(`${css}\n@media (max-width: 1279px) { .review-actions { display: none; } }`);
     expect(defective.filter((rule) => active(rule.media, 1024) && REVIEW_SELECTOR.test(rule.selector) && HIDES.test(rule.body))).toHaveLength(1);
