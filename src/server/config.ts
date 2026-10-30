@@ -2,6 +2,27 @@ export const isMockMode = () => process.env.NODE_ENV !== "production"
   && (process.env.CHANNELWRIGHT_MOCK_MODE === "true"
     || (process.env.NODE_ENV === "development" && process.env.CHANNELWRIGHT_MOCK_MODE !== "false"));
 
+/**
+ * Live Command Center rollout gate, step one: the exact flag, never in fixture
+ * mode. Checked before authentication, so it cannot depend on the user.
+ */
+export const isLiveCommandCenterOn = () => !isMockMode() && process.env.CHANNELWRIGHT_LIVE_COMMAND_CENTER === "on";
+
+const ALLOWLIST_ENTRY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * Step two, after sign-in: the optional user allowlist. Unset admits every
+ * signed-in user; set but empty admits nobody; any entry that is not a UUID
+ * makes the whole list invalid, which also admits nobody (fail closed).
+ */
+export function isLiveCommandCenterUser(userId: string) {
+  const raw = process.env.CHANNELWRIGHT_LIVE_COMMAND_CENTER_USERS;
+  if (raw === undefined) return true;
+  const entries = raw.split(",").map((entry) => entry.trim().toLowerCase());
+  if (entries.some((entry) => !ALLOWLIST_ENTRY.test(entry))) return false;
+  return entries.includes(userId.trim().toLowerCase());
+}
+
 export const SUPABASE_DB_SCHEMA = "channelwright";
 
 export function assertSupabaseConfig() {

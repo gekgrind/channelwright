@@ -92,6 +92,61 @@ describe("Command Center", () => {
   });
 });
 
+describe("unattributed work is named, not only counted (R005)", () => {
+  it("lists every unattributed video and gate with its reason in the fixture preview", () => {
+    renderView();
+    const list = screen.getByRole("list", { name: "Unattributed work" });
+    expect(screen.getByText("Show unattributed work · 2")).toBeInTheDocument();
+    const items = within(list).getAllByRole("listitem").map((item) => item.textContent);
+    expect(items).toEqual([
+      "VideoKeychron vs. no-name: same board?Not attributed: its Content plan reference does not resolve to an approved run",
+      "GateScript v1 · Keychron vs. no-name: same board?Not attributed: its Content plan reference does not resolve to an approved run",
+    ]);
+  });
+
+  it("names an unattributed video that has no pending gate", () => {
+    const [video] = operatingScenario.videos.status === "ready" ? operatingScenario.videos.data : [];
+    const view: CommandCenterView = {
+      ...firstRunScenario,
+      videos: { status: "ready", data: [{ ...video, title: "Orphaned brief", attribution: { status: "ambiguous", reason: "its upstream work is itself unattributed" } }] },
+    };
+    renderView(view);
+    expect(screen.getByRole("note")).toHaveTextContent("Unattributed · 1 video, 0 gates");
+    expect(within(screen.getByRole("list", { name: "Unattributed work" })).getByText("Orphaned brief")).toBeInTheDocument();
+    expect(screen.getByText("Not attributed: its upstream work is itself unattributed")).toBeInTheDocument();
+  });
+
+  it("labels measured-but-unassessed performance honestly", () => {
+    renderView({ ...operatingScenario, performance: { status: "ready", data: [{ videoTitle: "Gasket mods", views: 10, averageViewedPct: 40, versusPlan: "NOT_ASSESSED" }] } });
+    expect(screen.getByText("Not assessed")).toBeInTheDocument();
+  });
+});
+
+describe("AppShell channel switcher", () => {
+  it("lists every channel as a link, marks the current one, and points Command Center at it", () => {
+    render(
+      <AppShell channelLabel="ignored" channelDetail="" pendingCount={0} commandCenterHref="/c/key-b" channels={[
+        { label: "Budget keyboards", detail: "Researched Oct 1", href: "/c/key-a", current: false },
+        { label: "Budget keyboards", detail: "Researched Oct 12", href: "/c/key-b", current: true },
+      ]}><p>content</p></AppShell>,
+    );
+    const switcher = screen.getByRole("list", { name: "Channels" });
+    const links = within(switcher).getAllByRole("link");
+    expect(links.map((link) => [link.getAttribute("href"), link.textContent, link.getAttribute("aria-current")])).toEqual([
+      ["/c/key-a", "Budget keyboardsResearched Oct 1", null],
+      ["/c/key-b", "Budget keyboardsResearched Oct 12", "true"],
+    ]);
+    expect(screen.getByRole("link", { name: "Command Center" })).toHaveAttribute("href", "/c/key-b");
+    expect(screen.queryByText("ignored")).not.toBeInTheDocument();
+  });
+
+  it("renders the fixture preview's static channel block unchanged without the new props", () => {
+    renderView();
+    expect(screen.queryByRole("list", { name: "Channels" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Command Center" })).toHaveAttribute("href", "/studio/preview");
+  });
+});
+
 describe("age", () => {
   it("is relative to the view's evaluation time", () => {
     expect(age("2026-10-24T14:56:00.000Z", "2026-10-24T15:00:00.000Z")).toBe("4m");
@@ -190,7 +245,10 @@ describe("command center CSS coverage", () => {
   const directory = "src/features/command-center";
   const css = readFileSync(path.join(directory, "command-center.css"), "utf8");
   const defined = new Set([...css.matchAll(/\.([a-zA-Z_][\w-]*)/g)].map((match) => match[1]));
-  const sources = [...readdirSync(directory).filter((file) => file.endsWith(".tsx") && !file.endsWith(".test.tsx")).map((file) => path.join(directory, file)), "src/app/studio/preview/page.tsx"];
+  const sources = [
+    ...readdirSync(directory).filter((file) => file.endsWith(".tsx") && !file.endsWith(".test.tsx")).map((file) => path.join(directory, file)),
+    "src/app/studio/preview/page.tsx", "src/app/c/live-command-center.tsx",
+  ];
 
   it.each(sources)("every static cw- className in %s is defined", (file) => {
     const source = readFileSync(file, "utf8");

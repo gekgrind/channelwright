@@ -158,7 +158,12 @@ const DUE_DATED = new Set<OperatorTask["kind"]>(["RECORD_PERFORMANCE", "START_DI
 function timingExclusion(task: OperatorTask, asOf: number | null) {
   if (!DUE_DATED.has(task.kind)) return null;
   const measurement = task.kind === "RECORD_PERFORMANCE";
-  if (task.dueAt === null || task.dueAt === undefined) return measurement ? "No rule defines when measurement is due, so it is not ranked." : null;
+  if (task.dueAt === null || task.dueAt === undefined) {
+    if (!measurement) return null;
+    return task.dueUnavailable === "NO_PUBLICATION_DATE"
+      ? "No publication date is recorded, so measurement is not ranked."
+      : "No rule defines when measurement is due, so it is not ranked.";
+  }
   const due = parseInstant(task.dueAt);
   if (due === null) return "Its due date is not a valid timestamp, so it is not ranked.";
   if (asOf === null) return "The evaluation time is not a valid timestamp, so due work is not ranked.";
