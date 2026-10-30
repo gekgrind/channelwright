@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import "@testing-library/jest-dom/vitest";
 import { VideoScriptWorkspace } from "./video-script-workspace";
 import { videoScriptResultFixture } from "@/server/workflows/video-script-fixtures.test-helper";
+import { decisionAck, isDecisionRequest } from "./decision-ack.test-helper";
 
 const SCRIPT = videoScriptResultFixture();
 const BRIEF_WORKFLOW_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
@@ -37,7 +38,7 @@ const briefDetail = () => ({
 function mockFetch(handlers: { list?: unknown; brief?: unknown; script?: unknown; post?: { ok: boolean; body: unknown } }) {
   return vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") {
-      const post = handlers.post ?? { ok: true, body: { operationResult: { workflowId: SCRIPT_WORKFLOW_ID } } };
+      const post = handlers.post ?? (isDecisionRequest(url) ? { ok: true, body: decisionAck(url, init) } : { ok: true, body: { operationResult: { workflowId: SCRIPT_WORKFLOW_ID } } });
       return { ok: post.ok, json: async () => post.body } as Response;
     }
     if (url === "/api/workflows") return { ok: true, json: async () => ({ workflowEngine: handlers.list ?? workflowList() }) } as Response;
@@ -201,7 +202,7 @@ describe("VideoScriptWorkspace", () => {
       ],
     };
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      if (init?.method === "POST") return { ok: true, json: async () => ({ operationResult: {} }) } as Response;
+      if (init?.method === "POST") return { ok: true, json: async () => decisionAck(url, init) } as Response;
       if (url === "/api/workflows") return { ok: true, json: async () => ({ workflowEngine: list }) } as Response;
       if (url.includes(BRIEF_WORKFLOW_ID)) return { ok: true, json: async () => briefDetail() } as Response;
       if (url.includes(SCRIPT_B)) return { ok: true, json: async () => detailB } as Response;

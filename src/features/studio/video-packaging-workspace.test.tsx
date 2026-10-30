@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import "@testing-library/jest-dom/vitest";
 import { VideoPackagingWorkspace } from "./video-packaging-workspace";
 import { videoPackagingResultFixture } from "@/server/workflows/video-packaging-fixtures.test-helper";
+import { decisionAck, isDecisionRequest } from "./decision-ack.test-helper";
 
 const PACKAGING = videoPackagingResultFixture();
 const SCRIPT_WORKFLOW_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
@@ -37,7 +38,7 @@ const scriptDetail = () => ({
 function mockFetch(handlers: { list?: unknown; script?: unknown; packaging?: unknown; post?: { ok: boolean; body: unknown } }) {
   return vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") {
-      const post = handlers.post ?? { ok: true, body: { operationResult: { workflowId: PACKAGING_WORKFLOW_ID } } };
+      const post = handlers.post ?? (isDecisionRequest(url) ? { ok: true, body: decisionAck(url, init) } : { ok: true, body: { operationResult: { workflowId: PACKAGING_WORKFLOW_ID } } });
       return { ok: post.ok, json: async () => post.body } as Response;
     }
     if (url === "/api/workflows") return { ok: true, json: async () => ({ workflowEngine: handlers.list ?? workflowList() }) } as Response;

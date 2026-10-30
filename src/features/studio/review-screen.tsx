@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Check, LoaderCircle, RefreshCcw, XCircle } from "lucide-react";
 import { ConfirmDialog } from "./review-dialog";
 import { REVIEW_KINDS, reviewVersionLabel, type ReviewKind, type ReviewKindKey } from "./review-kinds";
@@ -65,6 +65,11 @@ function ReviewScreenForTarget({ kind: kindKey, target, versionNumber, busy, tit
   const safeAction = useRef<HTMLButtonElement>(null);
   const confirmAction = useRef<HTMLButtonElement>(null);
   const noteField = useRef<HTMLTextAreaElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const lockedReload = useRef<HTMLButtonElement>(null);
+  // Where focus goes once the dialog has closed, when the invoker cannot take it
+  // (it is disabled while the decision is locked).
+  const focusAfterClose = useRef<HTMLElement | null>(null);
   const actionsDisabled = busy || submitting || locked;
   const confirmBlocked = submitting || (failure !== null && !RETRYABLE.has(failure.reason));
 
@@ -78,6 +83,10 @@ function ReviewScreenForTarget({ kind: kindKey, target, versionNumber, busy, tit
 
   const close = () => {
     if (submitting) return;
+    if (failure && !RETRYABLE.has(failure.reason) && failure.reason !== "unauthorized") {
+      restoreFocus.current = false;
+      focusAfterClose.current = lockedReload.current ?? heading.current;
+    }
     setOpen(null);
     setFailure(null);
     setNoteInvalid(false);
@@ -115,11 +124,22 @@ function ReviewScreenForTarget({ kind: kindKey, target, versionNumber, busy, tit
 
   const reload = () => {
     restoreFocus.current = false;
+    focusAfterClose.current = heading.current;
     setOpen(null);
     setFailure(null);
     onReload();
   };
 
+  // Runs after the dialog's own cleanup, so it wins over (skipped) invoker restoration.
+  useEffect(() => {
+    if (open !== null || !focusAfterClose.current) return;
+    focusAfterClose.current.focus();
+    focusAfterClose.current = null;
+  }, [open]);
+
+  const instruction = kind.revisionNoteReachesModel
+    ? "with your note passed to the AI as its revision instruction."
+    : "Your note is saved with the decision, but this stage does not currently pass it to the AI, so the new version may not reflect it.";
   const retrieval = kind.revisionRetrieves ? " It also repeats YouTube retrieval, which uses provider quota." : "";
   const dialogCopy: Record<ApprovalDecision, { title: string; body: ReactNode; confirmLabel: string; alert: boolean; tone: string }> = {
     APPROVE: {
@@ -132,7 +152,7 @@ function ReviewScreenForTarget({ kind: kindKey, target, versionNumber, busy, tit
     REQUEST_REVISION: {
       title: `Request a revision of ${label}?`,
       body: <>
-        <p className="review-paid"><AlertTriangle size={15} aria-hidden="true" /> <span><b>This starts another AI generation run that uses paid model calls.</b> The whole {kind.noun} pipeline runs again with your note as its instruction.{retrieval} Channelwright does not estimate the cost.</span></p>
+        <p className="review-paid"><AlertTriangle size={15} aria-hidden="true" /> <span><b>This starts another AI generation run that uses paid model calls.</b> The whole {kind.noun} pipeline runs again{kind.revisionNoteReachesModel ? " " : ". "}{instruction}{retrieval} Channelwright does not estimate the cost.</span></p>
         <p>{label} is closed for review and stays in the ledger, read-only. The new version waits for your review when it finishes.</p>
       </>,
       confirmLabel: "Request revision and start a new run",
@@ -155,14 +175,14 @@ function ReviewScreenForTarget({ kind: kindKey, target, versionNumber, busy, tit
     <section className="review-screen approval-panel" aria-labelledby={`${id}-title`} data-review-kind={kindKey}>
       <header>
         <p className="eyebrow">Your decision</p>
-        <h3 id={`${id}-title`}>{title}</h3>
+        <h3 id={`${id}-title`} ref={heading} tabIndex={-1}>{title}</h3>
         <p className="muted">{explanation}</p>
         <p className="version-binding">Approval binds to <b>{label}</b> exactly</p>
       </header>
       {locked && (
         <div className="review-locked" role="status">
           <p>A decision on {label} was sent, and this view has not been refreshed since. Reload to see its current state before deciding again.</p>
-          <button type="button" className="button button-small" onClick={onReload} disabled={busy}><RefreshCcw size={14} aria-hidden="true" /> Reload current state</button>
+          <button ref={lockedReload} type="button" className="button button-small" onClick={onReload} disabled={busy}><RefreshCcw size={14} aria-hidden="true" /> Reload current state</button>
         </div>
       )}
       <div className="button-row decision-actions review-actions">
@@ -183,7 +203,7 @@ function ReviewScreenForTarget({ kind: kindKey, target, versionNumber, busy, tit
         >
           {open === "REQUEST_REVISION" && (
             <label className="review-field">
-              What should change, and why? <small>Required · becomes the next version&apos;s instruction</small>
+              What should change, and why? <small>{kind.revisionNoteReachesModel ? "Required · sent to the AI with the new run" : "Required · saved with the decision"}</small>
               <textarea ref={noteField} value={note} rows={4} maxLength={2000} placeholder={revisionPlaceholder}
                 aria-invalid={noteInvalid || undefined} aria-describedby={noteInvalid ? `${id}-note-error` : undefined}
                 onChange={(event) => { setNote(event.target.value); if (event.target.value.trim()) setNoteInvalid(false); }} readOnly={submitting} />

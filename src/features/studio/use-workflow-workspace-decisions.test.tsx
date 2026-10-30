@@ -99,6 +99,11 @@ describe("useWorkflowWorkspace decision outcomes", () => {
     ["a 5xx", () => response(500, { error: { code: "DATABASE_ERROR", message: "The workflow operation could not be completed." } })],
     ["an unreadable body", () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("Unexpected token <"); } }) as unknown as Response],
     ["a success body for another approval", () => response(200, { operationResult: { approvalId: "someone-else", decision: "APPROVE" } })],
+    ["an empty acknowledgement", () => response(200, { operationResult: {} })],
+    ["an array acknowledgement", () => response(200, { operationResult: [] })],
+    ["null acknowledgement fields", () => response(200, { operationResult: { approvalId: null, decision: null } })],
+    ["an acknowledgement of a different decision", () => response(200, { operationResult: { approvalId: APPROVAL_ID, decision: "APPROVE" } })],
+    ["a 501 that is not the pre-mutation PRODUCTION_REQUIRED refusal", () => response(501, { error: { code: "INTERNAL_ERROR", message: "Not implemented." } })],
   ])("never reports success after %s, and locks the target until reconciled", async (_name, onPost) => {
     const fetcher = serve(onPost);
     const { result } = await mountPending();
@@ -113,6 +118,15 @@ describe("useWorkflowWorkspace decision outcomes", () => {
     // A reload that still shows the gate pending clears the lock: the server says it is decidable.
     await act(async () => { result.current.reload(); });
     await waitFor(() => expect(result.current.decisionLocked).toBe(false));
+  });
+
+  it("reports the route's pre-mutation 501 PRODUCTION_REQUIRED refusal as unavailable, without locking", async () => {
+    serve(() => response(501, { error: { code: "PRODUCTION_REQUIRED", message: "Durable production workflows require Supabase mode." } }));
+    const { result } = await mountPending();
+    let outcome: DecisionOutcome = { ok: true };
+    await act(async () => { outcome = await result.current.decide(result.current.decisionTarget!, "APPROVE", undefined, "Approved."); });
+    expect(outcome).toMatchObject({ ok: false, reason: "unavailable", message: expect.stringMatching(/^Nothing was recorded/) });
+    expect(result.current.decisionLocked).toBe(false);
   });
 
   it("does not lock after a 401: nothing was recorded, and signing in again is the fix", async () => {

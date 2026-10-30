@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
+import { useState } from "react";
 import { ReviewScreen } from "./review-screen";
 import { REVIEW_KINDS, type ReviewKindKey } from "./review-kinds";
 import type { DecisionOutcome, DecisionTarget } from "./workflow-api";
@@ -289,5 +290,58 @@ describe("ReviewScreen target identity", () => {
     expect(approve()).toBeEnabled();
     await act(async () => { finish({ ok: true }); });
     expect(approve()).toBeEnabled();
+  });
+});
+
+describe("ReviewScreen revision copy matches what each stage does with the note", () => {
+  it.each(Object.entries(REVIEW_KINDS) as Array<[ReviewKindKey, (typeof REVIEW_KINDS)[ReviewKindKey]]>)("%s", (kind, review) => {
+    renderScreen({ kind });
+    fireEvent.click(revise());
+    const modal = screen.getByRole("alertdialog");
+    expect(modal).toHaveTextContent(/starts another AI generation run that uses paid model calls/i);
+    if (review.revisionNoteReachesModel) {
+      expect(modal).toHaveTextContent(/your note passed to the AI as its revision instruction/i);
+      expect(modal).not.toHaveTextContent(/does not currently pass it to the AI/i);
+    } else {
+      expect(modal).toHaveTextContent(/does not currently pass it to the AI, so the new version may not reflect it/i);
+      expect(modal).not.toHaveTextContent(/as its revision instruction/i);
+    }
+  });
+});
+
+/** Mirrors the workspace: a stale or unconfirmed outcome locks the target, which disables the invokers. */
+function LockingScreen({ outcome, onReload }: { outcome: DecisionOutcome; onReload: () => void }) {
+  const [locked, setLocked] = useState(false);
+  return <ReviewScreen kind="CHANNEL_VIDEO_SCRIPT" target={TARGET_A} versionNumber={2} busy={false} locked={locked} explanation="Approving accepts the script."
+    onDecide={async () => { if (!outcome.ok) setLocked(true); return outcome; }} onReload={onReload} />;
+}
+
+describe("ReviewScreen focus after a blocked outcome", () => {
+  const stale: DecisionOutcome = { ok: false, reason: "stale", message: "Nothing was recorded by this request." };
+  const unconfirmed: DecisionOutcome = { ok: false, reason: "unconfirmed", message: "Channelwright couldn't confirm whether this decision was recorded." };
+
+  it.each([["stale", stale], ["unconfirmed", unconfirmed]] as const)("Close after a %s outcome moves focus to the enabled locked-state reload control, not <body>", async (_name, outcome) => {
+    render(<LockingScreen outcome={outcome} onReload={vi.fn()} />);
+    fireEvent.click(approve());
+    fireEvent.click(inDialog(/^approve script v2$/i));
+    await screen.findByRole("alert");
+    expect(approve()).toBeDisabled();
+    fireEvent.click(inDialog(/^close$/i));
+    expect(openDialog()).toBeNull();
+    const reload = screen.getByRole("button", { name: /reload current state/i });
+    expect(reload).toBeEnabled();
+    expect(reload).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it("Reload from the dialog moves focus to the review heading and asks for the real state", async () => {
+    const onReload = vi.fn();
+    render(<LockingScreen outcome={stale} onReload={onReload} />);
+    fireEvent.click(reject());
+    fireEvent.click(inDialog(/^reject script v2$/i));
+    const alert = await screen.findByRole("alert");
+    fireEvent.click(within(alert).getByRole("button", { name: /reload current state/i }));
+    expect(onReload).toHaveBeenCalledOnce();
+    expect(screen.getByRole("heading", { name: /your decision/i })).toHaveFocus();
   });
 });

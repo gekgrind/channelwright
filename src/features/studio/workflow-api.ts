@@ -138,8 +138,9 @@ export function startWorkflow(workflowType: string, input: unknown, fallback: st
 }
 
 /**
- * Sends one decision. A 2xx whose body does not acknowledge this approval and
- * decision is not treated as success: the outcome is unconfirmed.
+ * Sends one decision. Success requires a 2xx body that explicitly echoes this
+ * approval id and decision (as `decide_workflow_approval` returns them); any
+ * other body, including one with missing or null fields, is unconfirmed.
  */
 export async function submitApprovalDecision(workflowId: string, approvalId: string, decision: ApprovalDecision, note: string | undefined, fallback: string) {
   const payload = await requestJson<unknown>(`/api/workflows/${workflowId}/approvals/${approvalId}`, fallback, {
@@ -148,9 +149,9 @@ export async function submitApprovalDecision(workflowId: string, approvalId: str
     body: JSON.stringify({ decision, note }),
   });
   const result = payload && typeof payload === "object" ? (payload as { operationResult?: unknown }).operationResult : undefined;
-  const acknowledged = Boolean(result) && typeof result === "object"
-    && ((result as { approvalId?: unknown }).approvalId ?? approvalId) === approvalId
-    && ((result as { decision?: unknown }).decision ?? decision) === decision;
+  const acknowledged = Boolean(result) && typeof result === "object" && !Array.isArray(result)
+    && (result as { approvalId?: unknown }).approvalId === approvalId
+    && (result as { decision?: unknown }).decision === decision;
   if (!acknowledged) throw new WorkflowRequestError(fallback, "unreadable", 200, null);
   return result;
 }
@@ -176,10 +177,12 @@ export type DecisionOutcome = { ok: true } | { ok: false; reason: DecisionFailur
  */
 export function decisionFailureOf(cause: unknown): { reason: DecisionFailureReason; message: string } {
   const unconfirmed = { reason: "unconfirmed" as const, message: "Channelwright couldn't confirm whether this decision was recorded. It may or may not have been saved. Reload to see the current state before deciding again." };
-  if (!(cause instanceof WorkflowRequestError) || cause.transport !== "http" || cause.status === null || cause.status >= 500) return unconfirmed;
+  if (!(cause instanceof WorkflowRequestError) || cause.transport !== "http" || cause.status === null) return unconfirmed;
+  // The route answers 501 PRODUCTION_REQUIRED before any mutation; every other 5xx is ambiguous.
+  if (cause.status === 501 && cause.code === "PRODUCTION_REQUIRED") return { reason: "unavailable", message: "Nothing was recorded: durable workflows are not available in this mode." };
+  if (cause.status >= 500) return unconfirmed;
   if (cause.status === 401 || cause.status === 403 || cause.code === "UNAUTHORIZED") return { reason: "unauthorized", message: "Nothing was recorded: you need to sign in again before deciding." };
   if (cause.status === 409 || cause.status === 404) return { reason: "stale", message: "Nothing was recorded by this request. This approval can no longer be decided from this screen: it was most likely already decided, for example in another tab, or replaced by a newer version. Reload to see its current state." };
-  if (cause.status === 501) return { reason: "unavailable", message: "Nothing was recorded: durable workflows are not available in this mode." };
   if (cause.status === 422) return { reason: "validation", message: `Nothing was recorded: ${cause.message}` };
   return { reason: "rejected", message: `Nothing was recorded: ${cause.message}` };
 }
