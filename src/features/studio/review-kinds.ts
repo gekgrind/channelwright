@@ -35,7 +35,7 @@ export const REVIEW_KINDS = {
     approves: "Approval accepts this exact research run as the evidence base for strategy.",
     rejectKeeps: "Nothing upstream changes. To try again, start a new research run (paid).",
     revisionRetrieves: true,
-    revisionNoteReachesModel: false,
+    revisionNoteReachesModel: true,
   },
   CHANNEL_STRATEGY: {
     noun: "strategy", versionNoun: "Strategy run",

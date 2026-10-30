@@ -294,6 +294,13 @@ describe("ReviewScreen target identity", () => {
 });
 
 describe("ReviewScreen revision copy matches what each stage does with the note", () => {
+  it("pins the stages whose models ignore the note, as traced in src/server/workflows", () => {
+    // Research, Strategy, Brief, Script, Packaging, Release, Performance, Decision and Experiment
+    // pass humanRevisionNote (or their whole request input) to the model; these two do not.
+    const ignored = Object.entries(REVIEW_KINDS).filter(([, review]) => !review.revisionNoteReachesModel).map(([kind]) => kind).sort();
+    expect(ignored).toEqual(["CHANNEL_CONTENT_INTELLIGENCE", "CHANNEL_VIDEO_DIAGNOSIS"]);
+  });
+
   it.each(Object.entries(REVIEW_KINDS) as Array<[ReviewKindKey, (typeof REVIEW_KINDS)[ReviewKindKey]]>)("%s", (kind, review) => {
     renderScreen({ kind });
     fireEvent.click(revise());

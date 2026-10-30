@@ -114,3 +114,20 @@ testing is claimed.
 - jsdom cannot lay out CSS; the width tests prove structure (one control, no hiding rule), the browser harness checks
   layout, and neither is assistive-technology proof.
 - Network-failure copy is deliberately uncertain because a lost response may follow a recorded decision.
+
+## 7. Codex implementation review
+
+| Round | Verdict | Findings | Resolution |
+|---|---|---|---|
+| 1 | REJECT | P1: an empty / array / null-field acknowledgement body was reported as success. | Success now requires an object echoing the exact approval id and decision; everything else is unconfirmed. Mocks use the RPC's real result shape (`decision-ack.test-helper.ts`). |
+| 1 | | P2: revision copy promised the note becomes the model's instruction for stages that never pass it. | Per-kind `revisionNoteReachesModel`; stages that ignore the note say so. |
+| 1 | | P2: Close / Reload after a blocked outcome dropped focus to `<body>` (the invoker is disabled while locked). | Close focuses the locked-state reload control; Reload focuses the review heading. |
+| 1 | | P2: the 501 "unavailable" branch was unreachable behind the generic 5xx rule. | `501 PRODUCTION_REQUIRED` (refused before mutation) is classified first; other 5xx stay unconfirmed. |
+| 2 | REJECT | P1, focus and 501 confirmed resolved. New P2: Research was flagged as ignoring the note, but `openai-research-model.ts` sends the whole request input, which carries `humanRevisionNote`. | Research flag corrected; the test now pins the traced table (only Content intelligence and Diagnosis ignore the note) instead of deriving expectations from the flags. |
+
+Browser check (Chromium via Playwright, fixture harness, mock mode): at 1440 / 1024 / 390 / 375 for Performance, Diagnosis,
+Decision and Experiment — exactly one visible Approve, all three entry controls visible and ≥48px, no horizontal overflow,
+modal dialog fits the viewport with ≥48px actions, initial focus on Cancel for Reject, Tab trapped, background inert,
+Escape restores focus to the invoker and clears `inert`, stale outcome blocks the confirm, success focuses the status notice.
+It also caught a real defect fixed before review: the server page imported fixture constants from a `"use client"` module,
+so query parameters were silently ignored under RSC (now a plain module, with a structure test).
