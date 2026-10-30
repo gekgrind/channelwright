@@ -13,7 +13,8 @@ import type { WorkflowList } from "./workflow-api";
 import { runVersionOf } from "./workflow-api";
 import { useWorkflowWorkspace } from "./use-workflow-workspace";
 import { describeVideoArtifact, parseObjectPayload, UpstreamCard, useApprovedUpstream } from "./upstream-selection";
-import { DecisionBar, RunChips, StageList, WorkspaceFeedback } from "./workflow-controls";
+import { RunChips, StageList, WorkspaceFeedback } from "./workflow-controls";
+import { ReviewScreen } from "./review-screen";
 
 type WorkflowDetail = {
   workflow: { id: string; status: string; created_at: string; current_run_id: string };
@@ -75,7 +76,7 @@ export function VideoScriptWorkspace({ initial }: { initial?: WorkflowList }) {
         </button>
       </header>
 
-      <WorkspaceFeedback label="video script" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
+      <WorkspaceFeedback label="video script" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} noticeFocusKey={workspace.noticeFocusKey} />
 
       {selection.eligible.length === 0 && !workspace.loading && (
         <p className="muted">Approve a video brief first. A video script can only be written from an approved brief.</p>
@@ -107,15 +108,16 @@ export function VideoScriptWorkspace({ initial }: { initial?: WorkflowList }) {
       {script && <ScriptDocument script={script} qa={finalQa} />}
 
       {script && decisionTarget && (
-        <DecisionBar
+        <ReviewScreen
           target={decisionTarget}
+          kind="CHANNEL_VIDEO_SCRIPT"
           busy={busy}
           title="Review this script"
           explanation="Approving accepts the script. It does not mean the video is ready to package, render, or publish."
-          versionLabel={version ? `Script v${version}` : undefined}
-          approveLabel="Approve exact version"
+          versionNumber={version}
           revisionPlaceholder="What should the revised script change?"
-          artifactLabel="script"
+          locked={workspace.decisionLocked}
+          onReload={workspace.reload}
           onDecide={(target, decision, note) => workspace.decide(target, decision, note, `${decision.replaceAll("_", " ")} recorded. The original script and its lineage are preserved.`)}
         />
       )}

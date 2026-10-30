@@ -13,7 +13,8 @@ import type { WorkflowList } from "./workflow-api";
 import { runVersionOf } from "./workflow-api";
 import { useWorkflowWorkspace } from "./use-workflow-workspace";
 import { describeVideoArtifact, parseObjectPayload, UpstreamCard, useApprovedUpstream } from "./upstream-selection";
-import { DecisionBar, RunChips, StageList, WorkspaceFeedback } from "./workflow-controls";
+import { RunChips, StageList, WorkspaceFeedback } from "./workflow-controls";
+import { ReviewScreen } from "./review-screen";
 
 type WorkflowDetail = {
   workflow: { id: string; status: string; created_at: string; current_run_id: string };
@@ -67,7 +68,7 @@ export function VideoReleaseWorkspace({ initial }: { initial?: WorkflowList }) {
         </button>
       </header>
 
-      <WorkspaceFeedback label="video release" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
+      <WorkspaceFeedback label="video release" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} noticeFocusKey={workspace.noticeFocusKey} />
 
       {selection.eligible.length === 0 && !workspace.loading && (
         <p className="muted">Approve a video packaging first. A release can only be decided from approved packaging.</p>
@@ -99,15 +100,16 @@ export function VideoReleaseWorkspace({ initial }: { initial?: WorkflowList }) {
       {release && <ReleaseDocument release={release} qa={finalQa} />}
 
       {release && decisionTarget && (
-        <DecisionBar
+        <ReviewScreen
           target={decisionTarget}
+          kind="CHANNEL_VIDEO_RELEASE"
           busy={busy}
           title="Review this release decision"
           explanation="Approving records the final release decision. It does not publish, schedule, upload, or generate anything."
-          versionLabel={version ? `Release v${version}` : undefined}
-          approveLabel="Approve exact version"
+          versionNumber={version}
           revisionPlaceholder="What should the revised release change?"
-          artifactLabel="release"
+          locked={workspace.decisionLocked}
+          onReload={workspace.reload}
           onDecide={(target, decision, note) => workspace.decide(target, decision, note, `${decision.replaceAll("_", " ")} recorded. The original release record and its lineage are preserved.`)}
         />
       )}

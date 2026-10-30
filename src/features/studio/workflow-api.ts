@@ -72,10 +72,37 @@ export function apiErrorMessage(payload: unknown, fallback: string) {
   return fallback;
 }
 
+/**
+ * A failed workflow request. `transport` separates what the client knows:
+ * "network" (no response), "unreadable" (a response whose body could not be
+ * read), or "http" (a readable non-2xx response with its status and code).
+ */
+export class WorkflowRequestError extends Error {
+  constructor(message: string, readonly transport: "network" | "unreadable" | "http", readonly status: number | null, readonly code: string | null) {
+    super(message);
+    this.name = "WorkflowRequestError";
+  }
+}
+
+function apiErrorCode(payload: unknown) {
+  const error = payload && typeof payload === "object" ? (payload as { error?: unknown }).error : undefined;
+  return error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : null;
+}
+
 async function requestJson<T>(input: string, fallback: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, init);
-  const payload: unknown = await response.json();
-  if (!response.ok) throw new Error(apiErrorMessage(payload, fallback));
+  let response: Response;
+  try {
+    response = await fetch(input, init);
+  } catch {
+    throw new WorkflowRequestError(fallback, "network", null, null);
+  }
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new WorkflowRequestError(fallback, "unreadable", response.status ?? null, null);
+  }
+  if (!response.ok) throw new WorkflowRequestError(apiErrorMessage(payload, fallback), "http", response.status ?? null, apiErrorCode(payload));
   return payload as T;
 }
 
@@ -110,10 +137,56 @@ export function startWorkflow(workflowType: string, input: unknown, fallback: st
   });
 }
 
-export function submitApprovalDecision(workflowId: string, approvalId: string, decision: ApprovalDecision, note: string | undefined, fallback: string) {
-  return requestJson<unknown>(`/api/workflows/${workflowId}/approvals/${approvalId}`, fallback, {
+/**
+ * Sends one decision. Success requires a 2xx body that explicitly echoes this
+ * approval id and decision (as `decide_workflow_approval` returns them); any
+ * other body, including one with missing or null fields, is unconfirmed.
+ */
+export async function submitApprovalDecision(workflowId: string, approvalId: string, decision: ApprovalDecision, note: string | undefined, fallback: string) {
+  const payload = await requestJson<unknown>(`/api/workflows/${workflowId}/approvals/${approvalId}`, fallback, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ decision, note }),
   });
+  const result = payload && typeof payload === "object" ? (payload as { operationResult?: unknown }).operationResult : undefined;
+  const acknowledged = Boolean(result) && typeof result === "object" && !Array.isArray(result)
+    && (result as { approvalId?: unknown }).approvalId === approvalId
+    && (result as { decision?: unknown }).decision === decision;
+  if (!acknowledged) throw new WorkflowRequestError(fallback, "unreadable", 200, null);
+  return result;
+}
+
+/** Why a decision was not confirmed as recorded. */
+export type DecisionFailureReason =
+  | "target-changed" // the selected gate changed before sending; nothing was sent
+  | "in-flight" // a decision on this exact gate is already being sent
+  | "stale" // the server refused: the gate is no longer decidable here
+  | "unconfirmed" // the client cannot know whether the decision was recorded
+  | "unauthorized"
+  | "unavailable"
+  | "validation"
+  | "rejected";
+
+export type DecisionOutcome = { ok: true } | { ok: false; reason: DecisionFailureReason; message: string };
+
+/**
+ * Classifies a failed decision request into copy that is true in every case
+ * the status can stand for. A raised RPC exception rolls the decision back, so
+ * a readable 4xx means this request recorded nothing. A 5xx, a lost response,
+ * or an unreadable body does not prove that, so it is reported as unconfirmed.
+ */
+export function decisionFailureOf(cause: unknown): { reason: DecisionFailureReason; message: string } {
+  const unconfirmed = { reason: "unconfirmed" as const, message: "Channelwright couldn't confirm whether this decision was recorded. It may or may not have been saved. Reload to see the current state before deciding again." };
+  if (!(cause instanceof WorkflowRequestError) || cause.transport === "network" || cause.status === null) return unconfirmed;
+  // An unreadable body still carries a trustworthy status. A 401/403/404/409 is
+  // only ever a refusal (before the RPC, or an RPC exception that rolled back);
+  // any other unreadable response, including a 2xx, stays unconfirmed.
+  if (cause.transport === "unreadable" && ![401, 403, 404, 409].includes(cause.status)) return unconfirmed;
+  // The route answers 501 PRODUCTION_REQUIRED before any mutation; every other 5xx is ambiguous.
+  if (cause.status === 501 && cause.code === "PRODUCTION_REQUIRED") return { reason: "unavailable", message: "Nothing was recorded: durable workflows are not available in this mode." };
+  if (cause.status >= 500) return unconfirmed;
+  if (cause.status === 401 || cause.status === 403 || cause.code === "UNAUTHORIZED") return { reason: "unauthorized", message: "Nothing was recorded: you need to sign in again before deciding." };
+  if (cause.status === 409 || cause.status === 404) return { reason: "stale", message: "Nothing was recorded by this request. This approval can no longer be decided from this screen: it was most likely already decided, for example in another tab, or replaced by a newer version. Reload to see its current state." };
+  if (cause.status === 422) return { reason: "validation", message: `Nothing was recorded: ${cause.message}` };
+  return { reason: "rejected", message: `Nothing was recorded: ${cause.message}` };
 }

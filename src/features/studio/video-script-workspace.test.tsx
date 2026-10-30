@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import "@testing-library/jest-dom/vitest";
 import { VideoScriptWorkspace } from "./video-script-workspace";
 import { videoScriptResultFixture } from "@/server/workflows/video-script-fixtures.test-helper";
+import { decisionAck, isDecisionRequest } from "./decision-ack.test-helper";
 
 const SCRIPT = videoScriptResultFixture();
 const BRIEF_WORKFLOW_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
@@ -37,7 +38,7 @@ const briefDetail = () => ({
 function mockFetch(handlers: { list?: unknown; brief?: unknown; script?: unknown; post?: { ok: boolean; body: unknown } }) {
   return vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") {
-      const post = handlers.post ?? { ok: true, body: { operationResult: { workflowId: SCRIPT_WORKFLOW_ID } } };
+      const post = handlers.post ?? (isDecisionRequest(url) ? { ok: true, body: decisionAck(url, init) } : { ok: true, body: { operationResult: { workflowId: SCRIPT_WORKFLOW_ID } } });
       return { ok: post.ok, json: async () => post.body } as Response;
     }
     if (url === "/api/workflows") return { ok: true, json: async () => ({ workflowEngine: handlers.list ?? workflowList() }) } as Response;
@@ -113,8 +114,10 @@ describe("VideoScriptWorkspace", () => {
     const fetchMock = mockFetch({});
     vi.stubGlobal("fetch", fetchMock);
     render(<VideoScriptWorkspace />);
-    const approve = await screen.findByRole("button", { name: /approve/i });
-    fireEvent.click(approve);
+    fireEvent.click(await screen.findByRole("button", { name: /^approve /i }));
+    // Approval is confirmed in a dialog before anything is sent.
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toBe(false);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^approve /i }));
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/approvals/ap1"));
       expect(call).toBeDefined();
@@ -123,19 +126,25 @@ describe("VideoScriptWorkspace", () => {
   });
 
   it("requires a revision note before a revision can be requested", async () => {
-    vi.stubGlobal("fetch", mockFetch({}));
+    const fetchMock = mockFetch({});
+    vi.stubGlobal("fetch", fetchMock);
     render(<VideoScriptWorkspace />);
-    const revise = await screen.findByRole("button", { name: /request revision/i });
-    expect(revise).toBeDisabled();
-    fireEvent.change(screen.getByLabelText(/revision note/i), { target: { value: "Tighten the demonstration and cut the drag in the middle." } });
-    expect(revise).toBeEnabled();
+    fireEvent.click(await screen.findByRole("button", { name: /^request revision/i }));
+    const modal = screen.getByRole("alertdialog");
+    expect(modal).toHaveTextContent(/starts another AI generation run that uses paid model calls/i);
+    fireEvent.click(within(modal).getByRole("button", { name: /request revision and start a new run/i }));
+    const note = within(modal).getByLabelText(/what should change/i);
+    expect(note).toHaveAttribute("aria-invalid", "true");
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toBe(false);
+    fireEvent.change(note, { target: { value: "Tighten the demonstration and cut the drag in the middle." } });
+    expect(note).not.toHaveAttribute("aria-invalid");
   });
 
   it("hides review controls once the approval is decided", async () => {
     vi.stubGlobal("fetch", mockFetch({ script: scriptDetail("APPROVED") }));
     render(<VideoScriptWorkspace />);
     await waitFor(() => expect(screen.getByRole("heading", { name: SCRIPT.source.workingConcept })).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /approve exact version/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^approve /i })).not.toBeInTheDocument();
   });
 
   it("shows the successor run's QA after a revision, never the predecessor's (defect #4)", async () => {
@@ -165,15 +174,15 @@ describe("VideoScriptWorkspace", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<VideoScriptWorkspace />);
     const decisionCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("/approvals/ap1"));
-    fireEvent.click(await screen.findByRole("button", { name: /^reject/i }));
-    expect(screen.getByRole("alertdialog", { name: /reject and close this script/i })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: /^reject…/i }));
+    expect(screen.getByRole("alertdialog", { name: /reject script v1\?/i })).toHaveTextContent(/can no longer be approved or revised/i);
     expect(decisionCalls()).toHaveLength(0);
 
-    fireEvent.click(screen.getByRole("button", { name: /keep reviewing/i }));
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^cancel$/i }));
     expect(decisionCalls()).toHaveLength(0);
 
-    fireEvent.click(screen.getByRole("button", { name: /^reject/i }));
-    fireEvent.click(screen.getByRole("button", { name: /reject and close/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^reject…/i }));
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^reject script/i }));
     await waitFor(() => expect(decisionCalls()).toHaveLength(1));
     expect(JSON.parse((decisionCalls()[0][1] as RequestInit).body as string)).toEqual({ decision: "REJECT" });
   });
@@ -193,7 +202,7 @@ describe("VideoScriptWorkspace", () => {
       ],
     };
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      if (init?.method === "POST") return { ok: true, json: async () => ({ operationResult: {} }) } as Response;
+      if (init?.method === "POST") return { ok: true, json: async () => decisionAck(url, init) } as Response;
       if (url === "/api/workflows") return { ok: true, json: async () => ({ workflowEngine: list }) } as Response;
       if (url.includes(BRIEF_WORKFLOW_ID)) return { ok: true, json: async () => briefDetail() } as Response;
       if (url.includes(SCRIPT_B)) return { ok: true, json: async () => detailB } as Response;
@@ -202,29 +211,44 @@ describe("VideoScriptWorkspace", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<VideoScriptWorkspace />);
 
-    await screen.findByRole("button", { name: /approve exact version/i });
-    fireEvent.change(screen.getByLabelText(/revision note/i), { target: { value: "Notes written about run A." } });
-    fireEvent.click(screen.getByRole("button", { name: /^reject/i }));
-    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: "Reason written about run A." } });
+    await screen.findByRole("button", { name: /^approve script/i });
+    fireEvent.click(screen.getByRole("button", { name: /^reject…/i }));
+    fireEvent.change(within(screen.getByRole("alertdialog")).getByLabelText(/reason/i), { target: { value: "Reason written about run A." } });
 
     const runs = within(screen.getByRole("navigation", { name: /video script runs/i })).getAllByRole("button");
     fireEvent.click(runs[1]);
     // While B loads, nothing from A can be acted on.
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /approve exact version/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^approve /i })).not.toBeInTheDocument();
 
     await waitFor(() => expect(runs[1]).toHaveAttribute("aria-pressed", "true"));
-    await screen.findByRole("button", { name: /approve exact version/i });
+    await screen.findByRole("button", { name: /^approve script/i });
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/revision note/i)).toHaveValue("");
 
-    fireEvent.click(screen.getByRole("button", { name: /^reject/i }));
-    expect(screen.getByLabelText(/reason/i)).toHaveValue("");
-    fireEvent.click(screen.getByRole("button", { name: /reject and close/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^reject…/i }));
+    const modal = screen.getByRole("alertdialog");
+    expect(within(modal).getByLabelText(/reason/i)).toHaveValue("");
+    fireEvent.click(within(modal).getByRole("button", { name: /^reject script/i }));
     await waitFor(() => expect(fetchMock.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toHaveLength(1));
     const [url, init] = fetchMock.mock.calls.find(([, call]) => (call as RequestInit | undefined)?.method === "POST")!;
     expect(url).toBe(`/api/workflows/${SCRIPT_B}/approvals/apB`);
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({ decision: "REJECT" });
+  });
+
+  it("after a refused decision, reloading into an already-decided state removes the review and focuses the reconciled status", async () => {
+    vi.stubGlobal("fetch", mockFetch({ post: { ok: false, body: { error: { code: "INVALID_TRANSITION", message: "The requested workflow transition is not legal from its current state." } } } }));
+    render(<VideoScriptWorkspace />);
+    fireEvent.click(await screen.findByRole("button", { name: /^approve script/i }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^approve script/i }));
+    // This mock carries no HTTP status, so the outcome is unconfirmed: never success, and the gate locks.
+    expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent(/couldn't confirm whether this decision was recorded/i);
+    expect(screen.queryByText(/APPROVE recorded/i)).not.toBeInTheDocument();
+
+    vi.stubGlobal("fetch", mockFetch({ script: scriptDetail("APPROVED") }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /reload current state/i }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^approve /i })).not.toBeInTheDocument());
+    const status = await screen.findByText(/this view now shows the workflow's current state/i);
+    await waitFor(() => expect(status).toHaveFocus());
   });
 
   it("keeps a failed refresh visible and recoverable instead of swallowing it", async () => {

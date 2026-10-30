@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import {
   announceWorkflowsChanged,
   currentRunOf,
+  decisionFailureOf,
   decisionTargetOf,
   fetchWorkflowDetail,
   fetchWorkflowList,
@@ -14,6 +15,7 @@ import {
   submitApprovalDecision,
   WORKFLOW_POLL_INTERVAL_MS,
   type ApprovalDecision,
+  type DecisionOutcome,
   type DecisionTarget,
   type WorkflowDetailBase,
   type WorkflowList,
@@ -31,7 +33,11 @@ const messageOf = (cause: unknown, fallback: string) => cause instanceof Error ?
  * - Starts and decisions announce the change so sibling workspaces re-read the
  *   list and can see newly approved upstream artifacts.
  * - Decisions are bound to an exact workflow/run/approval target and are only
- *   sent while that target is still the selected, committed one.
+ *   sent while that target is still the selected, committed one, at most once
+ *   at a time per target.
+ * - After a recorded or unconfirmed decision the target is locked until a
+ *   detail load that started afterwards succeeds, so a stale pending view can
+ *   never be decided on again.
  */
 export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initial, workflowType, label }: {
   initial?: WorkflowList;
@@ -64,6 +70,13 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
   // and an older failure cannot overwrite a newer recovery.
   const feedbackSeq = useRef(0);
   const inFlight = useRef(0);
+  // Decision targets currently being sent.
+  const deciding = useRef(new Set<string>());
+  // Locked target key → the load sequence at lock time; only a later load may clear it.
+  const lockSeq = useRef(new Map<string, number>());
+  const [lockedKeys, setLockedKeys] = useState<string[]>([]);
+  // Bumped on each decision outcome notice so the workspace can move focus to it.
+  const [noticeFocusKey, setNoticeFocusKey] = useState(0);
 
   useEffect(() => {
     mounted.current = true;
@@ -72,34 +85,49 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
 
   const workflows = useMemo(() => engine?.workflows.filter((item) => item.workflow_type === workflowType) ?? [], [engine, workflowType]);
 
-  const load = useCallback(async (workflowId?: string, detailOnly = false) => {
+  /** Resolves true only when this call committed a detail that is still the newest. */
+  const load = useCallback(async (workflowId?: string, detailOnly = false): Promise<boolean> => {
     const seq = ++requestSeq.current;
     let selected = workflowId ?? selectedId.current;
     if (!detailOnly) {
       const listTicket = ++listSeq.current;
       const list = await fetchWorkflowList(`Could not refresh ${label} workflows.`);
-      if (!mounted.current || seq !== requestSeq.current) return;
+      if (!mounted.current || seq !== requestSeq.current) return false;
       if (listTicket === listSeq.current) setEngine(list.workflowEngine);
       selected ??= list.workflowEngine.workflows.find((item) => item.workflow_type === workflowType)?.id;
     }
-    if (!selected) return;
+    if (!selected) return false;
     const next = await fetchWorkflowDetail<TDetail>(selected, `Could not load the ${label} workflow.`);
-    if (!mounted.current || seq !== requestSeq.current) return;
+    if (!mounted.current || seq !== requestSeq.current) return false;
     selectedId.current = selected;
     detailRef.current = next;
     setDetail(next);
     setSwitchingTo(null);
+    // This load started after any lock on this workflow it is newer than: the view now shows the server's state.
+    const reconciled = [...lockSeq.current].filter(([key, lockedAt]) => key.startsWith(`${selected}:`) && seq > lockedAt).map(([key]) => key);
+    if (reconciled.length > 0) {
+      for (const key of reconciled) lockSeq.current.delete(key);
+      setLockedKeys([...lockSeq.current.keys()]);
+    }
+    return true;
   }, [label, workflowType]);
 
-  /** Never throws: a failed refresh stays visible until a later one succeeds. */
+  /**
+   * Never throws: a failed refresh stays visible until a later one succeeds.
+   * Resolves true only when this refresh committed the newest detail. A newer
+   * detail load (another refresh, reload, or poll) supersedes it; a sibling's
+   * list-only refresh does not, because it never replaces the detail.
+   */
   const refresh = useCallback(async (workflowId?: string, detailOnly = false) => {
     const ticket = ++feedbackSeq.current;
     inFlight.current += 1;
     try {
-      await load(workflowId, detailOnly);
+      const committed = await load(workflowId, detailOnly);
       if (mounted.current && ticket === feedbackSeq.current) setRefreshError(null);
+      return committed;
     } catch (cause) {
       if (mounted.current && ticket === feedbackSeq.current) setRefreshError(messageOf(cause, `Could not refresh ${label} workflows.`));
+      return false;
     } finally {
       inFlight.current -= 1;
     }
@@ -180,28 +208,45 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
     return true;
   }, [label, refresh, source, workflowType]);
 
+  const lock = useCallback((key: string) => {
+    lockSeq.current.set(key, requestSeq.current);
+    setLockedKeys([...lockSeq.current.keys()]);
+  }, []);
+
   /**
    * Sends a decision only to the exact gate it was made against. The target is
    * re-verified against the currently selected, committed detail at send time;
-   * if anything changed, nothing is sent.
+   * if anything changed, nothing is sent. Failures are returned to the caller
+   * (the review dialog shows them next to the control) and never reported as
+   * success.
    */
-  const decide = useCallback(async (target: DecisionTarget, decision: ApprovalDecision, note: string | undefined, successNotice: string) => {
+  const decide = useCallback(async (target: DecisionTarget, decision: ApprovalDecision, note: string | undefined, successNotice: string): Promise<DecisionOutcome> => {
     const current = decisionTargetOf(detailRef.current);
     if (!current || current.key !== target.key || selectedId.current !== target.workflowId) {
-      setError("Nothing was recorded: the selected run changed before this decision was sent. Review the run now shown and decide again.");
-      return false;
+      const message = "Nothing was recorded: the selected run changed before this decision was sent. Review the run now shown and decide again.";
+      setError(message);
+      return { ok: false, reason: "target-changed", message };
     }
-    if (decision === "REQUEST_REVISION" && !note?.trim()) return false;
+    if (deciding.current.has(target.key)) return { ok: false, reason: "in-flight", message: "A decision on this version is already being sent." };
+    if (lockSeq.current.has(target.key)) return { ok: false, reason: "unconfirmed", message: "A decision on this version was already sent. Reload to see its current state before deciding again." };
+    if (decision === "REQUEST_REVISION" && !note?.trim()) return { ok: false, reason: "validation", message: "Nothing was recorded: a revision needs a note saying what should change." };
+    deciding.current.add(target.key);
     setBusy(true); setError(null); setNotice(null);
     try {
       await submitApprovalDecision(target.workflowId, target.approvalId, decision, note?.trim() || undefined, "Could not record the review decision.");
     } catch (cause) {
-      if (mounted.current) { setError(messageOf(cause, "Could not record the review decision.")); setBusy(false); }
-      return false;
+      const failure = decisionFailureOf(cause);
+      if (failure.reason === "unconfirmed" || failure.reason === "stale") lock(target.key);
+      deciding.current.delete(target.key);
+      if (mounted.current) setBusy(false);
+      return { ok: false, ...failure };
     }
-    // Recorded. As with starts, a failed follow-up load is only a refresh failure.
+    deciding.current.delete(target.key);
+    // Recorded. Until a later load shows the new state, this target cannot be
+    // decided again. As with starts, a failed follow-up load is only a refresh failure.
+    lock(target.key);
     announceWorkflowsChanged(source);
-    if (!mounted.current) return true;
+    if (!mounted.current) return { ok: true };
     if (selectedId.current === target.workflowId) {
       await refresh(target.workflowId);
       if (mounted.current) setNotice(successNotice);
@@ -211,9 +256,26 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
       await refreshList();
       if (mounted.current) setNotice(`${decision.replaceAll("_", " ")} recorded on the previously selected workflow.`);
     }
-    if (mounted.current) setBusy(false);
-    return true;
-  }, [refresh, refreshList, source]);
+    if (mounted.current) { setNoticeFocusKey((value) => value + 1); setBusy(false); }
+    return { ok: true };
+  }, [lock, refresh, refreshList, source]);
+
+  /**
+   * Re-reads the selected workflow to reconcile a locked or stale decision. The
+   * reconciled state may remove the review screen that asked for it, so a
+   * successful reload announces itself in the workspace notice and takes focus
+   * there; a failed one stays visible as a refresh error.
+   */
+  const reload = useCallback(() => {
+    void (async () => {
+      setNotice(null);
+      if (!await refresh(selectedId.current) || !mounted.current) return;
+      setNotice("Reloaded. This view now shows the workflow's current state.");
+      setNoticeFocusKey((value) => value + 1);
+    })();
+  }, [refresh]);
+
+  const decisionTarget = decisionTargetOf(detail);
 
   return {
     engine,
@@ -221,7 +283,10 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
     detail,
     currentRun: currentRunOf(detail),
     pendingApproval: pendingApprovalOf(detail),
-    decisionTarget: decisionTargetOf(detail),
+    decisionTarget,
+    /** The shown target was decided (or its outcome is unconfirmed) and has not been reconciled. */
+    decisionLocked: Boolean(decisionTarget && lockedKeys.includes(decisionTarget.key)),
+    noticeFocusKey,
     activeId,
     polling,
     loading,
@@ -232,7 +297,8 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
     notice,
     setError,
     setNotice,
-    refresh: () => refresh(),
+    refresh: async () => { await refresh(); },
+    reload,
     select,
     start,
     decide,

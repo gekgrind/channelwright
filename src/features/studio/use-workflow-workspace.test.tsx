@@ -2,7 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useWorkflowWorkspace } from "./use-workflow-workspace";
-import { announceWorkflowsChanged, WORKFLOW_POLL_INTERVAL_MS, type WorkflowDetailBase } from "./workflow-api";
+import { announceWorkflowsChanged, WORKFLOW_POLL_INTERVAL_MS, type DecisionOutcome, type WorkflowDetailBase } from "./workflow-api";
+import { decisionAck, isDecisionRequest } from "./decision-ack.test-helper";
 
 const WORKFLOW_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
 const RUN_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1";
@@ -125,8 +126,8 @@ describe("useWorkflowWorkspace", () => {
     await waitFor(() => expect(sibling.result.current.detail).not.toBeNull());
     expect(observer.result.current.engine?.workflows).toHaveLength(0);
 
-    fetcher.mockImplementation(async (url: string) => {
-      if (String(url).includes("/approvals/")) return json({ operationResult: {} });
+    fetcher.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (isDecisionRequest(url)) return json(decisionAck(url, init));
       return url === "/api/workflows" ? json(list("COMPLETED")) : json({ ...detail("WAITING_FOR_APPROVAL"), approvals: [{ id: "ap1", workflow_run_id: RUN_ID, status: "PENDING" }] });
     });
     await act(async () => { await sibling.result.current.refresh(); });
@@ -186,7 +187,7 @@ describe("useWorkflowWorkspace decision identity", () => {
 
   function serve(onDecision?: () => Promise<Response>) {
     const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
-      if (init?.method === "POST") return onDecision ? onDecision() : json({ operationResult: {} });
+      if (init?.method === "POST") return onDecision ? onDecision() : json(decisionAck(url, init));
       if (url === "/api/workflows") return json({ workflowEngine: twoPending });
       return json(pending(url.includes(B) ? B : A));
     });
@@ -226,9 +227,9 @@ describe("useWorkflowWorkspace decision identity", () => {
     act(() => { result.current.select(B); });
     await waitFor(() => expect(result.current.decisionTarget?.workflowId).toBe(B));
 
-    let sent = true;
+    let sent: DecisionOutcome = { ok: true };
     await act(async () => { sent = await result.current.decide(targetA, "REJECT", "Meant for A", "Rejected."); });
-    expect(sent).toBe(false);
+    expect(sent).toMatchObject({ ok: false, reason: "target-changed" });
     expect(decisionPosts(fetcher)).toHaveLength(0);
     expect(result.current.error).toMatch(/nothing was recorded/i);
   });
@@ -240,12 +241,12 @@ describe("useWorkflowWorkspace decision identity", () => {
     await waitFor(() => expect(result.current.decisionTarget?.workflowId).toBe(A));
     const targetA = result.current.decisionTarget!;
 
-    let decision: Promise<boolean> = Promise.resolve(false);
+    let decision: Promise<DecisionOutcome> = Promise.resolve({ ok: true });
     act(() => { decision = result.current.decide(targetA, "APPROVE", undefined, "Approved."); });
     act(() => { result.current.select(B); });
     await waitFor(() => expect(result.current.decisionTarget?.workflowId).toBe(B));
 
-    await act(async () => { finishDecision(json({ operationResult: {} })); await decision; });
+    await act(async () => { finishDecision(json(decisionAck(`/api/workflows/${A}/approvals/approval-a`, { body: JSON.stringify({ decision: "APPROVE" }) }))); await decision; });
     const posts = decisionPosts(fetcher);
     expect(posts).toHaveLength(1);
     expect(String(posts[0][0])).toBe(`/api/workflows/${A}/approvals/approval-a`);
@@ -312,7 +313,7 @@ describe("useWorkflowWorkspace start and decision follow-up failures", () => {
     const pendingDetail = { workflow: { id: WORKFLOW_ID, status: "WAITING_FOR_APPROVAL", created_at: "2026-09-01T10:00:00.000Z", current_run_id: RUN_ID }, runs: [{ id: RUN_ID, status: "WAITING_FOR_APPROVAL", output_payload: null, error_code: null }], approvals: [{ id: "approval-1", workflow_run_id: RUN_ID, status: "PENDING" }] };
     let detailHealthy = true;
     const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
-      if (init?.method === "POST") { detailHealthy = false; return json({ operationResult: {} }); }
+      if (init?.method === "POST") { detailHealthy = false; return json(decisionAck(url, init)); }
       if (url === "/api/workflows") return json(list("WAITING_FOR_APPROVAL"));
       return detailHealthy ? json(pendingDetail) : json({ error: { code: "DATABASE_ERROR", message: "The workflow store is unavailable." } }, false);
     });
@@ -320,9 +321,9 @@ describe("useWorkflowWorkspace start and decision follow-up failures", () => {
     const { result } = renderHook(() => useWorkflowWorkspace<WorkflowDetailBase>({ workflowType: "CHANNEL_VIDEO_SCRIPT", label: "video script" }));
     await waitFor(() => expect(result.current.decisionTarget?.workflowId).toBe(WORKFLOW_ID));
 
-    let ok = false;
-    await act(async () => { ok = await result.current.decide(result.current.decisionTarget!, "APPROVE", undefined, "Approved."); });
-    expect(ok).toBe(true);
+    let outcome: DecisionOutcome = { ok: false, reason: "unconfirmed", message: "" };
+    await act(async () => { outcome = await result.current.decide(result.current.decisionTarget!, "APPROVE", undefined, "Approved."); });
+    expect(outcome.ok).toBe(true);
     expect(posts(fetcher)).toHaveLength(1);
     expect(result.current.error).toBeNull();
     expect(result.current.notice).toBe("Approved.");
