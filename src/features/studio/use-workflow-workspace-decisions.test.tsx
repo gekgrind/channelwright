@@ -109,6 +109,32 @@ describe("useWorkflowWorkspace decision outcomes", () => {
     expect(result.current.decisionLocked).toBe(true);
   });
 
+  it("a superseded reload never announces a reconciled state, even when its own response succeeds", async () => {
+    const fetcher = serve(() => response(409, { error: { code: "INVALID_TRANSITION", message: "The requested workflow transition is not legal from its current state." } }));
+    const { result } = await mountPending();
+    await act(async () => { await result.current.decide(result.current.decisionTarget!, "APPROVE", undefined, "Approved."); });
+
+    // First reload's list request is held; the second reload fails.
+    let releaseFirst: (value: Response) => void = () => undefined;
+    let call = 0;
+    fetcher.mockImplementation(async () => {
+      call += 1;
+      if (call === 1) return new Promise<Response>((resolve) => { releaseFirst = resolve; });
+      return response(500, { error: { code: "DATABASE_ERROR", message: "The workflow store is unavailable." } });
+    });
+    act(() => { result.current.reload(); });
+    await act(async () => { result.current.reload(); });
+    await waitFor(() => expect(result.current.refreshError).toMatch(/workflow store is unavailable/i));
+
+    fetcher.mockImplementation(async (url: string) => url === "/api/workflows" ? response(200, list("WAITING_FOR_APPROVAL")) : response(200, pendingDetail));
+    await act(async () => { releaseFirst(response(200, list("WAITING_FOR_APPROVAL"))); });
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.notice).toBeNull();
+    expect(result.current.noticeFocusKey).toBe(0);
+    expect(result.current.refreshError).toMatch(/workflow store is unavailable/i);
+    expect(result.current.decisionLocked).toBe(true);
+  });
+
   it.each<[string, () => Response]>([
     ["a network failure", () => { throw new TypeError("Failed to fetch"); }],
     ["a 5xx", () => response(500, { error: { code: "DATABASE_ERROR", message: "The workflow operation could not be completed." } })],

@@ -85,19 +85,20 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
 
   const workflows = useMemo(() => engine?.workflows.filter((item) => item.workflow_type === workflowType) ?? [], [engine, workflowType]);
 
-  const load = useCallback(async (workflowId?: string, detailOnly = false) => {
+  /** Resolves true only when this call committed a detail that is still the newest. */
+  const load = useCallback(async (workflowId?: string, detailOnly = false): Promise<boolean> => {
     const seq = ++requestSeq.current;
     let selected = workflowId ?? selectedId.current;
     if (!detailOnly) {
       const listTicket = ++listSeq.current;
       const list = await fetchWorkflowList(`Could not refresh ${label} workflows.`);
-      if (!mounted.current || seq !== requestSeq.current) return;
+      if (!mounted.current || seq !== requestSeq.current) return false;
       if (listTicket === listSeq.current) setEngine(list.workflowEngine);
       selected ??= list.workflowEngine.workflows.find((item) => item.workflow_type === workflowType)?.id;
     }
-    if (!selected) return;
+    if (!selected) return false;
     const next = await fetchWorkflowDetail<TDetail>(selected, `Could not load the ${label} workflow.`);
-    if (!mounted.current || seq !== requestSeq.current) return;
+    if (!mounted.current || seq !== requestSeq.current) return false;
     selectedId.current = selected;
     detailRef.current = next;
     setDetail(next);
@@ -108,16 +109,21 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
       for (const key of reconciled) lockSeq.current.delete(key);
       setLockedKeys([...lockSeq.current.keys()]);
     }
+    return true;
   }, [label, workflowType]);
 
-  /** Never throws: a failed refresh stays visible until a later one succeeds. Resolves true when it loaded. */
+  /**
+   * Never throws: a failed refresh stays visible until a later one succeeds.
+   * Resolves true only when this refresh committed the current detail and no
+   * newer refresh has started since; a superseded success is not a success.
+   */
   const refresh = useCallback(async (workflowId?: string, detailOnly = false) => {
     const ticket = ++feedbackSeq.current;
     inFlight.current += 1;
     try {
-      await load(workflowId, detailOnly);
+      const committed = await load(workflowId, detailOnly);
       if (mounted.current && ticket === feedbackSeq.current) setRefreshError(null);
-      return true;
+      return committed && ticket === feedbackSeq.current;
     } catch (cause) {
       if (mounted.current && ticket === feedbackSeq.current) setRefreshError(messageOf(cause, `Could not refresh ${label} workflows.`));
       return false;
