@@ -110,15 +110,17 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
     }
   }, [label, workflowType]);
 
-  /** Never throws: a failed refresh stays visible until a later one succeeds. */
+  /** Never throws: a failed refresh stays visible until a later one succeeds. Resolves true when it loaded. */
   const refresh = useCallback(async (workflowId?: string, detailOnly = false) => {
     const ticket = ++feedbackSeq.current;
     inFlight.current += 1;
     try {
       await load(workflowId, detailOnly);
       if (mounted.current && ticket === feedbackSeq.current) setRefreshError(null);
+      return true;
     } catch (cause) {
       if (mounted.current && ticket === feedbackSeq.current) setRefreshError(messageOf(cause, `Could not refresh ${label} workflows.`));
+      return false;
     } finally {
       inFlight.current -= 1;
     }
@@ -251,6 +253,21 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
     return { ok: true };
   }, [lock, refresh, refreshList, source]);
 
+  /**
+   * Re-reads the selected workflow to reconcile a locked or stale decision. The
+   * reconciled state may remove the review screen that asked for it, so a
+   * successful reload announces itself in the workspace notice and takes focus
+   * there; a failed one stays visible as a refresh error.
+   */
+  const reload = useCallback(() => {
+    void (async () => {
+      setNotice(null);
+      if (!await refresh(selectedId.current) || !mounted.current) return;
+      setNotice("Reloaded. This view now shows the workflow's current state.");
+      setNoticeFocusKey((value) => value + 1);
+    })();
+  }, [refresh]);
+
   const decisionTarget = decisionTargetOf(detail);
 
   return {
@@ -273,9 +290,8 @@ export function useWorkflowWorkspace<TDetail extends WorkflowDetailBase>({ initi
     notice,
     setError,
     setNotice,
-    refresh: () => refresh(),
-    /** Re-reads the selected workflow, e.g. to reconcile a locked or stale decision. */
-    reload: () => { void refresh(selectedId.current); },
+    refresh: async () => { await refresh(); },
+    reload,
     select,
     start,
     decide,

@@ -92,6 +92,21 @@ describe("useWorkflowWorkspace decision outcomes", () => {
     await waitFor(() => expect(result.current.detail?.workflow.status).toBe("COMPLETED"));
     expect(result.current.decisionTarget).toBeNull();
     expect(result.current.decisionLocked).toBe(false);
+    // The review screen is gone, so the reconciled state is announced and owns focus.
+    await waitFor(() => expect(result.current.notice).toMatch(/current state/i));
+    expect(result.current.noticeFocusKey).toBe(1);
+  });
+
+  it("a reload that fails keeps the refresh failure visible and announces no reconciled state", async () => {
+    const fetcher = serve(() => response(409, { error: { code: "INVALID_TRANSITION", message: "The requested workflow transition is not legal from its current state." } }));
+    const { result } = await mountPending();
+    await act(async () => { await result.current.decide(result.current.decisionTarget!, "APPROVE", undefined, "Approved."); });
+    fetcher.mockImplementation(async () => response(500, { error: { code: "DATABASE_ERROR", message: "The workflow store is unavailable." } }));
+    await act(async () => { result.current.reload(); });
+    await waitFor(() => expect(result.current.refreshError).toMatch(/workflow store is unavailable/i));
+    expect(result.current.notice).toBeNull();
+    expect(result.current.noticeFocusKey).toBe(0);
+    expect(result.current.decisionLocked).toBe(true);
   });
 
   it.each<[string, () => Response]>([

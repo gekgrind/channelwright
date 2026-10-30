@@ -1,6 +1,6 @@
 # Phase B · Engineering Sprint E1: shared ReviewScreen foundation
 
-Status: plan (pre-implementation). Base: `origin/main` @ `a4ceb88`. Branch: `feat/phase-b-e1-review-screen`.
+Status: implemented and reviewed (plan, reconciliation and review log below). Base: `origin/main` @ `a4ceb88`. Branch: `feat/phase-b-e1-review-screen`.
 
 Business-loop position: every stage's **human approval gate** (Validation → … → Learning → Next Decision). The gate is
 where AI-written work becomes a durable, human-owned decision, so it must never misreport what was recorded.
@@ -20,7 +20,9 @@ where AI-written work becomes a durable, human-owned decision, so it must never 
 Backend contract (unchanged by this sprint, verified in `202609080001_video_intelligence.sql:870-926`):
 `decide_workflow_approval` → APPROVE completes the step/run; REJECT cancels approval, run and workflow;
 REQUEST_REVISION (note 1–2000 chars, server-enforced) blocks the run and **queues a successor run that re-runs every
-step of the workflow**, i.e. another paid AI generation run, for all 13 workflow types. A non-pending approval raises
+step of the workflow** for every type the RPC handles. For every kind this sprint mounts or registers (the 8 workspaces plus
+Diagnosis, Decision and Experiment) that run makes model calls, i.e. another paid AI generation run; deterministic legacy concept
+validation is not in scope. A non-pending approval raises
 `INVALID_TRANSITION` → HTTP 409; a missing/foreign approval → 404 `NOT_FOUND`; unauthenticated → 401; mock mode → 501.
 
 ## 2. Scope (approved slice only)
@@ -124,6 +126,7 @@ testing is claimed.
 | 1 | | P2: Close / Reload after a blocked outcome dropped focus to `<body>` (the invoker is disabled while locked). | Close focuses the locked-state reload control; Reload focuses the review heading. |
 | 1 | | P2: the 501 "unavailable" branch was unreachable behind the generic 5xx rule. | `501 PRODUCTION_REQUIRED` (refused before mutation) is classified first; other 5xx stay unconfirmed. |
 | 2 | REJECT | P1, focus and 501 confirmed resolved. New P2: Research was flagged as ignoring the note, but `openai-research-model.ts` sends the whole request input, which carries `humanRevisionNote`. | Research flag corrected; the test now pins the traced table (only Content intelligence and Diagnosis ignore the note) instead of deriving expectations from the flags. |
+| 3 | REJECT | Research flag confirmed resolved and the pinned table matches all 11 kinds. New P2: after Reload, a reconciled state can remove the review screen, dropping focus to `<body>`. P3: stale doc status and "all 13 workflow types" wording. | `reload` now announces "Reloaded. This view now shows the workflow's current state." in the workspace notice and focuses it on success (a failed reload stays a visible refresh error and keeps the lock). Doc status and scope wording corrected. |
 
 Browser check (Chromium via Playwright, fixture harness, mock mode): at 1440 / 1024 / 390 / 375 for Performance, Diagnosis,
 Decision and Experiment — exactly one visible Approve, all three entry controls visible and ≥48px, no horizontal overflow,

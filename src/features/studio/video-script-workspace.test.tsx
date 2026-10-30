@@ -235,6 +235,22 @@ describe("VideoScriptWorkspace", () => {
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({ decision: "REJECT" });
   });
 
+  it("after a refused decision, reloading into an already-decided state removes the review and focuses the reconciled status", async () => {
+    vi.stubGlobal("fetch", mockFetch({ post: { ok: false, body: { error: { code: "INVALID_TRANSITION", message: "The requested workflow transition is not legal from its current state." } } } }));
+    render(<VideoScriptWorkspace />);
+    fireEvent.click(await screen.findByRole("button", { name: /^approve script/i }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^approve script/i }));
+    // This mock carries no HTTP status, so the outcome is unconfirmed: never success, and the gate locks.
+    expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent(/couldn't confirm whether this decision was recorded/i);
+    expect(screen.queryByText(/APPROVE recorded/i)).not.toBeInTheDocument();
+
+    vi.stubGlobal("fetch", mockFetch({ script: scriptDetail("APPROVED") }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /reload current state/i }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^approve /i })).not.toBeInTheDocument());
+    const status = await screen.findByText(/this view now shows the workflow's current state/i);
+    await waitFor(() => expect(status).toHaveFocus());
+  });
+
   it("keeps a failed refresh visible and recoverable instead of swallowing it", async () => {
     let healthy = true;
     const healthyFetch = mockFetch({});
