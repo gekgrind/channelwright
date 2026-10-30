@@ -209,8 +209,10 @@ describe("VideoBriefWorkspace", () => {
     const fetchMock = mockFetch({});
     vi.stubGlobal("fetch", fetchMock);
     render(<VideoBriefWorkspace />);
-    const approve = await screen.findByRole("button", { name: /approve/i });
-    fireEvent.click(approve);
+    fireEvent.click(await screen.findByRole("button", { name: /^approve /i }));
+    // Approval is confirmed in a dialog before anything is sent.
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toBe(false);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^approve /i }));
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/approvals/ap1"));
       expect(call).toBeDefined();
@@ -219,21 +221,28 @@ describe("VideoBriefWorkspace", () => {
   });
 
   it("requires a revision note before a revision can be requested", async () => {
-    vi.stubGlobal("fetch", mockFetch({}));
+    const fetchMock = mockFetch({});
+    vi.stubGlobal("fetch", fetchMock);
     render(<VideoBriefWorkspace />);
-    const revise = await screen.findByRole("button", { name: /request revision/i });
-    expect(revise).toBeDisabled();
-    fireEvent.change(screen.getByLabelText(/revision note/i), { target: { value: "Tighten the opening and evidence the maintenance claim." } });
-    expect(revise).toBeEnabled();
+    fireEvent.click(await screen.findByRole("button", { name: /^request revision/i }));
+    const modal = screen.getByRole("alertdialog");
+    expect(modal).toHaveTextContent(/starts another AI generation run that uses paid model calls/i);
+    fireEvent.click(within(modal).getByRole("button", { name: /request revision and start a new run/i }));
+    const note = within(modal).getByLabelText(/what should change/i);
+    expect(note).toHaveAttribute("aria-invalid", "true");
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toBe(false);
+    fireEvent.change(note, { target: { value: "Tighten the opening and evidence the maintenance claim." } });
+    expect(note).not.toHaveAttribute("aria-invalid");
   });
 
   it("sends the revision note with the decision", async () => {
     const fetchMock = mockFetch({});
     vi.stubGlobal("fetch", fetchMock);
     render(<VideoBriefWorkspace />);
-    await screen.findByRole("button", { name: /request revision/i });
-    fireEvent.change(screen.getByLabelText(/revision note/i), { target: { value: "Evidence the maintenance claim." } });
-    fireEvent.click(screen.getByRole("button", { name: /request revision/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^request revision/i }));
+    const modal = screen.getByRole("alertdialog");
+    fireEvent.change(within(modal).getByLabelText(/what should change/i), { target: { value: "Evidence the maintenance claim." } });
+    fireEvent.click(within(modal).getByRole("button", { name: /request revision and start a new run/i }));
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/approvals/ap1"));
       expect(JSON.parse((call?.[1] as RequestInit).body as string)).toMatchObject({ decision: "REQUEST_REVISION", note: "Evidence the maintenance claim." });
@@ -244,7 +253,7 @@ describe("VideoBriefWorkspace", () => {
     vi.stubGlobal("fetch", mockFetch({ brief: briefDetail("APPROVED") }));
     render(<VideoBriefWorkspace />);
     await waitFor(() => expect(screen.getByRole("heading", { name: BRIEF.source.workingConcept })).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /approve exact version/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^approve /i })).not.toBeInTheDocument();
   });
 
   it("shows a sanitized error when the workflow list fails", async () => {

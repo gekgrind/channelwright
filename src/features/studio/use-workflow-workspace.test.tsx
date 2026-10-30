@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useWorkflowWorkspace } from "./use-workflow-workspace";
-import { announceWorkflowsChanged, WORKFLOW_POLL_INTERVAL_MS, type WorkflowDetailBase } from "./workflow-api";
+import { announceWorkflowsChanged, WORKFLOW_POLL_INTERVAL_MS, type DecisionOutcome, type WorkflowDetailBase } from "./workflow-api";
 
 const WORKFLOW_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
 const RUN_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1";
@@ -226,9 +226,9 @@ describe("useWorkflowWorkspace decision identity", () => {
     act(() => { result.current.select(B); });
     await waitFor(() => expect(result.current.decisionTarget?.workflowId).toBe(B));
 
-    let sent = true;
+    let sent: DecisionOutcome = { ok: true };
     await act(async () => { sent = await result.current.decide(targetA, "REJECT", "Meant for A", "Rejected."); });
-    expect(sent).toBe(false);
+    expect(sent).toMatchObject({ ok: false, reason: "target-changed" });
     expect(decisionPosts(fetcher)).toHaveLength(0);
     expect(result.current.error).toMatch(/nothing was recorded/i);
   });
@@ -240,7 +240,7 @@ describe("useWorkflowWorkspace decision identity", () => {
     await waitFor(() => expect(result.current.decisionTarget?.workflowId).toBe(A));
     const targetA = result.current.decisionTarget!;
 
-    let decision: Promise<boolean> = Promise.resolve(false);
+    let decision: Promise<DecisionOutcome> = Promise.resolve({ ok: true });
     act(() => { decision = result.current.decide(targetA, "APPROVE", undefined, "Approved."); });
     act(() => { result.current.select(B); });
     await waitFor(() => expect(result.current.decisionTarget?.workflowId).toBe(B));
@@ -320,9 +320,9 @@ describe("useWorkflowWorkspace start and decision follow-up failures", () => {
     const { result } = renderHook(() => useWorkflowWorkspace<WorkflowDetailBase>({ workflowType: "CHANNEL_VIDEO_SCRIPT", label: "video script" }));
     await waitFor(() => expect(result.current.decisionTarget?.workflowId).toBe(WORKFLOW_ID));
 
-    let ok = false;
-    await act(async () => { ok = await result.current.decide(result.current.decisionTarget!, "APPROVE", undefined, "Approved."); });
-    expect(ok).toBe(true);
+    let outcome: DecisionOutcome = { ok: false, reason: "unconfirmed", message: "" };
+    await act(async () => { outcome = await result.current.decide(result.current.decisionTarget!, "APPROVE", undefined, "Approved."); });
+    expect(outcome.ok).toBe(true);
     expect(posts(fetcher)).toHaveLength(1);
     expect(result.current.error).toBeNull();
     expect(result.current.notice).toBe("Approved.");

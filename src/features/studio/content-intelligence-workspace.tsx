@@ -20,7 +20,8 @@ import type { ViewerValueGate } from "@/domain/viewer-value";
 import { runVersionOf, type WorkflowList } from "./workflow-api";
 import { useWorkflowWorkspace } from "./use-workflow-workspace";
 import { parseObjectPayload, textAt, UpstreamCard, useApprovedUpstream } from "./upstream-selection";
-import { DecisionBar, WorkspaceFeedback } from "./workflow-controls";
+import { WorkspaceFeedback } from "./workflow-controls";
+import { ReviewScreen } from "./review-screen";
 
 type WorkflowDetail = {
   workflow: { id: string; status: string; created_at: string; current_run_id: string };
@@ -73,7 +74,7 @@ export function ContentIntelligenceWorkspace({ initial }: { initial?: WorkflowLi
 
   return <div className="research-workspace content-workspace">
     <section className="research-hero"><div><p className="eyebrow">Approved strategy → content intelligence</p><h2>Decide what to make next, and why</h2><p>Channelwright expands approved pillars, retrieves fresh YouTube evidence, and gates every idea on identifiable viewer value before recommending anything.</p></div><span>VIEWER VALUE GATED</span></section>
-    <WorkspaceFeedback label="content intelligence" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
+    <WorkspaceFeedback label="content intelligence" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} noticeFocusKey={workspace.noticeFocusKey} />
     {selection.eligible.length > 0 ? <form className="research-request" onSubmit={start}>
       <UpstreamCard heading="Build a backlog from" kindLabel="Strategy" selection={selection} disabled={busy} />
       <div>
@@ -95,15 +96,16 @@ export function ContentIntelligenceWorkspace({ initial }: { initial?: WorkflowLi
       provenanceHash={run?.provenance_hash ?? null}
       upstreamStrategyRunId={upstream.success ? upstream.data.reference.strategyRunId : result.data.upstreamStrategy.strategyRunId}
     />}
-    {workspace.decisionTarget && <DecisionBar
+    {workspace.decisionTarget && <ReviewScreen
       target={workspace.decisionTarget}
+      kind="CHANNEL_CONTENT_INTELLIGENCE"
       busy={busy}
       title="Human content decision required"
       explanation="Approve this exact backlog, reject it, or create a separately budgeted successor run. Only approved backlogs can feed a video brief."
-      versionLabel={version ? `Backlog run v${version}` : undefined}
-      approveLabel="Approve exact backlog"
+      versionNumber={version}
       revisionPlaceholder="Required for a linked successor backlog run."
-      artifactLabel="backlog"
+      locked={workspace.decisionLocked}
+      onReload={workspace.reload}
       onDecide={(target, decision, note) => workspace.decide(target, decision, note, `${decision.replaceAll("_", " ")} recorded. Exact-version lineage remains immutable.`)}
     />}
     {!result.success && draft.success && <p className="success-banner">Backlog draft persisted; final QA and human review are still pending.</p>}

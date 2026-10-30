@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { VideoPackagingWorkspace } from "./video-packaging-workspace";
 import { videoPackagingResultFixture } from "@/server/workflows/video-packaging-fixtures.test-helper";
@@ -107,8 +107,10 @@ describe("VideoPackagingWorkspace", () => {
     const fetchMock = mockFetch({});
     vi.stubGlobal("fetch", fetchMock);
     render(<VideoPackagingWorkspace />);
-    const approve = await screen.findByRole("button", { name: /approve/i });
-    fireEvent.click(approve);
+    fireEvent.click(await screen.findByRole("button", { name: /^approve /i }));
+    // Approval is confirmed in a dialog before anything is sent.
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toBe(false);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^approve /i }));
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/approvals/ap1"));
       expect(call).toBeDefined();
@@ -120,7 +122,7 @@ describe("VideoPackagingWorkspace", () => {
     vi.stubGlobal("fetch", mockFetch({ packaging: packagingDetail("APPROVED") }));
     render(<VideoPackagingWorkspace />);
     await waitFor(() => expect(screen.getByRole("heading", { name: PACKAGING.source.workingConcept })).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /approve exact version/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^approve /i })).not.toBeInTheDocument();
   });
 
   it("surfaces a terminal run error code without exposing internals", async () => {

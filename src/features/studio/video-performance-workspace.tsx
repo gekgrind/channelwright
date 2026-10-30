@@ -13,7 +13,8 @@ import type { WorkflowList } from "./workflow-api";
 import { runVersionOf } from "./workflow-api";
 import { useWorkflowWorkspace } from "./use-workflow-workspace";
 import { describeVideoArtifact, parseObjectPayload, UpstreamCard, useApprovedUpstream } from "./upstream-selection";
-import { DecisionBar, RunChips, StageList, WorkspaceFeedback } from "./workflow-controls";
+import { RunChips, StageList, WorkspaceFeedback } from "./workflow-controls";
+import { ReviewScreen } from "./review-screen";
 
 type WorkflowDetail = {
   workflow: { id: string; status: string; created_at: string; current_run_id: string };
@@ -151,7 +152,7 @@ export function VideoPerformanceWorkspace({ initial }: { initial?: WorkflowList 
         </button>
       </header>
 
-      <WorkspaceFeedback label="video performance" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} />
+      <WorkspaceFeedback label="video performance" loading={workspace.loading || workspace.switching} busy={busy} error={workspace.error} refreshError={workspace.refreshError} notice={workspace.notice} polling={workspace.polling} onRetry={() => void workspace.refresh()} noticeFocusKey={workspace.noticeFocusKey} />
 
       {selection.eligible.length === 0 && !workspace.loading && (
         <p className="muted">Approve a video release first. Performance can only be measured against an approved release.</p>
@@ -240,15 +241,16 @@ export function VideoPerformanceWorkspace({ initial }: { initial?: WorkflowList 
       {record && <PerformanceDocument record={record} qa={finalQa} />}
 
       {record && decisionTarget && (
-        <DecisionBar
+        <ReviewScreen
           target={decisionTarget}
+          kind="CHANNEL_VIDEO_PERFORMANCE"
           busy={busy}
           title="Review this performance record"
           explanation="Approving records the immutable performance learning record. Any strategy change it recommends is for you to act on later; approval changes nothing about the published video."
-          versionLabel={version ? `Performance record v${version}` : undefined}
-          approveLabel="Approve exact version"
+          versionNumber={version}
           revisionPlaceholder="What should the revised interpretation change?"
-          artifactLabel="performance record"
+          locked={workspace.decisionLocked}
+          onReload={workspace.reload}
           onDecide={(target, decision, note) => workspace.decide(target, decision, note, `${decision.replaceAll("_", " ")} recorded. The original performance record, the operator snapshot, and their lineage are preserved.`)}
         />
       )}
