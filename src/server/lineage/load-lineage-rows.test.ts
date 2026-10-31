@@ -99,17 +99,18 @@ describe("loadLineageRows", () => {
 describe("lineage module boundaries", () => {
   const directory = "src/server/lineage";
   const sources = readdirSync(directory).filter((file) => file.endsWith(".ts") && !file.includes(".test"));
+  // Only the two read loaders touch Supabase, and neither deletes.
+  const LOADERS = new Set(["load-lineage-rows.ts", "load-stage-outputs.ts"]);
 
   it.each(sources)("%s never uses the service role or writes", (file) => {
     const source = readFileSync(path.join(directory, file), "utf8");
     expect(source).not.toMatch(/supabase-admin|createSupabaseAdminClient|SERVICE_ROLE/);
     expect(source).not.toMatch(/\.(insert|update|upsert|rpc)\(/);
-    // Only the loader touches Supabase at all, and it never deletes.
-    if (file !== "load-lineage-rows.ts") expect(source).not.toMatch(/@\/server\/supabase/);
+    if (!LOADERS.has(file)) expect(source).not.toMatch(/@\/server\/supabase/);
     else expect(source).not.toMatch(/\.delete\(/);
   });
 
-  it("keeps the loader server-only", () => {
-    expect(readFileSync(path.join(directory, "load-lineage-rows.ts"), "utf8")).toMatch(/^import "server-only";/);
+  it.each([...LOADERS, "live-command-center.ts"])("keeps %s server-only", (file) => {
+    expect(readFileSync(path.join(directory, file), "utf8")).toMatch(/^import "server-only";/);
   });
 });

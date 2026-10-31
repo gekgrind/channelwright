@@ -11,25 +11,50 @@ import "./command-center.css";
 
 const CHANNEL_DESTINATIONS = ["Strategy", "Content plan", "Videos", "Learning"];
 
-export function AppShell({ channelLabel, channelDetail, pendingCount, banner, children }: {
+export interface ShellChannel {
+  label: string;
+  /** Disambiguates channels that share a label, e.g. "Researched Oct 12". */
+  detail: string;
+  href: string;
+  current: boolean;
+}
+
+export function AppShell({ channelLabel, channelDetail, pendingCount, banner, children, commandCenterHref = "/studio/preview", channels }: {
   channelLabel: string;
   channelDetail: string;
   /** Pending gates across all channels; null when unknown. */
   pendingCount: number | null;
   banner?: ReactNode;
   children: ReactNode;
+  /** Where "Command Center" leads; the fixture preview by default. */
+  commandCenterHref?: string;
+  /** When given, the channel block lists every channel as a link instead of one static label. */
+  channels?: ShellChannel[];
 }) {
   return (
     <div className="cw-app">
       <nav className="cw-side" aria-label="Studio">
         <p className="cw-word"><b>CHANNELWRIGHT</b><span className="cw-mono">Studio</span></p>
-        <div className="cw-switch">
-          <span className="cw-mono">Channel</span>
-          <strong>{channelLabel}</strong>
-          <span className="cw-mono">{channelDetail}</span>
-        </div>
+        {channels ? (
+          <div className="cw-switch">
+            <span className="cw-mono">Channels</span>
+            <ul className="cw-switch-list" aria-label="Channels">
+              {channels.map((channel) => (
+                <li key={channel.href}>
+                  <Link href={channel.href} aria-current={channel.current ? "true" : undefined}><strong>{channel.label}</strong><span className="cw-mono">{channel.detail}</span></Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <div className="cw-switch">
+            <span className="cw-mono">Channel</span>
+            <strong>{channelLabel}</strong>
+            <span className="cw-mono">{channelDetail}</span>
+          </div>
+        )}
         <ul className="cw-nav" aria-label="This channel">
-          <li><Link href="/studio/preview" aria-current="page">Command Center</Link></li>
+          <li><Link href={commandCenterHref} aria-current="page">Command Center</Link></li>
           {CHANNEL_DESTINATIONS.map((label) => <li key={label}><span className="cw-nav-later">{label}<span className="cw-mono">Later</span></span></li>)}
         </ul>
         <ul className="cw-nav cw-nav-global" aria-label="Across channels">

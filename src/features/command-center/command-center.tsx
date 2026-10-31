@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import {
   STAGE_LABEL, VIDEO_STAGES,
-  type ChannelIdentity, type CommandCenterView, type LearningItem, type PendingGate, type PerformanceRow, type SectionState, type VideoInFlight,
+  type Attribution, type ChannelIdentity, type CommandCenterView, type LearningItem, type PendingGate, type PerformanceRow, type SectionState, type VideoInFlight,
 } from "./model";
 import { CURRENT_STUDIO_ANCHOR, gateItemId, parseInstant, rankNextDecision, TIER_LABEL } from "./next-decision";
 
@@ -49,9 +49,18 @@ function Action({ href, label, className }: { href: string | null; label: string
 }
 
 export function CommandCenter({ view, targets = LIVE_TARGETS }: { view: CommandCenterView; targets?: ActionTargets }) {
-  const ambiguous = <T extends { attribution: { status: string } }>(state: SectionState<T[]>) =>
-    state.status === "ready" ? state.data.filter((item) => item.attribution.status === "ambiguous").length : 0;
-  const unattributed = { videos: ambiguous(view.videos), gates: ambiguous(view.gates) };
+  const ambiguous = <T extends { attribution: Attribution }>(state: SectionState<T[]>) =>
+    state.status === "ready" ? state.data.filter((item): item is T & { attribution: { status: "ambiguous"; reason: string } } => item.attribution.status === "ambiguous") : [];
+  const unattributedVideos = ambiguous(view.videos);
+  const otherWork = view.unattributedWork ?? [];
+  const gateCount = ambiguous(view.gates).length + otherWork.filter((item) => item.kind === "Gate").length;
+  const workflowCount = otherWork.filter((item) => item.kind === "Workflow").length;
+  // Every unattributed item is named with its reason, including videos that have no pending gate.
+  const unattributedItems = [
+    ...unattributedVideos.map((video) => ({ id: `video:${video.rootWorkflowId}`, kind: "Video", title: video.title, reason: video.attribution.reason })),
+    ...ambiguous(view.gates).map((gate) => ({ id: `gate:${gate.approvalId}`, kind: "Gate", title: `${STAGE_LABEL[gate.stage]} v${gate.version} · ${gate.subject}`, reason: gate.attribution.reason })),
+    ...otherWork,
+  ];
   return (
     <div className="cw-cc">
       <IdentityHeader state={view.channel} targets={targets} />
@@ -60,11 +69,19 @@ export function CommandCenter({ view, targets = LIVE_TARGETS }: { view: CommandC
         <Section index="02" id="cw-gates" title="Needs your decision" className="cw-span5" state={attributedOnly(view.gates)} targets={targets}
           render={(gates) => <GateList gates={gates} asOf={view.asOf} targets={targets} />} />
       </div>
-      {unattributed.videos + unattributed.gates > 0 && (
-        <p className="cw-notice" role="note">
-          <span className="cw-mono cw-warn">Unattributed · {plural(unattributed.videos, "video")}, {plural(unattributed.gates, "gate")}</span>
-          {" "}Some work could not be traced to this channel through approved lineage, so it is not shown or ranked here. Nothing was guessed. Its gates stay decidable in the current Studio.
-        </p>
+      {unattributedItems.length > 0 && (
+        <div className="cw-notice" role="note">
+          <p>
+            <span className="cw-mono cw-warn">Unattributed · {plural(unattributedVideos.length, "video")}, {plural(gateCount, "gate")}{workflowCount > 0 && `, ${plural(workflowCount, "workflow")}`}</span>
+            {" "}Some work could not be traced to this channel through approved lineage, so it is not shown or ranked here. Nothing was guessed. Its gates stay decidable in the current Studio.
+          </p>
+          <details className="cw-why">
+            <summary>Show unattributed work · {unattributedItems.length}</summary>
+            <ul className="cw-why-list" aria-label="Unattributed work">
+              {unattributedItems.map((item) => <li key={item.id}><span className="cw-mono">{item.kind}</span><span>{item.title}<small>Not attributed: {item.reason}</small></span><span /></li>)}
+            </ul>
+          </details>
+        </div>
       )}
       <Section index="03" id="cw-videos" title="Videos in flight" state={attributedOnly(view.videos)} targets={targets}
         render={(videos) => <VideoTable videos={videos} asOf={view.asOf} />} />
@@ -268,6 +285,7 @@ const VERSUS: Record<PerformanceRow["versusPlan"], { label: string; tone: string
   ON_PLAN: { label: "On plan", tone: "cw-lume2" },
   BELOW: { label: "Below", tone: "cw-warn" },
   NOT_ENTERED: { label: "Not entered", tone: "cw-quiet" },
+  NOT_ASSESSED: { label: "Not assessed", tone: "cw-quiet" },
 };
 
 function PerformanceTable({ rows }: { rows: PerformanceRow[] }) {

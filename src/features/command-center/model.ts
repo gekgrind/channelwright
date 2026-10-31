@@ -22,7 +22,9 @@ export const VIDEO_STAGES = [
 
 export type VideoStageKey = (typeof VIDEO_STAGES)[number]["key"];
 export type ChannelStageKey = "RESEARCH" | "STRATEGY" | "CONTENT_PLAN" | "PORTFOLIO" | "INTELLIGENCE";
-export type StageKey = VideoStageKey | ChannelStageKey;
+/** Pre-research concept validation: it belongs to no channel and has no screen here. */
+export type AccountStageKey = "CONCEPT_VALIDATION";
+export type StageKey = VideoStageKey | ChannelStageKey | AccountStageKey;
 
 /** done = an approved version exists; you = a gate waits on the operator; system = queued or running; recover = failed or blocked. */
 export type StageCellState = "done" | "you" | "system" | "recover" | "none";
@@ -91,7 +93,8 @@ export interface VideoInFlight {
 
 /**
  * Work the operator can start that is not an approval gate. `dueAt` is null
- * when no rule defines when the task becomes due (measurement timing, D5).
+ * when no rule defines when the task becomes due (measurement timing, D5);
+ * `dueUnavailable` says why, when the reason is known.
  */
 export interface OperatorTask {
   id: string;
@@ -101,6 +104,7 @@ export interface OperatorTask {
   detail: string;
   href: string;
   dueAt: string | null;
+  dueUnavailable?: "NO_PUBLICATION_DATE" | "NO_DUE_RULE";
   createdAt: string;
   surface: SurfaceAvailability;
   attribution: Attribution;
@@ -118,7 +122,16 @@ export interface PerformanceRow {
   videoTitle: string;
   views: number | null;
   averageViewedPct: number | null;
-  versusPlan: "ABOVE" | "ON_PLAN" | "BELOW" | "NOT_ENTERED";
+  /** NOT_ASSESSED: measured, but no comparison against plan was recorded. */
+  versusPlan: "ABOVE" | "ON_PLAN" | "BELOW" | "NOT_ENTERED" | "NOT_ASSESSED";
+}
+
+/** A pending approval that cannot be shown as a gate, or an unresolved workflow outside any video. */
+export interface UnattributedWork {
+  id: string;
+  kind: "Gate" | "Workflow";
+  title: string;
+  reason: string;
 }
 
 export interface CommandCenterView {
@@ -131,6 +144,8 @@ export interface CommandCenterView {
   performance: SectionState<PerformanceRow[]>;
   /** Pending gates across all channels, for the global Approvals badge. */
   globalPendingCount: number | null;
+  /** Unattributed work that is neither a video nor a gate shown above, named with its reason. */
+  unattributedWork?: UnattributedWork[];
   /** The moment "now" is evaluated against, so ranking is deterministic. */
   asOf: string;
 }
@@ -139,4 +154,5 @@ export const STAGE_LABEL: Record<StageKey, string> = {
   BRIEF: "Brief", SCRIPT: "Script", PACKAGING: "Packaging", RELEASE: "Release",
   PERFORMANCE: "Performance", DIAGNOSIS: "Diagnosis", DECISION: "Decision", EXPERIMENT: "Experiment",
   RESEARCH: "Research", STRATEGY: "Strategy", CONTENT_PLAN: "Content plan", PORTFOLIO: "Portfolio", INTELLIGENCE: "Channel intelligence",
+  CONCEPT_VALIDATION: "Concept validation",
 };
