@@ -13,7 +13,8 @@ afterEach(cleanup);
 /** The live mapper's view rendered through the unchanged Command Center UI. */
 function renderLive(builder: LineageBuilder, channelKey: string | null) {
   const rows = builder.rows();
-  const view = toCommandCenterView({ rows, graph: resolveLineage(rows), approvalsError: null, outputs: { status: "ok", outputs: { strategy: {}, content: {}, performance: {} } } }, channelKey, "2026-10-30T12:00:00.000Z");
+  const outputs = { strategy: { status: "ok", data: {} }, content: {}, performance: { status: "ok", data: {} } } as const;
+  const view = toCommandCenterView({ rows, graph: resolveLineage(rows), approvalsError: null, outputs }, channelKey, "2026-10-30T12:00:00.000Z");
   render(<AppShell channelLabel="" channelDetail="" pendingCount={view.globalPendingCount} channels={[]} commandCenterHref="/c"><CommandCenter view={view} /></AppShell>);
   return view;
 }
@@ -30,10 +31,14 @@ describe("live Command Center rendering", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Earn the right to make a video first." })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Research a channel opportunity" })).toBeInTheDocument();
-    expect(screen.getByRole("note")).toHaveTextContent("Unattributed · 1 video, 1 gate");
+    // The broken chain's strategy and content plan have no pending gate and belong to no video, so they are named as workflows (PR21-002).
+    expect(screen.getByRole("note")).toHaveTextContent("Unattributed · 1 video, 1 gate, 2 workflows");
     const unattributed = within(screen.getByRole("list", { name: "Unattributed work" })).getAllByRole("listitem").map((item) => item.textContent);
+    expect(unattributed).toHaveLength(4);
     expect(unattributed).toContainEqual(expect.stringMatching(/^GateConcept validation v1 · Workflow [0-9a-f]{8}Not attributed: it is a pre-research concept validation and belongs to no channel$/));
     expect(unattributed).toContainEqual(expect.stringMatching(/^VideoUntitled videoNot attributed: /));
+    expect(unattributed).toContainEqual(expect.stringMatching(/^WorkflowStrategy · workflow [0-9a-f]{8} · completedNot attributed: /));
+    expect(unattributed).toContainEqual(expect.stringMatching(/^WorkflowContent plan · workflow [0-9a-f]{8} · completedNot attributed: /));
     expect(within(screen.getByRole("list", { name: "Not ranked" })).getByText(/Review Concept validation v1/)).toBeInTheDocument();
     expect(view.globalPendingCount).toBe(1);
     expect(screen.getByText("1", { selector: ".cw-badge" })).toBeInTheDocument();

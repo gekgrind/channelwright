@@ -29,7 +29,8 @@ function liveEnv() {
   auth.requireUser.mockResolvedValue({ id: OWNER, email: "owner@example.com", mode: "supabase" });
 }
 
-beforeEach(() => outputs.loadStageOutputs.mockResolvedValue({ status: "ok", outputs: { strategy: {}, content: {}, performance: {} } }));
+const EMPTY_OUTPUTS = { strategy: { status: "ok", data: {} }, content: { status: "ok", data: {} }, performance: { status: "ok", data: {} } };
+beforeEach(() => outputs.loadStageOutputs.mockResolvedValue(EMPTY_OUTPUTS));
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
 
 describe("live Command Center access (R004 gate order)", () => {
@@ -113,5 +114,16 @@ describe("live Command Center routes", () => {
     expect(element.props.state).toEqual({ status: "error", requestId: "req-9" });
     rows.loadLineageRows.mockResolvedValue({ workflows: { status: "too_large" }, runs: { status: "ok", rows: [] }, approvals: { status: "ok", rows: [] } });
     expect((await channel(OWNER)).props.state).toEqual({ status: "too_large" });
+  });
+
+  it("shows the page-level error when content plans fail, since they title every video and gate (PR21-004)", async () => {
+    const builder = new LineageBuilder();
+    const own = builder.research();
+    const data = builder.rows();
+    outputs.loadStageOutputs.mockResolvedValue({ ...EMPTY_OUTPUTS, content: { status: "error", requestId: "req-c" } });
+    const live = { status: "ok" as const, rows: data, graph: (await import("@/server/lineage/resolve-lineage")).resolveLineage(data), approvalsError: null };
+    const element = await LiveCommandCenter({ userId: OWNER, live, channelKey: own.workflowId });
+    expect(element.type).toBe(LiveUnavailable);
+    expect(element.props.state).toEqual({ status: "error", requestId: "req-c" });
   });
 });

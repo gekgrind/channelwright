@@ -4,8 +4,10 @@ import { rankNextDecision } from "@/features/command-center/next-decision";
 import { viewerValueFixture } from "@/server/workflows/content-fixtures.test-helper";
 import { mostRecentChannelKey, stageOutputRequest, toCommandCenterView, type LiveInputs } from "./command-center-view";
 import { LineageBuilder, type RunRef } from "./lineage-fixtures.test-helper";
-import type { StageOutputs } from "./load-stage-outputs";
+import type { ContentOutput, PerformanceOutput, StrategyOutput } from "./load-stage-outputs";
 import { resolveLineage } from "./resolve-lineage";
+
+interface Outputs { strategy?: Record<string, StrategyOutput>; content?: Record<string, ContentOutput>; performance?: Record<string, PerformanceOutput> }
 
 const AS_OF = "2026-10-30T12:00:00.000Z";
 
@@ -18,13 +20,13 @@ function approve(builder: LineageBuilder, run: RunRef, decidedAt: string) {
   builder.approvals.push({ id: builder.uuid(), workflowId: run.workflowId, runId: run.runId, status: "APPROVED", requestedAt: decidedAt, decidedAt });
 }
 
-function inputs(builder: LineageBuilder, outputs: Partial<StageOutputs> = {}, extra: Partial<LiveInputs> = {}): LiveInputs {
+function inputs(builder: LineageBuilder, outputs: Outputs = {}, extra: Partial<LiveInputs> = {}): LiveInputs {
   const rows = builder.rows();
   return {
     rows,
     graph: resolveLineage(rows),
     approvalsError: null,
-    outputs: { status: "ok", outputs: { strategy: {}, content: {}, performance: {}, ...outputs } },
+    outputs: { strategy: { status: "ok", data: outputs.strategy ?? {} }, content: outputs.content ?? {}, performance: { status: "ok", data: outputs.performance ?? {} } },
     ...extra,
   };
 }
@@ -190,7 +192,8 @@ describe("toCommandCenterView: measurement stays unranked without a publication 
       content: plan(chain.CHANNEL_CONTENT_INTELLIGENCE.runId, [{ topicId: "t1", rank: 1, workingConcept: "Gasket mods under $20" }]),
     }), key, AS_OF);
     expect(view.performance).toEqual({ status: "ready", data: [{ videoTitle: "Gasket mods under $20", views: 18_420, averageViewedPct: 48, versusPlan: "NOT_ASSESSED" }] });
-    expect(toCommandCenterView(inputs(builder, {}, { outputs: { status: "error", requestId: "req-2" } }), key, AS_OF).performance).toMatchObject({ status: "error", requestId: "req-2" });
+    const failed = toCommandCenterView(inputs(builder, {}, { outputs: { strategy: { status: "ok", data: {} }, content: {}, performance: { status: "error", requestId: "req-2" } } }), key, AS_OF);
+    expect(failed.performance).toMatchObject({ status: "error", requestId: "req-2" });
   });
 
   it("raises recovery for failed work in the channel and keeps learning unavailable", () => {
@@ -202,6 +205,87 @@ describe("toCommandCenterView: measurement stays unranked without a publication 
     expect(view.tasks).toContainEqual(expect.objectContaining({ kind: "RESOLVE_FAILURE", stage: "SCRIPT", detail: "It stopped with QA_FAILED. The prior approved inputs are untouched." }));
     expect(rankNextDecision(view).primary?.tier).toBe(0);
     expect(view.learning).toMatchObject({ status: "unavailable", dependency: "D8" });
+  });
+});
+
+describe("toCommandCenterView: inspection regressions (PR21-001..005)", () => {
+  const gatesOf = (view: ReturnType<typeof toCommandCenterView>) => (view.gates.status === "ready" ? view.gates.data : []);
+
+  it("names a pending approval whose workflow did not load, and still counts every approval once (PR21-001)", () => {
+    const builder = new LineageBuilder();
+    const chain = builder.chain("CHANNEL_VIDEO_SCRIPT");
+    builder.pending(chain.CHANNEL_VIDEO_SCRIPT);
+    const orphan = builder.stage("CHANNEL_VIDEO_PACKAGING", chain.CHANNEL_VIDEO_SCRIPT);
+    const orphanApproval = builder.pending(orphan);
+    // The approval was read after a workflow that the workflows page did not include yet.
+    builder.workflows.splice(builder.workflows.findIndex((workflow) => workflow.id === orphan.workflowId), 1);
+    for (const key of [chain.CHANNEL_RESEARCH.workflowId, null]) {
+      const view = toCommandCenterView(inputs(builder), key, AS_OF);
+      expect(gatesOf(view).some((gate) => gate.approvalId === orphanApproval)).toBe(false);
+      expect(view.unattributedWork).toContainEqual({ id: `gate:${orphanApproval}`, kind: "Gate", title: `Pending approval · workflow ${orphan.workflowId.slice(0, 8)}`, reason: "its workflow did not load with this page; reload to see it" });
+      const shown = gatesOf(view).length + (view.unattributedWork ?? []).filter((item) => item.kind === "Gate").length;
+      expect(shown).toBe(key ? view.globalPendingCount : view.globalPendingCount! - 1);
+    }
+  });
+
+  it("names unresolved work below a resolved brief that has no pending gate, in every view (PR21-002)", () => {
+    const builder = new LineageBuilder();
+    const chain = builder.chain("CHANNEL_VIDEO_SCRIPT");
+    delete builder.input(chain.CHANNEL_VIDEO_SCRIPT).approvedVideoBriefReference;
+    setStatus(builder, chain.CHANNEL_VIDEO_SCRIPT, "FAILED");
+    const other = builder.research({ niche: "Other" });
+    for (const key of [chain.CHANNEL_RESEARCH.workflowId, other.workflowId, null]) {
+      const view = toCommandCenterView(inputs(builder), key, AS_OF);
+      expect(view.unattributedWork).toEqual([{
+        id: `workflow:${chain.CHANNEL_VIDEO_SCRIPT.workflowId}`, kind: "Workflow",
+        title: `Script · workflow ${chain.CHANNEL_VIDEO_SCRIPT.workflowId.slice(0, 8)} · failed`,
+        reason: "its lineage reference is missing or unreadable",
+      }]);
+      // Never presented as this channel's own work.
+      expect(view.tasks.some((task) => task.kind === "RESOLVE_FAILURE")).toBe(false);
+    }
+  });
+
+  it("queries only loaded content-plan runs, never a malformed or foreign reference (PR21-003)", () => {
+    const builder = new LineageBuilder();
+    const chain = builder.chain("CHANNEL_VIDEO_BRIEF");
+    const malformed = builder.chain("CHANNEL_VIDEO_BRIEF");
+    const foreign = builder.chain("CHANNEL_VIDEO_BRIEF");
+    (builder.input(malformed.CHANNEL_VIDEO_BRIEF).approvedContentReference as Record<string, unknown>).contentRunId = "not-a-uuid";
+    (builder.input(foreign.CHANNEL_VIDEO_BRIEF).approvedContentReference as Record<string, unknown>).contentRunId = builder.uuid();
+    const request = stageOutputRequest(builder.rows(), resolveLineage(builder.rows()), chain.CHANNEL_RESEARCH.workflowId);
+    expect(request.contentRunIds.sort()).toEqual([chain.CHANNEL_CONTENT_INTELLIGENCE.runId].sort());
+  });
+
+  it("keeps each output category's result when another fails (PR21-004)", () => {
+    const builder = new LineageBuilder();
+    const chain = builder.chain("CHANNEL_VIDEO_RELEASE");
+    const performance = builder.stage("CHANNEL_VIDEO_PERFORMANCE", chain.CHANNEL_VIDEO_RELEASE);
+    const key = chain.CHANNEL_RESEARCH.workflowId;
+    const strategy = { [chain.CHANNEL_STRATEGY.runId]: { thesis: "Cheap keyboards, tested honestly.", revenuePathCount: 2 } };
+    const performanceFailed = toCommandCenterView(inputs(builder, {}, { outputs: { strategy: { status: "ok", data: strategy }, content: {}, performance: { status: "error", requestId: "req-p" } } }), key, AS_OF);
+    expect(performanceFailed.channel).toMatchObject({ status: "ready", data: { thesis: "Cheap keyboards, tested honestly." } });
+    expect(performanceFailed.performance).toMatchObject({ status: "error", requestId: "req-p" });
+    const strategyFailed = toCommandCenterView(inputs(builder, {}, { outputs: { strategy: { status: "error", requestId: "req-s" }, content: {}, performance: { status: "ok", data: { [performance.runId]: { views: 10, averageViewedPct: null } } } } }), key, AS_OF);
+    expect(strategyFailed.channel).toEqual({ status: "error", message: "The channel strategy did not load. Nothing was changed.", requestId: "req-s" });
+    expect(strategyFailed.performance).toMatchObject({ status: "ready", data: [expect.objectContaining({ views: 10 })] });
+  });
+
+  it("keeps an approved stage approved when a later replacement attempt is rejected (PR21-005)", () => {
+    const builder = new LineageBuilder();
+    const chain = builder.chain("CHANNEL_VIDEO_SCRIPT");
+    const replacement = builder.stage("CHANNEL_VIDEO_SCRIPT", chain.CHANNEL_VIDEO_BRIEF);
+    const key = chain.CHANNEL_RESEARCH.workflowId;
+    const scriptCell = () => {
+      const view = toCommandCenterView(inputs(builder), key, AS_OF);
+      return view.videos.status === "ready" ? view.videos.data[0].cells.SCRIPT : null;
+    };
+    setStatus(builder, replacement, "RUNNING");
+    expect(scriptCell()).toBe("system");
+    setStatus(builder, replacement, "CANCELED");
+    expect(scriptCell()).toBe("done");
+    setStatus(builder, chain.CHANNEL_VIDEO_SCRIPT, "CANCELED");
+    expect(scriptCell()).toBe("none");
   });
 });
 

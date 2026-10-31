@@ -6,7 +6,10 @@ import { loadStageOutputs } from "@/server/lineage/load-stage-outputs";
 
 /** The live Command Center for one channel, or the no-channel landing when `channelKey` is null. */
 export async function LiveCommandCenter({ userId, live, channelKey }: { userId: string; live: Extract<LiveLoad, { status: "ok" }>; channelKey: string | null }) {
-  const outputs = await loadStageOutputs(userId, stageOutputRequest(live.rows, live.graph, channelKey));
+  const { strategy, content, performance } = await loadStageOutputs(userId, stageOutputRequest(live.rows, live.graph, channelKey));
+  // Content plans title every video and gate and choose the next brief, so without them the page is not shown.
+  if (content.status === "error") return <LiveUnavailable state={content} />;
+  const outputs = { strategy, content: content.data, performance };
   const view = toCommandCenterView({ rows: live.rows, graph: live.graph, approvalsError: live.approvalsError, outputs }, channelKey, new Date().toISOString());
   const channels = live.graph.channels.map((channel) => ({
     label: channel.label,
@@ -36,7 +39,7 @@ export function LiveUnavailable({ state }: { state: Exclude<LiveLoad, { status: 
         <div className="cw-state cw-state-error" role="alert">
           {state.status === "too_large"
             ? <p>This account has more work than the Command Center can group yet. Nothing was changed. Your work stays available in the current Studio.</p>
-            : <p>Your workflows did not load, so nothing can be grouped into channels. Nothing was changed.</p>}
+            : <p>Your work did not load, so the Command Center cannot be shown. Nothing was changed.</p>}
           {state.status === "error" && <p className="cw-mono cw-case">Request ID {state.requestId}</p>}
         </div>
       </section>

@@ -2,11 +2,11 @@ import { deterministicViewerValueGate, resolveViewerValueGate, viewerValueAssess
 import {
   STAGE_LABEL, VIDEO_STAGES,
   type Attribution, type ChannelIdentity, type CommandCenterView, type OperatorTask, type PendingGate, type PerformanceRow,
-  type SectionState, type StageCellState, type StageKey, type VideoInFlight, type VideoStageKey,
+  type SectionState, type StageCellState, type StageKey, type UnattributedWork, type VideoInFlight, type VideoStageKey,
 } from "@/features/command-center/model";
 import { CURRENT_STUDIO_ANCHOR, parseInstant } from "@/features/command-center/next-decision";
 import type { LineageRows, LineageRunRow, LineageWorkflowRow } from "./lineage-rows";
-import type { StageOutputRequest, StageOutputsLoad } from "./load-stage-outputs";
+import type { ContentOutput, OutputLoad, PerformanceOutput, StageOutputRequest, StrategyOutput } from "./load-stage-outputs";
 import type { LineageAttribution, LineageGraph } from "./resolve-lineage";
 
 /**
@@ -14,7 +14,7 @@ import type { LineageAttribution, LineageGraph } from "./resolve-lineage";
  * contract. Pure: the same inputs and `asOf` give the same view.
  *
  * Every channel view also carries the account-level unresolved work (pending
- * gates and videos that trace to no single channel) as `ambiguous`, so the
+ * gates, videos and other workflows that trace to no single channel), so the
  * page names and counts it without ever ranking it or claiming it.
  */
 
@@ -23,7 +23,8 @@ export interface LiveInputs {
   graph: LineageGraph;
   /** Set when pending approvals failed to load; the graph was then built without them. */
   approvalsError: { requestId: string } | null;
-  outputs: StageOutputsLoad;
+  /** Content outputs title videos and gates and pick the next brief, so the page does not render without them. */
+  outputs: { strategy: OutputLoad<StrategyOutput>; content: Record<string, ContentOutput>; performance: OutputLoad<PerformanceOutput> };
 }
 
 const STAGE_OF: Record<string, StageKey> = {
@@ -128,7 +129,9 @@ export function stageOutputRequest(rows: LineageRows, graph: LineageGraph, chann
     ...(channelKey ? index.inChannel(channelKey, "CHANNEL_VIDEO_BRIEF") : []),
     ...index.unresolvedBriefs(),
   ];
-  const contentRunIds = briefs.map((brief) => index.briefSource(brief).contentRunId).filter((id): id is string => id !== null);
+  // Only loaded runs of a content plan; a malformed or foreign reference is never queried.
+  const contentRunIds = briefs.map((brief) => index.briefSource(brief).contentRunId)
+    .filter((id): id is string => id !== null && index.workflows.get(index.runs.get(id)?.workflowId ?? "")?.workflowType === "CHANNEL_CONTENT_INTELLIGENCE");
   if (!channelKey) return { strategyRunIds: [], contentRunIds, performanceRunIds: [] };
   const strategy = index.latestApproved(channelKey, "CHANNEL_STRATEGY");
   const content = index.latestApproved(channelKey, "CHANNEL_CONTENT_INTELLIGENCE");
@@ -146,14 +149,14 @@ export function stageOutputRequest(rows: LineageRows, graph: LineageGraph, chann
 export function toCommandCenterView(inputs: LiveInputs, channelKey: string | null, asOf: string): CommandCenterView {
   const { rows, graph, approvalsError, outputs } = inputs;
   const index = new Index(rows, graph);
-  const output = outputs.status === "ok" ? outputs.outputs : null;
+  const strategyOutputs = outputs.strategy.status === "ok" ? outputs.strategy.data : null;
   const channel = channelKey ? graph.channels.find((item) => item.key === channelKey) ?? null : null;
 
   const videoTitle = (briefWorkflowId: string | null) => {
     const brief = briefWorkflowId ? index.workflows.get(briefWorkflowId) : undefined;
     if (!brief) return "Untitled video";
     const { contentRunId, topicId } = index.briefSource(brief);
-    const topic = contentRunId && topicId ? output?.content[contentRunId]?.topics.find((item) => item.topicId === topicId) : undefined;
+    const topic = contentRunId && topicId ? outputs.content[contentRunId]?.topics.find((item) => item.topicId === topicId) : undefined;
     return topic?.workingConcept ?? "Untitled video";
   };
 
@@ -175,8 +178,7 @@ export function toCommandCenterView(inputs: LiveInputs, channelKey: string | nul
           const workflow = index.workflows.get(approval.workflowId);
           const run = graph.runs[approval.runId];
           const stage = workflow ? STAGE_OF[workflow.workflowType] : undefined;
-          // The database admits only known workflow types, so an approval without a stage
-          // means its workflow row is missing; it stays in the global count and is not shown.
+          // Without a known workflow it cannot be a gate here; `unattributedWork` names it instead.
           if (!stage) return [];
           const requested = rows.approvals.find((item) => item.id === approval.approvalId)?.requestedAt ?? "";
           const resolved = approval.attribution.status === "resolved";
@@ -202,8 +204,9 @@ export function toCommandCenterView(inputs: LiveInputs, channelKey: string | nul
       const lineage = graph.workflows[workflow.id];
       return workflow.id === briefWorkflowId || (lineage?.status === "resolved" && lineage.videoKey === briefWorkflowId);
     });
+    // A cancelled (rejected) attempt is never the stage's state; an earlier approved or active one is.
     const latestOf = (stage: VideoStageKey) => members
-      .filter((workflow) => workflow.workflowType === TYPE_OF_VIDEO_STAGE[stage])
+      .filter((workflow) => workflow.workflowType === TYPE_OF_VIDEO_STAGE[stage] && workflow.status !== "CANCELED")
       .sort(latestFirst((workflow) => workflow.createdAt, (workflow) => workflow.id))[0];
     const cells = Object.fromEntries(VIDEO_STAGES.map((stage) => [stage.key, cellOf(latestOf(stage.key))])) as Record<VideoStageKey, StageCellState>;
     const currentIndex = Math.max(0, ...VIDEO_STAGES.map((stage, position) => (cells[stage.key] === "none" ? 0 : position)));
@@ -267,7 +270,7 @@ export function toCommandCenterView(inputs: LiveInputs, channelKey: string | nul
 
     // Production: the highest-ranked unbriefed topic of the latest approved plan that passes Viewer Value (R001).
     const content = index.latestApproved(key, "CHANNEL_CONTENT_INTELLIGENCE");
-    const plan = content ? output?.content[content.id] : undefined;
+    const plan = content ? outputs.content[content.id] : undefined;
     if (content && plan) {
       const briefed = new Set([...index.workflows.values()]
         .filter((workflow) => workflow.workflowType === "CHANNEL_VIDEO_BRIEF" && workflow.status !== "CANCELED")
@@ -312,10 +315,11 @@ export function toCommandCenterView(inputs: LiveInputs, channelKey: string | nul
     return out;
   }
 
-  const identity: SectionState<ChannelIdentity> = channel
-    ? (() => {
+  const identity: SectionState<ChannelIdentity> = channel && outputs.strategy.status === "error"
+    ? { status: "error", message: "The channel strategy did not load. Nothing was changed.", requestId: outputs.strategy.requestId }
+    : channel ? (() => {
       const strategy = index.latestApproved(channel.key, "CHANNEL_STRATEGY");
-      const strategyOutput = strategy ? output?.strategy[strategy.id] : undefined;
+      const strategyOutput = strategy ? strategyOutputs?.[strategy.id] : undefined;
       return {
         status: "ready",
         data: {
@@ -331,8 +335,8 @@ export function toCommandCenterView(inputs: LiveInputs, channelKey: string | nul
     })()
     : { status: "empty", message: "No approved research or strategy yet. Production opens once a strategy and a content plan are approved.", action: { label: "Start research", href: anchorOf("RESEARCH") ?? "/studio" } };
 
-  const performance: SectionState<PerformanceRow[]> = outputs.status === "error"
-    ? { status: "error", message: "Performance did not load. Nothing was changed.", requestId: outputs.requestId }
+  const performance: SectionState<PerformanceRow[]> = outputs.performance.status === "error"
+    ? { status: "error", message: "Performance did not load. Nothing was changed.", requestId: outputs.performance.requestId }
     : (() => {
       const measured = channelKey
         ? index.inChannel(channelKey, "CHANNEL_VIDEO_PERFORMANCE")
@@ -345,11 +349,46 @@ export function toCommandCenterView(inputs: LiveInputs, channelKey: string | nul
       return {
         status: "ready",
         data: measured.map(({ workflow, run }) => {
-          const metrics = output?.performance[run.id];
+          const metrics = outputs.performance.status === "ok" ? outputs.performance.data[run.id] : undefined;
           return { videoTitle: subjectOf(workflow.id), views: metrics?.views ?? null, averageViewedPct: metrics?.averageViewedPct ?? null, versusPlan: "NOT_ASSESSED" };
         }),
       };
     })();
+
+  // Unresolved work that is neither an unresolved video nor a shown gate, so nothing unresolved goes unnamed.
+  const shownGateApprovals = new Set(gates.status === "ready" ? gates.data.map((gate) => gate.approvalId) : []);
+  const pendingWorkflows = new Set(approvalsError ? [] : graph.pendingApprovals.map((approval) => approval.workflowId));
+  const reasonOf = (attribution: LineageAttribution | undefined) => {
+    const named = toAttribution(attribution);
+    return named.status === "ambiguous" ? named.reason : "";
+  };
+  const unattributedWork: UnattributedWork[] = [
+    ...(approvalsError ? [] : graph.pendingApprovals)
+      .filter((approval) => approval.attribution.status !== "resolved" && !shownGateApprovals.has(approval.approvalId))
+      .map((approval): UnattributedWork => ({
+        id: `gate:${approval.approvalId}`,
+        kind: "Gate",
+        title: `Pending approval · workflow ${approval.workflowId.slice(0, 8)}`,
+        reason: index.workflows.has(approval.workflowId) ? reasonOf(approval.attribution) : "its workflow did not load with this page; reload to see it",
+      })),
+    ...[...index.workflows.values()]
+      .filter((workflow) => {
+        const lineage = graph.workflows[workflow.id];
+        // Unresolved briefs are listed as videos, pending work as gates, and concept validation belongs to no channel by design.
+        return lineage?.status !== "resolved" && lineage?.code !== "PRE_RESEARCH"
+          && workflow.workflowType !== "CHANNEL_VIDEO_BRIEF" && !pendingWorkflows.has(workflow.id);
+      })
+      .sort((left, right) => ascending(left.id, right.id))
+      .map((workflow): UnattributedWork => {
+        const stage = STAGE_OF[workflow.workflowType];
+        return {
+          id: `workflow:${workflow.id}`,
+          kind: "Workflow",
+          title: `${stage ? STAGE_LABEL[stage] : workflow.workflowType} · workflow ${workflow.id.slice(0, 8)} · ${workflow.status.toLowerCase().replace(/_/g, " ")}`,
+          reason: reasonOf(graph.workflows[workflow.id]),
+        };
+      }),
+  ];
 
   return {
     scenario: "live",
@@ -361,5 +400,6 @@ export function toCommandCenterView(inputs: LiveInputs, channelKey: string | nul
     learning: { status: "unavailable", message: "Channel learning needs the Diagnosis, Decision and Experiment screens.", dependency: "D8" },
     performance,
     globalPendingCount: approvalsError ? null : graph.pendingApprovals.length,
+    unattributedWork,
   };
 }

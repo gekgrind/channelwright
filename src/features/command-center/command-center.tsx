@@ -52,11 +52,14 @@ export function CommandCenter({ view, targets = LIVE_TARGETS }: { view: CommandC
   const ambiguous = <T extends { attribution: Attribution }>(state: SectionState<T[]>) =>
     state.status === "ready" ? state.data.filter((item): item is T & { attribution: { status: "ambiguous"; reason: string } } => item.attribution.status === "ambiguous") : [];
   const unattributedVideos = ambiguous(view.videos);
-  const unattributedGates = ambiguous(view.gates);
+  const otherWork = view.unattributedWork ?? [];
+  const gateCount = ambiguous(view.gates).length + otherWork.filter((item) => item.kind === "Gate").length;
+  const workflowCount = otherWork.filter((item) => item.kind === "Workflow").length;
   // Every unattributed item is named with its reason, including videos that have no pending gate.
   const unattributedItems = [
     ...unattributedVideos.map((video) => ({ id: `video:${video.rootWorkflowId}`, kind: "Video", title: video.title, reason: video.attribution.reason })),
-    ...unattributedGates.map((gate) => ({ id: `gate:${gate.approvalId}`, kind: "Gate", title: `${STAGE_LABEL[gate.stage]} v${gate.version} · ${gate.subject}`, reason: gate.attribution.reason })),
+    ...ambiguous(view.gates).map((gate) => ({ id: `gate:${gate.approvalId}`, kind: "Gate", title: `${STAGE_LABEL[gate.stage]} v${gate.version} · ${gate.subject}`, reason: gate.attribution.reason })),
+    ...otherWork,
   ];
   return (
     <div className="cw-cc">
@@ -69,7 +72,7 @@ export function CommandCenter({ view, targets = LIVE_TARGETS }: { view: CommandC
       {unattributedItems.length > 0 && (
         <div className="cw-notice" role="note">
           <p>
-            <span className="cw-mono cw-warn">Unattributed · {plural(unattributedVideos.length, "video")}, {plural(unattributedGates.length, "gate")}</span>
+            <span className="cw-mono cw-warn">Unattributed · {plural(unattributedVideos.length, "video")}, {plural(gateCount, "gate")}{workflowCount > 0 && `, ${plural(workflowCount, "workflow")}`}</span>
             {" "}Some work could not be traced to this channel through approved lineage, so it is not shown or ranked here. Nothing was guessed. Its gates stay decidable in the current Studio.
           </p>
           <details className="cw-why">

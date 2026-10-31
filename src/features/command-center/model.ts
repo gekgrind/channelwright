@@ -126,6 +126,14 @@ export interface PerformanceRow {
   versusPlan: "ABOVE" | "ON_PLAN" | "BELOW" | "NOT_ENTERED" | "NOT_ASSESSED";
 }
 
+/** A pending approval that cannot be shown as a gate, or an unresolved workflow outside any video. */
+export interface UnattributedWork {
+  id: string;
+  kind: "Gate" | "Workflow";
+  title: string;
+  reason: string;
+}
+
 export interface CommandCenterView {
   scenario: string;
   channel: SectionState<ChannelIdentity>;
@@ -136,6 +144,8 @@ export interface CommandCenterView {
   performance: SectionState<PerformanceRow[]>;
   /** Pending gates across all channels, for the global Approvals badge. */
   globalPendingCount: number | null;
+  /** Unattributed work that is neither a video nor a gate shown above, named with its reason. */
+  unattributedWork?: UnattributedWork[];
   /** The moment "now" is evaluated against, so ranking is deterministic. */
   asOf: string;
 }
