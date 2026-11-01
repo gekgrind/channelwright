@@ -1,4 +1,4 @@
-import type { PasswordLoginInput } from "@/domain/password-auth";
+import type { PasswordLoginInput, SupabaseAuthErrorLike } from "@/domain/password-auth";
 
 interface PasswordAuthClient {
   auth: {
@@ -6,7 +6,7 @@ interface PasswordAuthClient {
       email: string;
       password: string;
       options: { captchaToken: string };
-    }): Promise<{ error: { message?: string; code?: string } | null }>;
+    }): Promise<{ error: SupabaseAuthErrorLike | null }>;
   };
 }
 
